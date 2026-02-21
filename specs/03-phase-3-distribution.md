@@ -44,11 +44,14 @@ config :libcluster, topologies: []
 
 ### 2.1 Replace Registry with Horde.Registry
 
-`Slackex.Messaging.ChannelRegistry` — wraps `Horde.Registry` with `members: :auto` for auto-discovery via libcluster. Guarantees at most one ChannelServer process per channel across the cluster using delta-CRDTs for eventually consistent membership.
+`Slackex.Messaging.ChannelRegistry` — wraps `Horde.Registry` with `members: :auto` for auto-discovery via libcluster. Targets **at most one** ChannelServer process per channel across the cluster using delta-CRDTs for eventually consistent membership. **Note:** This is a best-effort guarantee, not a hard invariant — during network partitions, Horde's CRDT convergence delay can temporarily allow two processes for the same key (see Section 2.2 Writer Fencing for the safety mechanism that handles this).
 
 Public API:
 - `lookup(channel_id) :: {:ok, pid} | :not_found`
-- `via(channel_id)` — returns `{:via, Horde.Registry, {__MODULE__, channel_id}}` tuple
+- `via(channel_id)` — returns `{:via, Horde.Registry, {__MODULE__, {:channel, channel_id}}}` tuple
+- `via_dm(dm_id)` — returns `{:via, Horde.Registry, {__MODULE__, {:dm, dm_id}}}` tuple
+
+Registry keys are composite tuples `{:channel, id}` / `{:dm, id}` to prevent collisions between channel IDs and DM conversation IDs (which are auto-increment IDs from separate tables and can overlap numerically).
 
 ### 2.2 Writer Fencing (Split-Brain Safety)
 
@@ -56,7 +59,7 @@ Horde's CRDT-based registry is eventually consistent. During a network partition
 
 **Fencing strategy — writer epoch:**
 1. Each ChannelServer acquires a **writer epoch** on startup by atomically incrementing a per-channel counter in PostgreSQL: `UPDATE channels SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch`. The epoch is stored in ChannelServer state.
-2. `BatchWriter.insert_batch/1` includes the `writer_epoch` in every write. Before executing the batch insert, it checks: `SELECT writer_epoch FROM channels WHERE id = $1`. If the DB epoch is higher than the caller's epoch, the write is **rejected** (a newer writer has taken over).
+2. **Phase 3 API change:** `BatchWriter.insert_batch/2` gains a required second parameter — `insert_batch(messages, epoch: epoch)`. The epoch is **not optional** — callers must provide it (enforced by pattern match, not default value). Before executing the batch insert, BatchWriter checks: `SELECT writer_epoch FROM channels WHERE id = $1`. If the DB epoch is higher than the caller's epoch, the write is **rejected** with `{:error, :epoch_stale}` (a newer writer has taken over). Phase 2's `insert_batch/1` arity is removed in Phase 3 to prevent unguarded writes.
 3. On Horde conflict resolution (when the partition heals and CRDTs converge), the losing ChannelServer is terminated. Its pending writes will fail the epoch check. The winning ChannelServer's writes succeed.
 4. **Snowflake IDs remain unique** regardless of split-brain (different nodes have different node_id bits), so `ON CONFLICT DO NOTHING` safely deduplicates any overlapping writes.
 
@@ -156,7 +159,7 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 - **Recent window (< 30 seconds old):** Always read from Primary. This covers reconnection catch-up, initial channel load, and unread count after sending a message. Replication lag in this window would cause users to "miss" messages they just sent or received.
 - **Older history (scroll-up pagination):** ReadRepo is safe — the data is stable and replication lag is imperceptible for older messages.
 - **Search:** ReadRepo is acceptable — search results being a few seconds behind is tolerable.
-- **Lag detection fallback:** If `Slackex.ReadRepo` detects replication lag > 5 seconds (via `pg_last_wal_replay_lsn()` monitoring), all queries automatically fall back to Primary until lag recovers. Emit `[:slackex, :read_repo, :lag_fallback]` telemetry.
+- **Lag detection fallback:** If `Slackex.ReadRepo` detects replication lag > 5 seconds (via `pg_last_wal_replay_lsn()` monitoring), all queries automatically fall back to Primary until lag recovers. Emit `[:slackex, :read_repo, :lag_fallback]` telemetry. **Guard: no-replica mode.** When `DATABASE_READ_URL` is not configured, `ReadRepo` points at the primary database. In this case, lag detection is **disabled** (skip the `pg_last_wal_replay_lsn()` check, which returns NULL on a primary and would produce noise/errors). The `ReadRepo` module should detect this at startup by comparing its connection URL against `Repo`'s — if identical, set an internal flag to bypass lag monitoring entirely.
 
 ### 3.5.3 Test Support
 
@@ -222,6 +225,16 @@ Standard Ecto schema. Validates platform inclusion in `["fcm", "apns"]`. PushWor
 - If migration fails at any step before dropping `messages_old` (steps 1-6), reverse by: `DROP TABLE IF EXISTS messages; ALTER TABLE messages_old RENAME TO messages;`
 - If failure occurs after step 7 (old table dropped), restore from the logical backup
 - **Rehearsal:** Run the full migration on a staging environment with production-scale data before the real cutover. Measure duration, validate row counts, and test application queries against the partitioned table.
+
+**Large-table alternative (>100M rows):** If staging rehearsal shows the rename/copy/drop migration exceeds an acceptable maintenance window, use an incremental approach instead:
+1. Create the partitioned table as `messages_partitioned` (no rename of original)
+2. Use `pg_partman` or a custom Oban worker to copy data in batches (e.g., 100K rows per batch with `INSERT INTO messages_partitioned SELECT * FROM messages WHERE id BETWEEN $1 AND $2`)
+3. Once caught up, enable dual-writes in BatchWriter (write to both tables)
+4. Run a final sync pass to close any gap
+5. Swap tables atomically: `ALTER TABLE messages RENAME TO messages_legacy; ALTER TABLE messages_partitioned RENAME TO messages;` (brief lock, no data copy)
+6. Drop `messages_legacy` after validation
+
+This approach minimizes downtime to the atomic rename step (~seconds) at the cost of implementation complexity.
 
 **Pre-migration checklist:**
 - [ ] Staging rehearsal completed successfully

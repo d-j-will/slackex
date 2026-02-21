@@ -89,6 +89,16 @@ Helper: `with_subscription(channel, user, role)` — inserts a subscription and 
   - session token can be generated and verified
   - deleted session token no longer works
 
+- `describe "JWT token lifecycle"` (mobile auth)
+  - access token is valid within TTL
+  - expired access token is rejected
+  - revoked access token (JTI deleted) is rejected
+  - refresh token exchanges for new access + refresh token pair
+  - old refresh token is invalidated after rotation (one-time use)
+  - replaying a revoked refresh token invalidates all tokens for that user (family invalidation)
+  - password change revokes all outstanding tokens
+  - invalid/malformed JWT is rejected
+
 ### Chat Behavior (`test/slackex/chat_test.exs`)
 
 - `describe "channel lifecycle"`
@@ -140,6 +150,20 @@ Helper: `with_subscription(channel, user, role)` — inserts a subscription and 
   - finds messages matching keywords
   - returns empty list for no matches
   - search can be scoped to a specific channel
+  - results from private channels are excluded for non-members
+  - public channel results are visible to any authenticated user
+
+- `describe "semantic search"` (setup: messages with embedded content via StubClient)
+  - finds messages with similar meaning (not just keyword match)
+  - respects similarity threshold (low-similarity results excluded)
+  - results include similarity score
+  - authorization filters match FTS behavior (private channel exclusion)
+
+- `describe "hybrid search"` (setup: messages with both FTS and embedding content)
+  - combines FTS and semantic results via RRF scoring
+  - results include search_score
+  - a message found by both FTS and semantic ranks higher than one found by only one
+  - respects channel scoping in hybrid mode
 
 ### Cache Behavioral Tests (`test/slackex/cache_test.exs`, async: false)
 
@@ -234,10 +258,10 @@ mix test --cover                   # With coverage report
 
 - [ ] All test support modules (Factory, DataCase, ConnCase, ChannelCase) are configured
 - [ ] ExMachina factories exist for all schemas (User, Channel, Message, etc.)
-- [ ] Behavioral integration tests cover: registration, auth, channel CRUD, messaging, DMs (including sender authorization), unread tracking
+- [ ] Behavioral integration tests cover: registration, auth (session + JWT lifecycle + refresh token rotation + family invalidation), channel CRUD, messaging, DMs (including sender authorization), unread tracking
 - [ ] LiveView tests verify: channel selection, message sending, real-time delivery, auth redirect
 - [ ] Channel tests verify: join, send, broadcast, auth rejection
-- [ ] Search tests verify: FTS keyword matching, scoping by channel
+- [ ] Search tests verify: FTS keyword matching, semantic similarity, hybrid RRF ranking, scoping by channel, authorization filtering
 - [ ] Cache tests verify: miss fallthrough, cache population, invalidation
 - [ ] Unit tests cover only: Snowflake, Permissions, RateLimiter (pure functions, including token refill behavior)
 - [ ] E2E tests cover: full registration→chat flow, DM flow

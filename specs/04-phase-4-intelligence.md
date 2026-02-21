@@ -89,7 +89,7 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 Uses PostgreSQL `tsvector/tsquery`:
 - Filter: `to_tsvector('english', content) @@ plainto_tsquery('english', query)`
 - Rank: `ts_rank(to_tsvector('english', content), plainto_tsquery('english', query))` descending
-- **Authorization filter:** Joins through `subscriptions` to restrict results to channels the user is a member of. Private channels are only searchable by their members. Public channels are searchable by any authenticated user.
+- **Authorization filter:** Joins through `subscriptions` to restrict results to channels the user is a member of. Private channels are only searchable by their members. Public channels are searchable by any authenticated user — this is a deliberate policy distinction from the `Permissions` module's `read_messages` check (which governs direct channel access, not search discoverability). See `01-phase-1-foundation.md` Step 6 for the policy rationale.
 - Options: `user_id` (required), `channel_id` (scope), `limit` (default 20), `offset`
 - Preloads `:sender`
 

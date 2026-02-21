@@ -43,7 +43,7 @@ The core of the real-time system. One GenServer process per active channel, runn
 
 ### 1.2 Public API
 
-- `start_link({channel_id, opts})` — starts GenServer, registered via `{:via, Registry, {Slackex.Messaging.ChannelRegistry, channel_id}}`
+- `start_link({channel_id, opts})` — starts GenServer, registered via `{:via, Registry, {Slackex.Messaging.ChannelRegistry, {:channel, channel_id}}}` for channels or `{:via, Registry, {Slackex.Messaging.ChannelRegistry, {:dm, dm_id}}}` for DMs. The composite key `{type, id}` prevents collisions if channel IDs and DM conversation IDs overlap numerically (they share no DB uniqueness constraint across tables)
 - `send_message(channel_id, sender_id, content) :: {:ok, message} | {:error, reason}` — validates permissions, checks rate limit, generates Snowflake ID, sanitizes content, then: (1) adds to pending_writes, (2) appends to in-memory queue, (3) updates ETS cache, (4) broadcasts via PubSub to all subscribers
 - `get_recent_messages(channel_id, limit \\ 50) :: [message]` — returns from in-memory queue
 
@@ -65,7 +65,7 @@ The core of the real-time system. One GenServer process per active channel, runn
 
 **Mitigations:**
 1. **Batch flush acknowledgment:** `BatchWriter.async_insert_batch/2` reports success/failure back to the ChannelServer via `send(caller, {:batch_result, ref, result})`. On failure, the ChannelServer retains the messages in `pending_writes` and retries on the next flush cycle.
-2. **Crash recovery on restart:** When a ChannelServer starts (or restarts after Horde failover in Phase 3), `init/1` compares the latest message IDs in cache (ETS/Redis) against the database. Any IDs present in cache but missing from the DB are re-persisted synchronously.
+2. **Crash recovery on restart:** When a ChannelServer starts (or restarts after Horde failover in Phase 3), `init/1` compares the latest message IDs in cache (ETS in Phase 2; ETS + Redis in Phase 3+) against the database. Any IDs present in cache but missing from the DB are re-persisted synchronously.
 3. **Client-side gap detection:** Clients track the last received Snowflake ID. On reconnection, the catch-up mechanism (Phase 3) delivers missed messages from the DB. Messages lost before persistence will not appear in catch-up — this is the accepted tradeoff.
 4. **Monitoring:** Emit `[:slackex, :pipeline, :batch_flush]` telemetry events with metadata `%{count, status, retry_count}` to track write failures and retries.
 
@@ -105,8 +105,8 @@ The ChannelServer accumulates messages in `pending_writes` and flushes them on a
 **Single-writer invariant (best-effort):** Each ChannelServer is the single writer for its channel. Concurrent writes from different channels are safe (different rows). In Phase 2 (single-node), this is enforced by Registry's `:unique` keys. In Phase 3 (Horde), this is **best-effort** — Horde's CRDT-based registry is eventually consistent, so during a network partition, two ChannelServers for the same channel can briefly coexist (split-brain). See Phase 3 for the fencing strategy that makes writes safe under this condition.
 
 Public API:
-- `insert_batch(messages) :: {:ok, count} | {:error, term}` — single `Repo.insert_all("messages", entries, on_conflict: :nothing)` for the batch. No `conflict_target` is specified — `ON CONFLICT DO NOTHING` catches any unique constraint violation, which remains correct after Phase 3 changes the PK to `(id, inserted_at)` for partitioning
-- `async_insert_batch(messages, caller_ref)` — dispatches via `Task.Supervisor.start_child(Slackex.WriteSupervisor, ...)`, sending `{:batch_result, ref, :ok | {:error, reason}}` to the caller on completion. On success, the ChannelServer clears those messages from `pending_writes`. On failure, messages are retained for retry on the next flush cycle. Messages also remain in ETS cache as a secondary recovery source.
+- `insert_batch(messages) :: {:ok, count} | {:error, term}` — maps each message to a row map, **deriving `inserted_at` from the Snowflake ID** via `Snowflake.extract_timestamp/1` (not relying on Ecto timestamps or DB defaults). This is critical because `insert_all` bypasses Ecto changesets — without explicit derivation, `inserted_at` would be nil or inconsistent, breaking partition placement and `ON CONFLICT DO NOTHING` dedup safety after Phase 3 partitioning. Executes a single `Repo.insert_all("messages", entries, on_conflict: :nothing)` for the batch. No `conflict_target` is specified — `ON CONFLICT DO NOTHING` catches any unique constraint violation, which remains correct after Phase 3 changes the PK to `(id, inserted_at)` for partitioning
+- `async_insert_batch(messages, caller_ref)` — dispatches via `Task.Supervisor.start_child(Slackex.WriteSupervisor, ...)`, sending `{:batch_result, ref, :ok | {:error, reason}}` to the caller on completion. On success, the ChannelServer clears those messages from `pending_writes`. On failure, messages are retained for retry on the next flush cycle. Messages also remain in ETS cache as a secondary recovery source. **Phase 3 evolution:** Both `insert_batch` and `async_insert_batch` gain a required `epoch:` option for writer fencing — see Phase 3 Step 2.2. Phase 2's epoch-less arities are removed in Phase 3.
 
 ### 2.2 Pipeline Boundary
 

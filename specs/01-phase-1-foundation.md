@@ -304,6 +304,14 @@ Boundary: `deps: [Slackex.Accounts, Slackex.Infrastructure, Slackex.Repo], expor
 | viewer | 1 | no | yes | no | no |
 | nil | 0 | no | no | no | no |
 
+> **Note on public channel read access:** The `nil` role (non-member) having no `read_messages`
+> permission applies to **direct message access** (loading channel history, joining channels).
+> For **search**, any authenticated user can find results from public channels they haven't
+> joined — this is intentional and consistent with Slack's behavior where public channel content
+> is discoverable. Private channels are only searchable by their members. The permissions table
+> governs direct channel interactions; search authorization is a separate policy layer documented
+> in Phase 4 (`Search.MessageSearch`).
+
 ## Step 7: LiveView Chat Interface
 
 ### 7.1 Router
