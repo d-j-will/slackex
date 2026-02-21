@@ -220,7 +220,8 @@ Tagged `@moduletag :distributed`, excluded by default. Uses `LocalCluster` to st
 ### Replica Consistency Tests
 
 - **recent messages use primary after cache miss** — send message, immediately query via `HistoryLoader.recent/2`, verify it hits Primary (not ReadRepo)
-- **lag fallback triggers on high replication delay** — mock `pg_last_wal_replay_lsn()` monitoring to simulate >5s lag, verify all queries fall back to Primary, verify telemetry event emitted
+- **lag fallback triggers on high replication delay** — mock `pg_last_xact_replay_timestamp()` to return a timestamp >5s in the past, verify all ReadRepo queries fall back to Primary, verify `[:slackex, :read_repo, :lag_fallback]` telemetry event emitted with `lag_seconds` metadata
+- **no-replica mode skips lag detection** — configure ReadRepo with same URL as Repo, verify lag monitoring is bypassed (no periodic queries, no telemetry noise)
 
 ### Partition Migration Tests (tagged `@tag :migration`, manual only)
 

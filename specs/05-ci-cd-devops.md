@@ -163,8 +163,9 @@ Runs on push/PR to main and develop.
 6. `mix dialyzer --format github`
 7. `mix ecto.create && mix ecto.migrate`
 8. `mix test --cover --warnings-as-errors`
-9. `mix hex.audit` — check for retired dependencies
-10. `mix deps.unlock --check-unused` — check for unused dependencies
+9. `mix test --include distributed --warnings-as-errors` — distributed cluster tests (Phase 3+). These verify Horde failover, split-brain fencing, and replica consistency. Separated from step 8 because they require `LocalCluster` and are slower, but they **must** run in CI as they cover critical distributed safety guarantees.
+10. `mix hex.audit` — check for retired dependencies
+11. `mix deps.unlock --check-unused` — check for unused dependencies
 
 ### Docker Job (`docker`)
 

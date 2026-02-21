@@ -80,7 +80,11 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 - `enqueue(message_ids)` — chunks into batches of 50, inserts Oban jobs at priority 3
 - `enqueue_backfill(channel_id)` — single job with uniqueness constraint (1 hour period)
 
-**Integration:** After successful batch persistence in the write pipeline, enqueue embedding generation for the persisted message IDs.
+**Integration via PubSub event bridge:** After successful batch persistence, `BatchWriter` broadcasts `{:messages_persisted, message_ids}` on the internal PubSub topic `"pipeline:events"`.
+
+**Listener:** `Slackex.Embeddings.PersistenceListener` — a dedicated supervised GenServer (not an Oban worker) that subscribes to `"pipeline:events"` in `init/1` and enqueues `EmbeddingWorker` Oban jobs on receipt of `{:messages_persisted, message_ids}` events. This must be a long-lived supervised process because Oban workers are transient job executors — they are started by the Oban queue, run their `perform/1`, and terminate. An Oban worker cannot maintain a persistent PubSub subscription. The listener is added to the application supervisor after Oban (it depends on Oban being available to enqueue jobs).
+
+**Boundary note:** Neither `Pipeline` nor `Messaging` adds `Slackex.Embeddings` to its deps. The event bridge is the sanctioned integration path. `Pipeline` depends only on `PubSub` (infrastructure), and `Embeddings` subscribes independently via `PersistenceListener`.
 
 ## Step 6: Search Module
 
@@ -89,7 +93,7 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 Uses PostgreSQL `tsvector/tsquery`:
 - Filter: `to_tsvector('english', content) @@ plainto_tsquery('english', query)`
 - Rank: `ts_rank(to_tsvector('english', content), plainto_tsquery('english', query))` descending
-- **Authorization filter:** Joins through `subscriptions` to restrict results to channels the user is a member of. Private channels are only searchable by their members. Public channels are searchable by any authenticated user — this is a deliberate policy distinction from the `Permissions` module's `read_messages` check (which governs direct channel access, not search discoverability). See `01-phase-1-foundation.md` Step 6 for the policy rationale.
+- **Authorization filter:** Uses a conditional join strategy — not a simple `JOIN subscriptions`. The query filters results as: **(a)** public channels (`channels.is_private = false`) are included for any authenticated user (no subscription required), **(b)** private channels are included only via `JOIN subscriptions` where the user has a membership row. Implementation: `LEFT JOIN subscriptions ON ... WHERE (channels.is_private = false OR subscriptions.user_id = $user_id)`. This is a deliberate policy distinction from the `Permissions` module's `read_messages` check (which governs direct channel access, not search discoverability). See `01-phase-1-foundation.md` Step 6 for the policy rationale.
 - Options: `user_id` (required), `channel_id` (scope), `limit` (default 20), `offset`
 - Preloads `:sender`
 
@@ -98,7 +102,7 @@ Uses PostgreSQL `tsvector/tsquery`:
 Uses pgvector cosine similarity:
 - Generates embedding for the query text via `EmbeddingClient.generate/1`
 - Joins `message_embeddings` with `messages` on `(message_id, message_inserted_at) = (id, inserted_at)` — enables PostgreSQL partition pruning on the partitioned messages table
-- **Authorization filter:** Same membership-based filtering as `text_search/3` — restricts results to channels the user can access
+- **Authorization filter:** Same conditional join strategy as `text_search/3` — public channels visible to all authenticated users, private channels restricted to members
 - Filters by similarity threshold (default 0.3)
 - Orders by cosine distance ascending (`<=>` operator)
 - Returns messages with `:similarity` score attached
@@ -117,7 +121,7 @@ Runs both searches in parallel via `Task.async`, merges by message ID, sorts by 
 Boundary: `deps: [Chat, Cache, Embeddings], exports: [MessageSearch, HistoryLoader]`
 
 Public API:
-- `search_messages(user_id, query, opts) :: {:ok, [Message.t()]}` — dispatches to `:text`, `:semantic`, or `:hybrid` mode (default: `:hybrid`). `user_id` is required — all search paths filter results to channels the user can access (public channels + private channels where user is a member)
+- `search_messages(user_id, query, opts) :: {:ok, [Message.t()]}` — dispatches to `:text`, `:semantic`, or `:hybrid` mode (default: `:hybrid`). `user_id` is required — all search paths use the conditional join strategy: public channels are visible to any authenticated user, private channels are restricted to members only
 
 ## Step 7: Search LiveView Component
 

@@ -182,9 +182,9 @@ Slackex.Application
 ├── {Phoenix.PubSub, name: Slackex.PubSub}          # Distributed PubSub
 ├── SlackexWeb.Presence                              # Phoenix Presence
 ├── SlackexWeb.Endpoint                              # HTTP + WebSocket
-├── {Horde.Registry, name: Slackex.ChannelRegistry}  # Distributed registry
-├── {Horde.DynamicSupervisor,                        # Distributed supervisor
-│    name: Slackex.ChannelSupervisor}
+├── {Horde.Registry, name: Slackex.Messaging.ChannelRegistry}  # Distributed registry
+├── {Horde.DynamicSupervisor,                                  # Distributed supervisor
+│    name: Slackex.Messaging.ChannelSupervisor}
 ├── Slackex.Infrastructure.Snowflake                 # ID generator
 ├── SlackexWeb.Telemetry                             # Telemetry metrics + poller
 ├── Slackex.Cache.Local                              # ETS table manager

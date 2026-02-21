@@ -58,12 +58,24 @@ Registry keys are composite tuples `{:channel, id}` / `{:dm, id}` to prevent col
 Horde's CRDT-based registry is eventually consistent. During a network partition, two nodes may each start a ChannelServer for the same channel, violating the single-writer invariant and producing divergent writes, duplicate rate-limit state, and message ordering conflicts.
 
 **Fencing strategy — writer epoch:**
-1. Each ChannelServer acquires a **writer epoch** on startup by atomically incrementing a per-channel counter in PostgreSQL: `UPDATE channels SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch`. The epoch is stored in ChannelServer state.
-2. **Phase 3 API change:** `BatchWriter.insert_batch/2` gains a required second parameter — `insert_batch(messages, epoch: epoch)`. The epoch is **not optional** — callers must provide it (enforced by pattern match, not default value). Before executing the batch insert, BatchWriter checks: `SELECT writer_epoch FROM channels WHERE id = $1`. If the DB epoch is higher than the caller's epoch, the write is **rejected** with `{:error, :epoch_stale}` (a newer writer has taken over). Phase 2's `insert_batch/1` arity is removed in Phase 3 to prevent unguarded writes.
+1. Each ChannelServer acquires a **writer epoch** on startup by atomically incrementing a counter in PostgreSQL. For channel-type servers: `UPDATE channels SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch`. For DM-type servers: `UPDATE dm_conversations SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch`. The epoch is stored in ChannelServer state.
+2. **Phase 3 API change:** `BatchWriter.insert_batch/2` gains a required second parameter — `insert_batch(messages, epoch: epoch, type: :channel | :dm, id: id)`. The epoch is **not optional** — callers must provide it (enforced by pattern match, not default value). The epoch check and batch insert are executed as a **single atomic database transaction** to eliminate TOCTOU race conditions:
+   ```elixir
+   Repo.transaction(fn ->
+     # Row-lock + epoch check in one query
+     case Repo.query!("SELECT writer_epoch FROM channels WHERE id = $1 FOR UPDATE", [id]) do
+       %{rows: [[db_epoch]]} when db_epoch > caller_epoch ->
+         Repo.rollback(:epoch_stale)
+       _ ->
+         Repo.insert_all("messages", entries, on_conflict: :nothing)
+     end
+   end)
+   ```
+   The `FOR UPDATE` row lock prevents concurrent writers from interleaving between the epoch check and the insert within the same transaction. If the DB epoch is higher than the caller's epoch, the transaction is rolled back with `{:error, :epoch_stale}`. Phase 2's `insert_batch/1` arity is removed in Phase 3 to prevent unguarded writes.
 3. On Horde conflict resolution (when the partition heals and CRDTs converge), the losing ChannelServer is terminated. Its pending writes will fail the epoch check. The winning ChannelServer's writes succeed.
 4. **Snowflake IDs remain unique** regardless of split-brain (different nodes have different node_id bits), so `ON CONFLICT DO NOTHING` safely deduplicates any overlapping writes.
 
-**Migration:** Add `writer_epoch` integer column (default 0, NOT NULL) to `channels` table in Phase 3.
+**Migration:** Add `writer_epoch` integer column (default 0, NOT NULL) to both `channels` and `dm_conversations` tables in Phase 3.
 
 > **Note:** This makes the single-writer invariant **verifiable** rather than merely assumed.
 > Rate limiters may briefly allow excess throughput during split-brain (two ChannelServers
@@ -86,12 +98,12 @@ Change `via/1` from `{:via, Registry, ...}` to `Slackex.Messaging.ChannelRegistr
 
 Horde automatically restarts affected processes on surviving nodes. ChannelServer's `init/1` rehydrates from cache/DB.
 
-**Best-effort flush on graceful shutdown:** Add a `terminate/2` callback that does a **synchronous** `BatchWriter.insert_batch/1` flush of pending writes (not async — the process is about to die). This handles graceful shutdowns (rolling deploys, manual stop) but **not** abrupt node failures (hardware crash, OOM kill, network partition) where `terminate/2` is not guaranteed to run.
+**Best-effort flush on graceful shutdown:** Add a `terminate/2` callback that does a **synchronous** `BatchWriter.insert_batch(messages, epoch: epoch, type: channel_type, id: channel_id)` flush of pending writes (not async — the process is about to die). The epoch check still applies — if a newer writer has taken over, the flush is safely rejected. This handles graceful shutdowns (rolling deploys, manual stop) but **not** abrupt node failures (hardware crash, OOM kill, network partition) where `terminate/2` is not guaranteed to run.
 
 **Crash recovery in init/1:** On startup, the ChannelServer must reconcile cache state against the database:
 1. Load the latest N message IDs from cache (ETS/Redis) for this channel
 2. Query the database for which of those IDs exist
-3. Re-persist any IDs found in cache but missing from the DB via synchronous `BatchWriter.insert_batch/1`
+3. Re-persist any IDs found in cache but missing from the DB via synchronous `BatchWriter.insert_batch(messages, epoch: epoch, type: channel_type, id: channel_id)` (using the freshly acquired epoch from this ChannelServer's startup)
 4. This closes the durability gap for messages that were cached but not yet flushed when the previous process died
 
 **Monitoring:** Emit `[:slackex, :channel_server, :crash_recovery]` telemetry with `%{channel_id, recovered_count}` to track how often crash recovery finds un-persisted messages.
@@ -145,7 +157,7 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 | `Chat.list_messages/2` (older history) | ReadRepo | Historical read, tolerates replication lag |
 | `Chat.list_user_channels/1` | ReadRepo | Channel list doesn't change often |
 | `Chat.list_public_channels/0` | ReadRepo | Read-only listing |
-| `Chat.unread_count/2` | ReadRepo | Read-only count |
+| `Chat.unread_count/2` | Primary | Unread count must reflect recently sent messages (see consistency rules below) |
 | `Search.MessageSearch.*` | ReadRepo | All search is read-only |
 | `Chat.get_role/2` | Primary | Authorization before writes |
 | `Chat.send_message/3` | Primary | Write operation |
@@ -159,7 +171,7 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 - **Recent window (< 30 seconds old):** Always read from Primary. This covers reconnection catch-up, initial channel load, and unread count after sending a message. Replication lag in this window would cause users to "miss" messages they just sent or received.
 - **Older history (scroll-up pagination):** ReadRepo is safe — the data is stable and replication lag is imperceptible for older messages.
 - **Search:** ReadRepo is acceptable — search results being a few seconds behind is tolerable.
-- **Lag detection fallback:** If `Slackex.ReadRepo` detects replication lag > 5 seconds (via `pg_last_wal_replay_lsn()` monitoring), all queries automatically fall back to Primary until lag recovers. Emit `[:slackex, :read_repo, :lag_fallback]` telemetry. **Guard: no-replica mode.** When `DATABASE_READ_URL` is not configured, `ReadRepo` points at the primary database. In this case, lag detection is **disabled** (skip the `pg_last_wal_replay_lsn()` check, which returns NULL on a primary and would produce noise/errors). The `ReadRepo` module should detect this at startup by comparing its connection URL against `Repo`'s — if identical, set an internal flag to bypass lag monitoring entirely.
+- **Lag detection fallback:** A periodic check (every 5 seconds via `Process.send_after`) queries the replica for replication lag using `SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::float`. This returns the number of seconds since the last replayed transaction — a direct measure of how stale the replica is. If lag exceeds 5 seconds, all `ReadRepo` queries automatically fall back to Primary until the next check shows recovery. Emit `[:slackex, :read_repo, :lag_fallback]` telemetry with `%{lag_seconds: float}`. **Guard: no-replica mode.** When `DATABASE_READ_URL` is not configured, `ReadRepo` points at the primary database. In this case, lag detection is **disabled** — `pg_last_xact_replay_timestamp()` returns NULL on a primary (it's a standby-only function). The `ReadRepo` module detects this at startup by comparing its connection URL against `Repo`'s — if identical, set an internal flag to bypass lag monitoring entirely and always route directly (no overhead).
 
 ### 3.5.3 Test Support
 
@@ -215,10 +227,17 @@ Standard Ecto schema. Validates platform inclusion in `["fcm", "apns"]`. PushWor
 2. Create new `messages` table with `PARTITION BY RANGE (inserted_at)` and composite PK `(id, inserted_at)`
 3. Create monthly partitions (past 3 months, current, next 3)
 4. Recreate indexes: `(channel_id, inserted_at, id)`, `(dm_conversation_id, inserted_at, id)`, `(sender_id)`, GIN FTS — note: `inserted_at` is included in composite indexes to enable partition pruning on queries that filter by both `channel_id` and Snowflake-derived timestamp bounds
-5. Copy data from old table: `INSERT INTO messages SELECT * FROM messages_old`
-6. **Validate:** Compare row counts (`SELECT count(*) FROM messages` vs `messages_old`), spot-check min/max IDs per partition
-7. Drop old table (only after validation passes)
-8. Re-add foreign keys to users, channels, dm_conversations
+5. Re-add CHECK constraint: `ALTER TABLE messages ADD CONSTRAINT messages_target_check CHECK ((channel_id IS NOT NULL AND dm_conversation_id IS NULL) OR (channel_id IS NULL AND dm_conversation_id IS NOT NULL));` — this was defined in Phase 1 and must be preserved through table recreation (CHECK constraints are not automatically carried over)
+6. Copy data from old table: `INSERT INTO messages SELECT * FROM messages_old`
+7. **Validate (all checks must pass before proceeding to step 8):**
+   - **Row count match:** `SELECT count(*) FROM messages` = `SELECT count(*) FROM messages_old`
+   - **Per-partition row counts:** `SELECT tableoid::regclass, count(*) FROM messages GROUP BY 1` — verify every expected partition has rows and no partition is unexpectedly empty
+   - **Boundary integrity:** `SELECT min(inserted_at), max(inserted_at) FROM messages` matches old table, and each partition's min/max falls within its declared range
+   - **Checksum sample:** Compare `md5(array_agg(id ORDER BY id)::text)` for a random sample of 3 partitions between old and new tables
+   - **Critical query smoke tests:** Run `HistoryLoader.recent/2`, `HistoryLoader.before/3`, and `MessageSearch.text_search/3` against the new table and verify results match old table for a set of test channel IDs
+   - **EXPLAIN verification:** Run `EXPLAIN` on a typical `before` query and confirm partition pruning is active (not scanning all partitions)
+8. Drop old table (only after ALL validation checks pass)
+9. Re-add foreign keys to users, channels, dm_conversations
 
 **Rollback plan:**
 - Before step 1, take a logical backup: `pg_dump --table=messages --data-only`
@@ -245,7 +264,7 @@ This approach minimizes downtime to the atomic rename step (~seconds) at the cos
 
 **Note on FKs:** Partitioned tables require FK references to match the full partition key `(id, inserted_at)`. Tables referencing just `message_id` (like `message_embeddings`) should NOT use FK constraints — enforce referential integrity at the application level.
 
-**Note on BatchWriter compatibility:** Phase 2's `BatchWriter.insert_batch/1` uses `on_conflict: :nothing` without a `conflict_target`, which generates `ON CONFLICT DO NOTHING`. This remains correct after partitioning — PostgreSQL evaluates the `DO NOTHING` clause against any unique constraint violation (including the composite PK `(id, inserted_at)`). No changes to BatchWriter are required for this migration.
+**Note on BatchWriter compatibility:** Phase 3's `BatchWriter.insert_batch/2` (with required `epoch:, type:, id:`) uses `on_conflict: :nothing` without a `conflict_target`, which generates `ON CONFLICT DO NOTHING`. This remains correct after partitioning — PostgreSQL evaluates the `DO NOTHING` clause against any unique constraint violation (including the composite PK `(id, inserted_at)`). The epoch check + insert runs inside a single transaction with `FOR UPDATE` row lock (see Step 2.2), so partitioning does not affect fencing atomicity. No changes to BatchWriter's conflict handling are required for this migration. (Note: Phase 2's epoch-less `insert_batch/1` arity was removed in Phase 3 Step 2.2.)
 
 **Note on `inserted_at` stability:** The `inserted_at` value is derived from the Snowflake ID timestamp (set in the Message changeset via `Snowflake.extract_timestamp/1`), not generated at insert time. This ensures that for any given message ID, the `inserted_at` value is deterministic and immutable. Retries of the same message always produce the same `(id, inserted_at)` pair, landing in the same partition — preventing duplicate logical messages across partitions.
 
@@ -289,7 +308,7 @@ Two-stage build:
 ### 8.2 Kubernetes Resources
 
 - **Deployment:** 3 replicas, pod env vars via downward API (`POD_IP` → `RELEASE_NODE`), liveness probe on `/health`, readiness probe on `/ready`, resource limits (512Mi-2Gi memory, 500m-2000m CPU)
-- **Headless Service** (`clusterIP: None`): for BEAM node discovery via K8s DNS — exposes ports 4000 (HTTP) and 4369 (epmd)
+- **Headless Service** (`clusterIP: None`): for BEAM node discovery via K8s DNS — exposes ports 4000 (HTTP), 4369 (epmd), and 9000-9010 (Erlang distribution port range). **Erlang dist port pinning:** Set `ELIXIR_ERL_OPTIONS="-kernel inet_dist_listen_min 9000 inet_dist_listen_max 9010"` in the pod env. Without pinning, BEAM picks random ephemeral ports for inter-node communication, which are unreachable through K8s services.
 - **ClusterIP Service**: regular load-balanced service on port 80→4000
 - **Ingress**: nginx with sticky sessions (`cookie` affinity) for WebSocket, long proxy timeouts (3600s)
 

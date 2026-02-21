@@ -204,7 +204,7 @@ Composite PK (`@primary_key false`). Tracks `last_read_message_id` per user per 
 ```
 
 - **Epoch:** 2025-01-01T00:00:00Z (ms)
-- **Node ID:** 10-bit identifier (0-1023), assigned deterministically — not derived from node-name hash (which is collision-prone at 10 bits). In production (K8s), use the StatefulSet pod ordinal via `SNOWFLAKE_NODE_ID` env var. In dev, derive from the port number. On startup, the Snowflake GenServer verifies uniqueness by attempting a PostgreSQL advisory lock on `node_id` — if the lock fails, another node holds the same ID and startup is aborted with a clear error.
+- **Node ID:** 10-bit identifier (0-1023), assigned deterministically — not derived from node-name hash (which is collision-prone at 10 bits). In production (K8s), use the StatefulSet pod ordinal via `SNOWFLAKE_NODE_ID` env var. In dev, derive from the port number via `rem(port - 4000, 1024)` — this maps port 4000→0, 4001→1, 4002→2 (the typical local multi-node range), and clamps any port value to the valid 10-bit range (0-1023). On startup, the Snowflake GenServer verifies uniqueness by attempting a PostgreSQL advisory lock on `node_id` — if the lock fails, another node holds the same ID and startup is aborted with a clear error.
 - **Sequence:** 4096 IDs per millisecond per node
 - **Clock drift:** if clock goes backwards, waits until it advances past `last_timestamp`
 

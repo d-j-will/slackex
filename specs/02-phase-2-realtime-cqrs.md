@@ -29,7 +29,8 @@ The core of the real-time system. One GenServer process per active channel, runn
   channel_type,           # :channel | :dm
   messages: :queue.new(), # Bounded recent message queue
   message_count: 0,
-  pending_writes: [],     # Messages awaiting persistence
+  pending_writes: [],     # Messages awaiting persistence (bounded, see @max_pending_writes)
+  in_flight: %{},         # %{batch_ref => [messages]} — batches dispatched but not yet acknowledged
   rate_limiters: %{},     # %{user_id => RateLimiter.t()}
   metadata: %{}           # Channel name, topic, member count
 }
@@ -40,6 +41,7 @@ The core of the real-time system. One GenServer process per active channel, runn
 - `@idle_timeout 30 minutes` — hibernates after inactivity
 - `@batch_interval 2 seconds` — flush pending writes to DB
 - `@message_rate_limit [rate: 10, per: :second]` — per-user per-channel
+- `@max_pending_writes 1_000` — **per-ChannelServer** backpressure cap on pending writes. When reached, `send_message` returns `{:error, :backpressure}` and the message is rejected (not queued). This prevents unbounded memory growth during sustained DB outages. At max rate (10 msg/s per user), a single channel fills to 1,000 pending writes in ~100 seconds of sustained DB unavailability. Per-node memory budget: with up to 1,000 active ChannelServers (`@max_channels`) × 1,000 pending writes × ~1KB per message map ≈ ~1GB worst case. This is bounded by the ChannelServer idle timeout (30 min) which naturally limits active processes.
 
 ### 1.2 Public API
 
@@ -51,8 +53,8 @@ The core of the real-time system. One GenServer process per active channel, runn
 
 - **`init/1`** — rehydrates recent messages from cache/DB into bounded queue, schedules first batch flush
 - **`handle_call(:send_message)`** — the core write path (validate → rate limit → generate ID → pending_writes → queue → cache → broadcast)
-- **`handle_info(:batch_flush)`** — flushes `pending_writes` via `BatchWriter.async_insert_batch/2` with a caller reference for acknowledgment, reschedules timer
-- **`handle_info({:batch_result, ref, result})`** — on `:ok`, clears acknowledged messages from `pending_writes`; on `{:error, _}`, messages are retained for retry on next flush
+- **`handle_info(:batch_flush)`** — snapshots `pending_writes` into a batch with a unique `batch_ref`, moves those messages from `pending_writes` to `in_flight` map (`%{batch_ref => [messages]}`), flushes via `BatchWriter.async_insert_batch/2` with the `batch_ref`, reschedules timer. New messages arriving during flush are added to `pending_writes` (not the in-flight batch), preventing overlap corruption
+- **`handle_info({:batch_result, ref, result})`** — on `:ok`, removes the batch from `in_flight` map by `ref` (the specific messages are known — no risk of clearing wrong entries); on `{:error, _}`, moves the batch's messages back to `pending_writes` for retry on next flush with incremented `retry_count`. After `@max_flush_retries` (default 10) consecutive failures for a batch, the messages are dropped entirely and a `[:slackex, :pipeline, :writes_dropped]` telemetry event is emitted with `%{count, channel_id, reason}`
 - **`handle_info(:timeout)`** — flushes remaining writes, then hibernates
 
 ### 1.4 Durability Contract
@@ -65,7 +67,7 @@ The core of the real-time system. One GenServer process per active channel, runn
 
 **Mitigations:**
 1. **Batch flush acknowledgment:** `BatchWriter.async_insert_batch/2` reports success/failure back to the ChannelServer via `send(caller, {:batch_result, ref, result})`. On failure, the ChannelServer retains the messages in `pending_writes` and retries on the next flush cycle.
-2. **Crash recovery on restart:** When a ChannelServer starts (or restarts after Horde failover in Phase 3), `init/1` compares the latest message IDs in cache (ETS in Phase 2; ETS + Redis in Phase 3+) against the database. Any IDs present in cache but missing from the DB are re-persisted synchronously.
+2. **Crash recovery on restart:** When a ChannelServer process crashes and restarts on the same node, `init/1` compares the latest message IDs in ETS cache against the database. Any IDs present in cache but missing from the DB are re-persisted synchronously. **Important limitation (Phase 2 only):** ETS is node-local memory — if the entire BEAM node crashes (not just the ChannelServer process), ETS data is lost and this recovery path cannot reclaim un-persisted messages. This is the accepted durability gap for Phase 2. In Phase 3+, Redis (which survives node crashes) is added to the cache cascade, making crash recovery effective for node-level failures as well.
 3. **Client-side gap detection:** Clients track the last received Snowflake ID. On reconnection, the catch-up mechanism (Phase 3) delivers missed messages from the DB. Messages lost before persistence will not appear in catch-up — this is the accepted tradeoff.
 4. **Monitoring:** Emit `[:slackex, :pipeline, :batch_flush]` telemetry events with metadata `%{count, status, retry_count}` to track write failures and retries.
 
@@ -106,7 +108,7 @@ The ChannelServer accumulates messages in `pending_writes` and flushes them on a
 
 Public API:
 - `insert_batch(messages) :: {:ok, count} | {:error, term}` — maps each message to a row map, **deriving `inserted_at` from the Snowflake ID** via `Snowflake.extract_timestamp/1` (not relying on Ecto timestamps or DB defaults). This is critical because `insert_all` bypasses Ecto changesets — without explicit derivation, `inserted_at` would be nil or inconsistent, breaking partition placement and `ON CONFLICT DO NOTHING` dedup safety after Phase 3 partitioning. Executes a single `Repo.insert_all("messages", entries, on_conflict: :nothing)` for the batch. No `conflict_target` is specified — `ON CONFLICT DO NOTHING` catches any unique constraint violation, which remains correct after Phase 3 changes the PK to `(id, inserted_at)` for partitioning
-- `async_insert_batch(messages, caller_ref)` — dispatches via `Task.Supervisor.start_child(Slackex.WriteSupervisor, ...)`, sending `{:batch_result, ref, :ok | {:error, reason}}` to the caller on completion. On success, the ChannelServer clears those messages from `pending_writes`. On failure, messages are retained for retry on the next flush cycle. Messages also remain in ETS cache as a secondary recovery source. **Phase 3 evolution:** Both `insert_batch` and `async_insert_batch` gain a required `epoch:` option for writer fencing — see Phase 3 Step 2.2. Phase 2's epoch-less arities are removed in Phase 3.
+- `async_insert_batch(messages, caller_ref)` — dispatches via `Task.Supervisor.start_child(Slackex.WriteSupervisor, ...)`, sending `{:batch_result, ref, :ok | {:error, reason}}` to the caller on completion. On success, the ChannelServer removes the batch from its `in_flight` map. On failure, messages are moved back to `pending_writes` for retry on the next flush cycle. Messages also remain in ETS cache as a secondary recovery source. **Phase 3 evolution:** Both `insert_batch` and `async_insert_batch` gain required `epoch:`, `type:` (`:channel` | `:dm`), and `id:` (channel or DM conversation ID) options for writer fencing — see Phase 3 Step 2.2. The epoch check and insert execute atomically within a single transaction. Phase 2's epoch-less arities are removed in Phase 3.
 
 ### 2.2 Pipeline Boundary
 
@@ -170,12 +172,35 @@ Public API:
 - `recent(channel_id, limit \\ 50)` — checks cache first, falls through to DB on miss, backfills cache from DB results
 - `before(channel_id, before_id, limit \\ 50)` — always from DB (older messages not worth caching). **Partition-aware (Phase 3+):** Derives an `inserted_at` upper bound from `before_id` via `Snowflake.extract_timestamp/1` and includes it in the WHERE clause (`inserted_at <= ?`) to enable PostgreSQL partition pruning on the time-partitioned messages table.
 
-## Step 6: Update LiveView to Use CQRS
+## Step 6: Update All Write Paths to Use CQRS
+
+### 6.1 Update LiveView
 
 Modify `ChatLive.Index`:
 - Replace `Chat.send_message/3` with `Messaging.send_message/3` (routes through ChannelServer)
 - Replace `Chat.list_messages/2` with `HistoryLoader.recent/2` (cache cascade)
 - Add `"load_more"` handler that calls `HistoryLoader.before/3` and stream-inserts at position 0
+
+### 6.2 Update Mobile ChatChannel
+
+Modify `SlackexWeb.ChatChannel`:
+- Replace `Chat.send_message/3` with `Messaging.send_message/3` in `handle_in("new_message", ...)` — routes through ChannelServer for rate limiting, caching, and batch persistence
+- Replace direct DB reads with `HistoryLoader.recent/2` for the initial message payload on `join/3`
+
+**Rationale:** All write paths **must** route through `Messaging` to ensure consistent rate limiting, caching, write batching, and (in Phase 3) writer-epoch fencing. Leaving any channel on `Chat.send_message/3` or `Chat.send_dm/3` would bypass all of these guarantees, creating a behavioral divergence between clients.
+
+### 6.3 Update DM Write Paths
+
+DM messages must also route through the CQRS pipeline — a ChannelServer with `channel_type: :dm` manages each active DM conversation identically to channels (same batching, rate limiting, caching, and fencing).
+
+Modify all DM write paths:
+- **LiveView:** Replace `Chat.send_dm/3` with `Messaging.send_dm/3` — which calls `ChannelSupervisor.ensure_started({:dm, dm_id}, ...)` and delegates to the DM's ChannelServer
+- **Mobile DMChannel (`SlackexWeb.DMChannel`):** Replace `Chat.send_dm/3` with `Messaging.send_dm/3` in `handle_in("new_message", ...)`
+- **DM reads:** Replace direct DB reads with `HistoryLoader.recent/2` (using the DM conversation ID)
+
+**Messaging context DM API additions:**
+- `send_dm(dm_id, sender_id, content, opts \\ [])` — validates sender is a DM participant, ensures ChannelServer (type: `:dm`) is started, delegates to it
+- `subscribe_dm(dm_id)` — subscribes calling process to `"dm:#{dm_id}"`
 
 ## Step 7: Oban Setup (Background Jobs)
 
@@ -201,7 +226,7 @@ Children added to Phase 1 supervisor (in order):
 3. `SlackexWeb.Presence` — **new**
 4. `Slackex.Infrastructure.Snowflake`
 5. `Slackex.Cache.Local` — **new**
-6. `{Registry, keys: :unique, name: Slackex.ChannelRegistry}` — **new**
+6. `{Registry, keys: :unique, name: Slackex.Messaging.ChannelRegistry}` — **new**
 7. `Slackex.Messaging.ChannelSupervisor` — **new**
 8. `{Task.Supervisor, name: Slackex.WriteSupervisor}` — **new**
 9. `{Oban, Application.fetch_env!(:slackex, Oban)}` — **new**
