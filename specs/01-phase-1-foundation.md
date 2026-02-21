@@ -78,9 +78,10 @@ Create table `user_tokens` — stores session and API tokens:
 | token | binary | NOT NULL |
 | context | string | NOT NULL — "session", "api_access", "api_refresh" |
 | sent_to | string | email for confirmation tokens |
+| revoked_at | utc_datetime_usec | nullable — set when token is revoked/rotated (soft-revocation for refresh grace window) |
 | inserted_at | utc_datetime_usec | no updated_at |
 
-Unique index on `[:context, :token]`.
+Unique index on `[:context, :token]`. Add index on `[:context, :revoked_at]` for refresh-token replay checks and cleanup queries.
 
 ### 2.3 Channels Table
 
@@ -253,7 +254,8 @@ Public API:
 - Each JWT includes a unique `"jti"` (JWT ID) claim, generated as a random UUID at token creation time
 - `generate_api_token/1` and `generate_refresh_token/1` persist the JTI to the `user_tokens` table (context: `"api_access"` / `"api_refresh"`). The JTI is stored in the existing `token` column as a hashed binary (`:crypto.hash(:sha256, jti_string)`) — this matches the `phx.gen.auth` pattern of hashing tokens before DB storage. The unique index on `[:context, :token]` ensures efficient lookup.
 - `verify_api_token/1` decodes the JWT, extracts the JTI, and confirms it exists in `user_tokens`. If the JTI row has been deleted, the token is considered revoked and verification fails with `{:error, :token_revoked}`
-- `revoke_token/1` deletes the JTI row from `user_tokens`
+- `revoke_token/1` sets `revoked_at` for refresh tokens (soft revoke), preserving replay-detection metadata. For access/session tokens, hard delete is allowed.
+- `refresh_api_token/1` idempotency storage: the newly issued token pair from the first successful rotation is cached for 10 seconds in Redis (`refresh_replay:{old_refresh_jti_hash}`) so a retried request can return the same pair. The DB remains the source of truth for revocation (`revoked_at`), while Redis provides short-lived replay response caching.
 - On user password change or explicit "revoke all sessions", delete all `user_tokens` rows for that user — this invalidates all outstanding JWTs
 - Access tokens (15min TTL) are short-lived, so the revocation check adds minimal overhead. Refresh tokens (30 days) must always be checked against the DB
 

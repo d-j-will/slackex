@@ -94,8 +94,8 @@ Helper: `with_subscription(channel, user, role)` — inserts a subscription and 
   - expired access token is rejected
   - revoked access token (JTI deleted) is rejected
   - refresh token exchanges for new access + refresh token pair
-  - old refresh token is invalidated after rotation (one-time use)
-  - replaying a revoked refresh token invalidates all tokens for that user (family invalidation)
+  - old refresh token replay within 10-second grace window returns the same rotated token pair (idempotent retry, no family invalidation)
+  - replaying a revoked refresh token after grace window invalidates all tokens for that user (family invalidation)
   - password change revokes all outstanding tokens
   - invalid/malformed JWT is rejected
 
