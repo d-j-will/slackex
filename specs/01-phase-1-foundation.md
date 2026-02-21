@@ -28,12 +28,24 @@ We skip `--no-live` since we want LiveView. Dashboard will be added manually lat
 - Configure Dialyzer PLT settings: `plt_add_apps: [:mix, :ex_unit]`, flags: `[:unmatched_returns, :error_handling, :no_opaque]`
 - Add mix aliases: `setup`, `ecto.setup`, `ecto.reset`, `test`, `assets.setup`, `assets.build`, `assets.deploy`, `lint`, `lint.fix`, `typecheck`
 
-### 1.3 Tidewave Setup
+### 1.3 Quality Tooling & Git Hooks (before any domain code)
+
+**This step must be completed before writing any domain code (schemas, contexts, etc.).** All subsequent development happens under the quality gates.
+
+1. Configure `.formatter.exs`, `.credo.exs`, Dialyzer settings (see `05-ci-cd-devops.md`)
+2. Write `docker-compose.yml`, `bin/setup`, `bin/server` scripts
+3. Write pre-commit and pre-push hook scripts to `priv/git_hooks/`
+4. Run `bin/setup` — this installs hooks to `.git/hooks/`, builds PLT, starts services
+5. Verify `mix lint`, `mix typecheck`, and `mix test` all run and pass on the bare project
+
+From this point forward, every commit and push is guarded by the hooks. No code reaches the repository without passing formatting, linting, compilation (with `--warnings-as-errors`), type checking, and tests.
+
+### 1.4 Tidewave Setup
 
 - Add `plug Tidewave` in endpoint.ex before the `code_reloading?` block (guarded by `Code.ensure_loaded?(Tidewave)`)
 - In `config/dev.exs`, enable `debug_heex_annotations: true` and `debug_attributes: true` for LiveView
 
-### 1.4 Boundary Definitions
+### 1.5 Boundary Definitions
 
 Each context module declares its boundary via `use Boundary, deps: [...], exports: [...]`. See `00-overview.md` for the full dependency graph. Boundary violations produce compile warnings, which become build failures with `--warnings-as-errors` in CI.
 

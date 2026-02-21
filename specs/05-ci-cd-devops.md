@@ -67,21 +67,36 @@ One-command project bootstrap:
 3. `mix deps.get` — install Elixir dependencies
 4. `mix ecto.setup` — create DB, run migrations, seed
 5. `mix assets.setup` + `mix assets.build` — install and build assets
-6. Copy pre-commit hook to `.git/hooks/`
+6. Copy pre-commit and pre-push hooks to `.git/hooks/`
 7. `mix dialyzer --plt` — build Dialyzer PLT (slow on first run)
 
 ### Dev Server Script (`bin/server`)
 
 Ensures Docker services are running, then starts `iex -S mix phx.server`.
 
-## Pre-Commit Hook
+## Git Hooks
 
-Runs these checks in order (fails fast):
+> **Sequencing:** Git hooks are set up in Phase 1 Step 1.3, before any domain code is written. See `01-phase-1-foundation.md`. All subsequent development is guarded by these hooks from the start.
+
+### Pre-Commit Hook
+
+**Blocking:** If any step fails, the commit is rejected. Runs checks in order (fails fast):
 1. `mix format --check-formatted` — code formatting
 2. `mix credo --strict --all` — linting
 3. `mix compile --warnings-as-errors` — compilation + boundary checks
 4. `mix dialyzer --format short` — type checking (only if `.ex`/`.exs` files changed)
 5. `mix test` — test suite
+
+### Pre-Push Hook
+
+**Blocking:** If any step fails, the push is rejected. Runs the full CI-equivalent pipeline:
+1. `mix compile --warnings-as-errors` — recompile to catch any issues missed by staged-only pre-commit
+2. `mix dialyzer` — full type check (not conditional on changed files)
+3. `mix test` — full test suite
+
+### Hook Installation
+
+Hooks are installed automatically by `bin/setup` (copies to `.git/hooks/`). If hooks are missing, run `bin/setup` again or manually copy from `priv/git_hooks/`. Hooks must not be bypassed with `--no-verify` — CI will catch violations, but the goal is to prevent bad commits from being created in the first place.
 
 ## Mix Aliases
 
@@ -205,7 +220,8 @@ Production config reads from environment variables:
 - [ ] `docker compose up` starts Postgres (with pgvector), test Postgres, and Redis
 - [ ] `bin/setup` bootstraps the entire project from zero (deps, DB, assets, hooks, PLT)
 - [ ] `bin/server` starts dev server with all dependencies running
-- [ ] Pre-commit hook runs: format check, Credo, compile --warnings-as-errors, Dialyzer, tests
+- [ ] Pre-commit hook blocks commits that fail: format check, Credo, compile --warnings-as-errors, Dialyzer, tests
+- [ ] Pre-push hook blocks pushes that fail: compilation, full Dialyzer, full test suite
 - [ ] `mix lint` checks formatting + Credo + compilation warnings
 - [ ] `mix typecheck` runs Dialyzer
 - [ ] `mix quality` runs full quality pipeline (lint + typecheck + test)
