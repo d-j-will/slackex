@@ -84,7 +84,11 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 
 **Listener:** `Slackex.Embeddings.PersistenceListener` — a dedicated supervised GenServer (not an Oban worker) that subscribes to `"pipeline:events"` in `init/1` and enqueues `EmbeddingWorker` Oban jobs on receipt of `{:messages_persisted, message_ids}` events. This must be a long-lived supervised process because Oban workers are transient job executors — they are started by the Oban queue, run their `perform/1`, and terminate. An Oban worker cannot maintain a persistent PubSub subscription. The listener is added to the application supervisor after Oban (it depends on Oban being available to enqueue jobs).
 
-**Boundary note:** Neither `Pipeline` nor `Messaging` adds `Slackex.Embeddings` to its deps. The event bridge is the sanctioned integration path. `Pipeline` depends only on `PubSub` (infrastructure), and `Embeddings` subscribes independently via `PersistenceListener`.
+**Boundary note:** Neither `Pipeline` nor `Messaging` adds `Slackex.Embeddings` to its deps. The event bridge is the sanctioned integration path. `Pipeline` depends on `[Chat, Repo]` (for batch inserts) and uses `Phoenix.PubSub` (OTP infrastructure, not a boundary dep) for the event broadcast. `Embeddings` subscribes independently via `PersistenceListener`.
+
+**Durability safety net:** The PubSub event bridge is ephemeral — if `PersistenceListener` is down during a `{:messages_persisted, ...}` broadcast (process restart, deployment, node failure), those message IDs are silently missed and never enqueued for embedding. To prevent silent decay of semantic search coverage, add a periodic reconciliation Oban cron job:
+
+`Slackex.Embeddings.ReconciliationWorker` — Oban worker (queue: `:embeddings`, cron: every 15 minutes, max_attempts: 1). Queries for messages inserted in the last hour that have no corresponding row in `message_embeddings` (`LEFT JOIN message_embeddings ON ... WHERE embedding IS NULL`), and enqueues `EmbeddingWorker` jobs for the missing IDs in batches of 50. Uses `Oban.insert_all` with uniqueness constraints to avoid duplicate jobs. This ensures that even if the real-time listener misses events, embedding coverage self-heals within 15 minutes.
 
 ## Step 6: Search Module
 

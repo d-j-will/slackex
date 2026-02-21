@@ -209,7 +209,7 @@ Tagged `@moduletag :distributed`, excluded by default. Uses `LocalCluster` to st
 
 ### Core Distribution Tests
 
-- **channel process exists on exactly one node** — starts channel, verifiable from all nodes via Horde registry
+- **channel process exists on exactly one node (healthy cluster)** — starts channel with all nodes connected (no partition), verifiable from all nodes via Horde registry. This assertion only holds under healthy conditions — see Split-Brain & Fencing Tests for partition-mode expectations where dual processes can temporarily coexist
 - **channel process migrates on node failure** — kills hosting node, verifies channel restarts on surviving node within timeout
 
 ### Split-Brain & Fencing Tests

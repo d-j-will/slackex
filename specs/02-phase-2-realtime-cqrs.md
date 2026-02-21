@@ -31,7 +31,7 @@ The core of the real-time system. One GenServer process per active channel, runn
   message_count: 0,
   pending_writes: [],     # Messages awaiting persistence (bounded, see @max_pending_writes)
   in_flight: %{},         # %{batch_ref => [messages]} — batches dispatched but not yet acknowledged
-  rate_limiters: %{},     # %{user_id => RateLimiter.t()}
+  rate_limiters: %{},     # %{user_id => RateLimiter.t()} — pruned on idle (see below)
   metadata: %{}           # Channel name, topic, member count
 }
 ```
@@ -41,7 +41,8 @@ The core of the real-time system. One GenServer process per active channel, runn
 - `@idle_timeout 30 minutes` — hibernates after inactivity
 - `@batch_interval 2 seconds` — flush pending writes to DB
 - `@message_rate_limit [rate: 10, per: :second]` — per-user per-channel
-- `@max_pending_writes 1_000` — **per-ChannelServer** backpressure cap on pending writes. When reached, `send_message` returns `{:error, :backpressure}` and the message is rejected (not queued). This prevents unbounded memory growth during sustained DB outages. At max rate (10 msg/s per user), a single channel fills to 1,000 pending writes in ~100 seconds of sustained DB unavailability. Per-node memory budget: with up to 1,000 active ChannelServers (`@max_channels`) × 1,000 pending writes × ~1KB per message map ≈ ~1GB worst case. This is bounded by the ChannelServer idle timeout (30 min) which naturally limits active processes.
+- `@rate_limiter_prune_interval 5 minutes` — periodic sweep (via `Process.send_after`) removes `rate_limiters` entries whose `last_refill` is older than 5 minutes. This prevents unbounded memory growth in high-churn channels where many distinct users send messages. The prune runs on the same timer as `handle_info(:prune_rate_limiters)`. Upper bound: at most `@max_pending_writes` unique users can be tracked (one per message), so worst case is 1,000 entries × ~100 bytes ≈ ~100KB per ChannelServer — acceptable even without pruning, but pruning keeps steady-state memory tight
+- `@max_pending_writes 1_000` — **per-ChannelServer** backpressure cap on pending writes. When reached, `send_message` returns `{:error, :backpressure}` and the message is rejected (not queued). This prevents unbounded memory growth during sustained DB outages. At max rate (10 msg/s per user), a single channel fills to 1,000 pending writes in ~100 seconds of sustained DB unavailability. Per-node memory budget: the number of active ChannelServers is naturally bounded by the idle timeout (30 min) — only channels with recent activity have live processes. Under extreme load, assume ~1,000 concurrent active channels per node × 1,000 pending writes × ~1KB per message map ≈ ~1GB worst case. Note: `@max_channels` in `Cache.Local` is an ETS eviction threshold, not a ChannelServer admission cap — there is no hard limit on concurrent ChannelServer processes (they are bounded by idle timeout and available memory).
 
 ### 1.2 Public API
 
@@ -63,7 +64,14 @@ The core of the real-time system. One GenServer process per active channel, runn
 
 **Failure window:** If a node crashes between accepting a message and the next batch flush (up to 2 seconds), messages in `pending_writes` are lost. Connected clients may have already rendered these messages.
 
-**Product-level SLO:** Message durability target is **99.99%** under normal operation (no node crashes). During a node crash, up to 2 seconds of messages (one flush interval) may be lost. This is an explicit product tradeoff accepted for <10ms delivery latency. User-facing behavior: messages that vanish after a crash are not re-shown to other users on reload. Clients should treat messages as "optimistic" until they appear in scroll-back history (which is always read from the durable DB). If this tradeoff is unacceptable for a future use case, the architecture supports upgrading to at-least-once semantics by making the flush synchronous (at the cost of ~5-20ms additional latency per message).
+**Product-level SLO:** Message durability target is **99.99%** under normal operation (no node crashes, database healthy). Loss scenarios:
+- **Node crash:** Up to 2 seconds of messages (one flush interval) in `pending_writes` are lost.
+- **Sustained DB failure:** After `@max_flush_retries` (10) consecutive failed flushes for a batch (~20 seconds at 2s intervals), that batch is dropped and a `[:slackex, :pipeline, :writes_dropped]` telemetry event is emitted. This is a deliberate circuit-breaker to prevent unbounded memory growth — without it, a prolonged DB outage would accumulate pending writes until OOM.
+- **Backpressure cap:** If `pending_writes` reaches `@max_pending_writes` (1,000), new messages are rejected with `{:error, :backpressure}` (not silently dropped — the sender knows).
+
+**Monitoring and alerting:** The `writes_dropped` telemetry event must trigger a high-priority alert. In production, DB failures lasting >20 seconds should be exceedingly rare. If this SLO proves insufficient, the architecture supports upgrading to a durable dead-letter queue (Oban job per failed batch) at the cost of additional DB load during recovery.
+
+This is an explicit product tradeoff accepted for <10ms delivery latency. User-facing behavior: messages that vanish after a crash or drop are not re-shown to other users on reload. Clients should treat messages as "optimistic" until they appear in scroll-back history (which is always read from the durable DB). The architecture supports upgrading to at-least-once semantics by making the flush synchronous (at the cost of ~5-20ms additional latency per message).
 
 **Mitigations:**
 1. **Batch flush acknowledgment:** `BatchWriter.async_insert_batch/2` reports success/failure back to the ChannelServer via `send(caller, {:batch_result, ref, result})`. On failure, the ChannelServer retains the messages in `pending_writes` and retries on the next flush cycle.
@@ -122,12 +130,12 @@ GenServer that owns an ETS table (`:set`, `:public`, `:named_table`, `read_concu
 
 **Single-writer invariant for ETS (local node):** Only ChannelServer processes call `put_message/2` for their `channel_id`. In Phase 2 (single-node), Registry enforces exactly one ChannelServer per channel. In Phase 3 (distributed), Horde provides this as a best-effort guarantee — see Phase 3 fencing strategy for split-brain safety. ETS is node-local so concurrent writes from different nodes don't conflict at the ETS level, only at the PostgreSQL level (where fencing applies).
 
-**Constants:** `@max_channels 1_000`, `@max_messages_per_channel 200`
+**Constants:** `@max_channels 1_000` (LRU eviction threshold — when exceeded, the oldest-accessed channel's cache is evicted; this is a **cache manager limit**, not a ChannelServer admission cap), `@max_messages_per_channel 200`
 
-Public API:
-- `put_message(channel_id, message) :: :ok` — prepends to channel's message list, trims to max
-- `get_messages(channel_id) :: {:ok, [message]}` — returns messages in chronological order
-- `invalidate(channel_id) :: :ok` — deletes channel's cache entry
+Public API (all keys are target-aware tuples `{:channel, id}` or `{:dm, id}` to prevent collisions — see Section 1.2):
+- `put_message(target, message) :: :ok` — where `target` is `{:channel, id}` or `{:dm, id}`. Prepends to target's message list, trims to max
+- `get_messages(target) :: {:ok, [message]}` — returns messages in chronological order
+- `invalidate(target) :: :ok` — deletes target's cache entry
 - `stats() :: %{memory_bytes: integer, size: integer}` — ETS table stats
 
 ### 3.2 Cache Boundary
@@ -168,9 +176,9 @@ Responsibilities:
 
 CQRS read side — loads message history from the cache cascade (ETS → Postgres in Phase 2, Redis added in Phase 3).
 
-Public API:
-- `recent(channel_id, limit \\ 50)` — checks cache first, falls through to DB on miss, backfills cache from DB results
-- `before(channel_id, before_id, limit \\ 50)` — always from DB (older messages not worth caching). **Partition-aware (Phase 3+):** Derives an `inserted_at` upper bound from `before_id` via `Snowflake.extract_timestamp/1` and includes it in the WHERE clause (`inserted_at <= ?`) to enable PostgreSQL partition pruning on the time-partitioned messages table.
+Public API (all functions accept a `target` tuple `{:channel, id}` or `{:dm, id}` — consistent with cache and registry keys):
+- `recent(target, limit \\ 50)` — checks cache first (using target tuple as key), falls through to DB on miss, backfills cache from DB results
+- `before(target, before_id, limit \\ 50)` — always from DB (older messages not worth caching). **Partition-aware (Phase 3+):** Derives an `inserted_at` upper bound from `before_id` via `Snowflake.extract_timestamp/1` and includes it in the WHERE clause (`inserted_at <= ?`) to enable PostgreSQL partition pruning on the time-partitioned messages table.
 
 ## Step 6: Update All Write Paths to Use CQRS
 

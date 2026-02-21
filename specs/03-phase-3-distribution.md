@@ -114,13 +114,13 @@ Horde automatically restarts affected processes on surviving nodes. ChannelServe
 
 Supervisor that starts a pool of 10 Redix connections. Commands are dispatched to a random connection. All Redis commands are wrapped with `rescue` to gracefully degrade when Redis is unavailable — the system falls through to Postgres.
 
-Public API:
-- `get_messages(channel_id) :: {:ok, [message]} | {:miss, []}` — `LRANGE` last 200 messages
-- `push_message(channel_id, message)` — `RPUSH` + `LTRIM` to 200 + `EXPIRE` 1 hour
-- `cache_messages(channel_id, messages)` — bulk backfill (`DEL` + `RPUSH` + `EXPIRE`)
-- `set_read_cursor(user_id, channel_id, message_id)` — `SET` with 24h TTL
-- `get_read_cursor(user_id, channel_id) :: {:ok, integer} | :miss`
-- `invalidate(channel_id)` — `DEL`
+Public API (all functions accept a `target` tuple `{:channel, id}` or `{:dm, id}` — Redis keys are namespaced as `msgs:channel:{id}` or `msgs:dm:{id}` to prevent collisions between channel and DM IDs):
+- `get_messages(target) :: {:ok, [message]} | {:miss, []}` — `LRANGE` last 200 messages
+- `push_message(target, message)` — `RPUSH` + `LTRIM` to 200 + `EXPIRE` 1 hour
+- `cache_messages(target, messages)` — bulk backfill (`DEL` + `RPUSH` + `EXPIRE`)
+- `set_read_cursor(user_id, target, message_id)` — `SET` with 24h TTL (key: `cursor:{user_id}:channel:{id}` or `cursor:{user_id}:dm:{id}`)
+- `get_read_cursor(user_id, target) :: {:ok, integer} | :miss`
+- `invalidate(target)` — `DEL`
 
 ### 3.2 Three-Tier Cache Cascade
 
