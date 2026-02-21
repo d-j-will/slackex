@@ -27,7 +27,8 @@ Create table `message_embeddings` (primary key: `message_id`):
 |--------|------|-------------|
 | message_id | bigint | PK (references messages.id — no FK constraint, see note) |
 | message_inserted_at | utc_datetime_usec | NOT NULL — copied from message's `inserted_at` (derived from Snowflake ID). Enables partition-aware joins with the partitioned `messages` table. |
-| channel_id | bigint | indexed |
+| channel_id | bigint | indexed, nullable |
+| dm_conversation_id | bigint | indexed, nullable |
 | embedding | vector(1536) | OpenAI text-embedding-3-small dimensions |
 | content_hash | string(64) | SHA-256 of content, for dedup |
 | inserted_at | utc_datetime_usec | no updated_at |
@@ -40,6 +41,8 @@ CREATE INDEX idx_embeddings_hnsw ON message_embeddings
 ```
 
 **No FK to messages:** After Phase 3, messages is a partitioned table with composite PK `(id, inserted_at)`. PostgreSQL doesn't support FK references to partitioned tables unless the FK includes the full partition key. Referential integrity is enforced at the application level. Orphaned embeddings are harmless and can be cleaned by a periodic Oban job.
+
+**DM indexing:** DMs are included in the embedding pipeline. When `EmbeddingWorker` processes a message, it populates either `channel_id` (for channel messages) or `dm_conversation_id` (for DMs), leaving the other NULL. The `PersistenceListener` and `ReconciliationWorker` handle both message types identically — DM messages flow through the same `BatchWriter` persistence path and emit the same `{:messages_persisted, message_ids}` events. **DM search authorization:** DM messages are only returned to participants. Search queries add: `(dm_conversation_id IS NULL OR dm_conversation_id IN (SELECT id FROM dm_conversations WHERE user_a_id = $user_id OR user_b_id = $user_id))`. This ensures DMs never leak to non-participants in any search mode.
 
 ## Step 3: Embedding Schema
 
@@ -97,7 +100,7 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 Uses PostgreSQL `tsvector/tsquery`:
 - Filter: `to_tsvector('english', content) @@ plainto_tsquery('english', query)`
 - Rank: `ts_rank(to_tsvector('english', content), plainto_tsquery('english', query))` descending
-- **Authorization filter:** Uses a conditional join strategy — not a simple `JOIN subscriptions`. The query filters results as: **(a)** public channels (`channels.is_private = false`) are included for any authenticated user (no subscription required), **(b)** private channels are included only via `JOIN subscriptions` where the user has a membership row. Implementation: `LEFT JOIN subscriptions ON ... WHERE (channels.is_private = false OR subscriptions.user_id = $user_id)`. This is a deliberate policy distinction from the `Permissions` module's `read_messages` check (which governs direct channel access, not search discoverability). See `01-phase-1-foundation.md` Step 6 for the policy rationale.
+- **Authorization filter:** Uses a conditional join strategy — not a simple `JOIN subscriptions`. The query filters results as: **(a)** public channels (`channels.is_private = false`) are included for any authenticated user (no subscription required), **(b)** private channels are included only via `JOIN subscriptions` where the user has a membership row, **(c)** DMs (`dm_conversation_id IS NOT NULL`) are included only where the user is a participant (`user_a_id` or `user_b_id`). Implementation: `LEFT JOIN subscriptions ON ... LEFT JOIN dm_conversations ON ... WHERE (channels.is_private = false OR subscriptions.user_id = $user_id OR dm_conversations.user_a_id = $user_id OR dm_conversations.user_b_id = $user_id)`. This is a deliberate policy distinction from the `Permissions` module's `read_messages` check (which governs direct channel access, not search discoverability). See `01-phase-1-foundation.md` Step 6 for the policy rationale.
 - Options: `user_id` (required), `channel_id` (scope), `limit` (default 20), `offset`
 - Preloads `:sender`
 
@@ -106,7 +109,7 @@ Uses PostgreSQL `tsvector/tsquery`:
 Uses pgvector cosine similarity:
 - Generates embedding for the query text via `EmbeddingClient.generate/1`
 - Joins `message_embeddings` with `messages` on `(message_id, message_inserted_at) = (id, inserted_at)` — enables PostgreSQL partition pruning on the partitioned messages table
-- **Authorization filter:** Same conditional join strategy as `text_search/3` — public channels visible to all authenticated users, private channels restricted to members
+- **Authorization filter:** Same conditional join strategy as `text_search/3` — public channels visible to all authenticated users, private channels restricted to members, DMs restricted to participants
 - Filters by similarity threshold (default 0.3)
 - Orders by cosine distance ascending (`<=>` operator)
 - Returns messages with `:similarity` score attached

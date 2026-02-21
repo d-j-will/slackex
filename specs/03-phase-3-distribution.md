@@ -82,6 +82,8 @@ Horde's CRDT-based registry is eventually consistent. During a network partition
 > each tracking independent state), but this is bounded by the partition duration and
 > is an acceptable tradeoff vs. the complexity of distributed rate limiting.
 
+**Ghost messages during split-brain:** Because the ChannelServer broadcasts messages to connected clients immediately (before batch flush), a stale writer on the losing partition side can broadcast messages that later fail the epoch check and are never persisted. Connected clients will see these messages appear and then vanish on reload. This is an **accepted tradeoff** — it falls within the existing durability contract (at-most-once delivery, Phase 2 Section 1.4). Mitigation: clients should treat messages as optimistic until they appear in scroll-back history. The ghost window is bounded by the partition duration + one flush interval (2s). Post-heal, the stale writer is terminated by Horde conflict resolution, stopping further ghost broadcasts.
+
 ### 2.3 Replace DynamicSupervisor with Horde.DynamicSupervisor
 
 `Slackex.Messaging.ChannelSupervisor` — wraps `Horde.DynamicSupervisor` with `process_redistribution: :active` to rebalance on node changes.
@@ -132,8 +134,15 @@ Read path:
   2. Redis (cross-node) — ~0.5-2ms → backfills ETS on hit
   3. Returns :miss if both miss (caller falls through to DB)
 
-Write path (write-through):
+Write path (write-through with timeout degradation):
   Cache.put_message → Local.put_message + Redis.push_message
+
+  Redis writes use a 100ms timeout (Redix :timeout option). On timeout
+  or connection error, the write is logged via telemetry
+  ([:slackex, :cache, :redis_write_timeout]) and silently dropped —
+  ETS remains the authoritative hot cache, and the next read-miss will
+  backfill Redis from DB. This prevents a slow or partitioned Redis
+  from adding latency to the message broadcast path.
 ```
 
 ### 3.3 Update ChannelServer Cache Writes
@@ -171,7 +180,7 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 - **Recent window (< 30 seconds old):** Always read from Primary. This covers reconnection catch-up, initial channel load, and unread count after sending a message. Replication lag in this window would cause users to "miss" messages they just sent or received.
 - **Older history (scroll-up pagination):** ReadRepo is safe — the data is stable and replication lag is imperceptible for older messages.
 - **Search:** ReadRepo is acceptable — search results being a few seconds behind is tolerable.
-- **Lag detection fallback:** A periodic check (every 5 seconds via `Process.send_after`) queries the replica for replication lag using `SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::float`. This returns the number of seconds since the last replayed transaction — a direct measure of how stale the replica is. If lag exceeds 5 seconds, all `ReadRepo` queries automatically fall back to Primary until the next check shows recovery. Emit `[:slackex, :read_repo, :lag_fallback]` telemetry with `%{lag_seconds: float}`. **Guard: no-replica mode.** When `DATABASE_READ_URL` is not configured, `ReadRepo` points at the primary database. In this case, lag detection is **disabled** — `pg_last_xact_replay_timestamp()` returns NULL on a primary (it's a standby-only function). The `ReadRepo` module detects this at startup by comparing its connection URL against `Repo`'s — if identical, set an internal flag to bypass lag monitoring entirely and always route directly (no overhead).
+- **Lag detection fallback:** A periodic check (every 5 seconds via `Process.send_after`) queries the replica for replication lag using `SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::float`. This returns the number of seconds since the last replayed transaction — a direct measure of how stale the replica is. If lag exceeds 5 seconds, all `ReadRepo` queries automatically fall back to Primary until the next check shows recovery. Emit `[:slackex, :read_repo, :lag_fallback]` telemetry with `%{lag_seconds: float}`. **Guard: no-replica mode.** When `DATABASE_READ_URL` is not configured, `ReadRepo` points at the primary database. In this case, lag detection is **disabled** — `pg_last_xact_replay_timestamp()` returns NULL on a primary (it's a standby-only function). The `ReadRepo` module detects this at startup by comparing its connection URL against `Repo`'s — if identical, set an internal flag to bypass lag monitoring entirely and always route directly (no overhead). **Guard: NULL on real standby.** `pg_last_xact_replay_timestamp()` can also return NULL on a genuine standby that has never replayed a transaction (fresh replica, or a standby that has been idle with no upstream writes). When the lag query returns NULL and we are in replica mode (not no-replica), treat it as **lag exceeded** — fall back to Primary and emit `[:slackex, :read_repo, :lag_null_standby]` telemetry. This is safe because a fresh standby with no replayed transactions has unknown staleness, and the condition self-resolves once the first transaction is replayed.
 
 ### 3.5.3 Test Support
 
@@ -258,7 +267,8 @@ This approach minimizes downtime to the atomic rename step (~seconds) at the cos
 **Pre-migration checklist:**
 - [ ] Staging rehearsal completed successfully
 - [ ] Logical backup of messages table taken
-- [ ] Application put into maintenance mode (no writes)
+- [ ] Application put into maintenance mode (no new user requests)
+- [ ] **Write drain barrier:** Stop all ChannelServers from accepting new messages (reject with `{:error, :maintenance}`), then force a synchronous flush of all `pending_writes` and `in_flight` batches across all nodes. Verify zero pending writes: `Messaging.channel_count()` should be 0 (all ChannelServers have shut down) or iterate active ChannelServers and confirm empty `pending_writes` and `in_flight` maps. Only proceed once all accepted messages are durably persisted.
 - [ ] Row count recorded: `SELECT count(*) FROM messages`
 - [ ] Estimated migration duration: ______ (from staging rehearsal)
 
@@ -307,7 +317,7 @@ Two-stage build:
 
 ### 8.2 Kubernetes Resources
 
-- **Deployment:** 3 replicas, pod env vars via downward API (`POD_IP` → `RELEASE_NODE`), liveness probe on `/health`, readiness probe on `/ready`, resource limits (512Mi-2Gi memory, 500m-2000m CPU)
+- **StatefulSet:** 3 replicas (not Deployment — StatefulSet provides stable pod ordinals required for `SNOWFLAKE_NODE_ID`). Pod env vars: `SNOWFLAKE_NODE_ID` derived from the pod ordinal (e.g., `slackex-0` → `0`, `slackex-1` → `1`) via an init container or `fieldRef` + shell extraction. `POD_IP` via downward API → `RELEASE_NODE`. Liveness probe on `/health`, readiness probe on `/ready`, resource limits (512Mi-2Gi memory, 500m-2000m CPU). `podManagementPolicy: Parallel` for faster rollouts (ordering is not required — nodes are peers)
 - **Headless Service** (`clusterIP: None`): for BEAM node discovery via K8s DNS — exposes ports 4000 (HTTP), 4369 (epmd), and 9000-9010 (Erlang distribution port range). **Erlang dist port pinning:** Set `ELIXIR_ERL_OPTIONS="-kernel inet_dist_listen_min 9000 inet_dist_listen_max 9010"` in the pod env. Without pinning, BEAM picks random ephemeral ports for inter-node communication, which are unreachable through K8s services.
 - **ClusterIP Service**: regular load-balanced service on port 80→4000
 - **Ingress**: nginx with sticky sessions (`cookie` affinity) for WebSocket, long proxy timeouts (3600s)

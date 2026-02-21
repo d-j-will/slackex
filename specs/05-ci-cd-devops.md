@@ -163,7 +163,7 @@ Runs on push/PR to main and develop.
 6. `mix dialyzer --format github`
 7. `mix ecto.create && mix ecto.migrate`
 8. `mix test --cover --warnings-as-errors`
-9. `mix test --include distributed --warnings-as-errors` — distributed cluster tests (Phase 3+). These verify Horde failover, split-brain fencing, and replica consistency. Separated from step 8 because they require `LocalCluster` and are slower, but they **must** run in CI as they cover critical distributed safety guarantees.
+9. `mix test --only distributed --warnings-as-errors` — distributed cluster tests (Phase 3+). These verify Horde failover, split-brain fencing, and replica consistency. Uses `--only` (not `--include`) so that these tests run exclusively here and are excluded from step 8's general suite (which runs all tests *except* those tagged `@tag :distributed`). This prevents distributed tests from executing twice.
 10. `mix hex.audit` — check for retired dependencies
 11. `mix deps.unlock --check-unused` — check for unused dependencies
 
