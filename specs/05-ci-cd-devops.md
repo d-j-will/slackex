@@ -187,7 +187,7 @@ Production config reads from environment variables:
 - **Auth:** `GUARDIAN_SECRET_KEY` (required)
 - **Cache:** `REDIS_URL` (default `redis://localhost:6379`)
 - **AI:** `OPENAI_API_KEY` (optional — enables OpenAI embedding client)
-- **Clustering:** `DNS_CLUSTER_QUERY`
+- **Clustering:** `DNS_CLUSTER_QUERY` (Phase 1 dns_cluster fallback; Phase 3+ uses libcluster with K8s DNS or gossip strategy)
 - **Oban:** configured with pruner, cron (CacheWarmer hourly, PartitionMaintenance monthly), queues (default:10, notifications:20, embeddings:5)
 
 ## Environment Variables Reference
@@ -231,7 +231,8 @@ Production config reads from environment variables:
 - [ ] CI runs hex.audit and deps.unlock --check-unused for security
 - [ ] Docker build produces a working production image
 - [ ] Production image runs as non-root user
-- [ ] Health endpoint at `/health` reports system status
+- [ ] Liveness endpoint at `/health` returns 200 when BEAM node and database are responsive
+- [ ] Readiness endpoint at `/ready` reports database, Redis (informational), and cluster status
 - [ ] All environment variables are documented
 - [ ] Tidewave MCP server is accessible in dev environment
 - [ ] `.gitignore` excludes all generated/sensitive files

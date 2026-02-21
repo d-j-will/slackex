@@ -64,7 +64,17 @@ Change `via/1` from `{:via, Registry, ...}` to `Slackex.Messaging.ChannelRegistr
 
 ### 2.4 Process Handoff on Node Down
 
-Horde automatically restarts affected processes on surviving nodes. ChannelServer's `init/1` rehydrates from cache/DB. To minimize data loss, add a `terminate/2` callback that does a **synchronous** `BatchWriter.insert_batch/1` flush of pending writes (not async — the process is about to die).
+Horde automatically restarts affected processes on surviving nodes. ChannelServer's `init/1` rehydrates from cache/DB.
+
+**Best-effort flush on graceful shutdown:** Add a `terminate/2` callback that does a **synchronous** `BatchWriter.insert_batch/1` flush of pending writes (not async — the process is about to die). This handles graceful shutdowns (rolling deploys, manual stop) but **not** abrupt node failures (hardware crash, OOM kill, network partition) where `terminate/2` is not guaranteed to run.
+
+**Crash recovery in init/1:** On startup, the ChannelServer must reconcile cache state against the database:
+1. Load the latest N message IDs from cache (ETS/Redis) for this channel
+2. Query the database for which of those IDs exist
+3. Re-persist any IDs found in cache but missing from the DB via synchronous `BatchWriter.insert_batch/1`
+4. This closes the durability gap for messages that were cached but not yet flushed when the previous process died
+
+**Monitoring:** Emit `[:slackex, :channel_server, :crash_recovery]` telemetry with `%{channel_id, recovered_count}` to track how often crash recovery finds un-persisted messages.
 
 ## Step 3: Redis — Cross-Node Cache
 
@@ -73,8 +83,8 @@ Horde automatically restarts affected processes on surviving nodes. ChannelServe
 Supervisor that starts a pool of 10 Redix connections. Commands are dispatched to a random connection. All Redis commands are wrapped with `rescue` to gracefully degrade when Redis is unavailable — the system falls through to Postgres.
 
 Public API:
-- `get_messages(channel_id) :: {:ok, [message]} | {:miss, []}` — `LRANGE` last 100 messages
-- `push_message(channel_id, message)` — `RPUSH` + `LTRIM` to 100 + `EXPIRE` 1 hour
+- `get_messages(channel_id) :: {:ok, [message]} | {:miss, []}` — `LRANGE` last 200 messages
+- `push_message(channel_id, message)` — `RPUSH` + `LTRIM` to 200 + `EXPIRE` 1 hour
 - `cache_messages(channel_id, messages)` — bulk backfill (`DEL` + `RPUSH` + `EXPIRE`)
 - `set_read_cursor(user_id, channel_id, message_id)` — `SET` with 24h TTL
 - `get_read_cursor(user_id, channel_id) :: {:ok, integer} | :miss`
@@ -183,6 +193,10 @@ Standard Ecto schema. Validates platform inclusion in `["fcm", "apns"]`. PushWor
 
 **Note on FKs:** Partitioned tables require FK references to match the full partition key `(id, inserted_at)`. Tables referencing just `message_id` (like `message_embeddings`) should NOT use FK constraints — enforce referential integrity at the application level.
 
+**Note on BatchWriter compatibility:** Phase 2's `BatchWriter.insert_batch/1` uses `on_conflict: :nothing` without a `conflict_target`, which generates `ON CONFLICT DO NOTHING`. This remains correct after partitioning — PostgreSQL evaluates the `DO NOTHING` clause against any unique constraint violation (including the composite PK `(id, inserted_at)`). No changes to BatchWriter are required for this migration.
+
+**Note on `inserted_at` stability:** The `inserted_at` value is derived from the Snowflake ID timestamp (set in the Message changeset via `Snowflake.extract_timestamp/1`), not generated at insert time. This ensures that for any given message ID, the `inserted_at` value is deterministic and immutable. Retries of the same message always produce the same `(id, inserted_at)` pair, landing in the same partition — preventing duplicate logical messages across partitions.
+
 ### 5.2 Partition Maintenance Worker
 
 `Slackex.Workers.PartitionMaintenance` — Oban worker (monthly cron), creates 3 months of future partitions using `CREATE TABLE IF NOT EXISTS ... PARTITION OF messages FOR VALUES FROM (...) TO (...)`.
@@ -222,14 +236,21 @@ Two-stage build:
 
 ### 8.2 Kubernetes Resources
 
-- **Deployment:** 3 replicas, pod env vars via downward API (`POD_IP` → `RELEASE_NODE`), readiness/liveness probes on `/health`, resource limits (512Mi-2Gi memory, 500m-2000m CPU)
+- **Deployment:** 3 replicas, pod env vars via downward API (`POD_IP` → `RELEASE_NODE`), liveness probe on `/health`, readiness probe on `/ready`, resource limits (512Mi-2Gi memory, 500m-2000m CPU)
 - **Headless Service** (`clusterIP: None`): for BEAM node discovery via K8s DNS — exposes ports 4000 (HTTP) and 4369 (epmd)
 - **ClusterIP Service**: regular load-balanced service on port 80→4000
 - **Ingress**: nginx with sticky sessions (`cookie` affinity) for WebSocket, long proxy timeouts (3600s)
 
-### 8.3 Health Endpoint
+### 8.3 Health & Readiness Endpoints
 
-`SlackexWeb.HealthController` — `GET /health` returns JSON with database status, Redis status, current node, connected nodes, and channel process count. Returns 503 if database or Redis is unhealthy.
+**Liveness — `GET /health`:** Returns 200 if the BEAM node is responsive and the database connection is alive. Does **not** check Redis. Used by Kubernetes `livenessProbe` — a failure here restarts the pod.
+
+**Readiness — `GET /ready`:** Returns JSON with database status, Redis status (informational), current node, connected nodes, and channel process count (via `Messaging.channel_count/0`). Returns 503 **only** if the database is unhealthy. Redis status is reported as a `"degraded"` field but does **not** affect the HTTP status code. Used by Kubernetes `readinessProbe` — a failure here removes the pod from the load balancer but does **not** restart it.
+
+> **Rationale:** Redis is an optional cache with graceful degradation. If readiness failed on Redis
+> outage, a shared Redis failure would make ALL pods unready simultaneously — causing a complete
+> traffic blackout that is worse than degraded cache performance. Redis health should be monitored
+> via metrics/alerts, not probe status codes.
 
 ### 8.4 Local Multi-Node Development
 
@@ -239,7 +260,8 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 
 - [ ] Horde distributes ChannelServer processes across cluster nodes
 - [ ] When a node goes down, affected channels restart on surviving nodes within 5 seconds
-- [ ] Channel processes flush pending writes before termination
+- [ ] Channel processes flush pending writes before graceful termination (terminate/2 is best-effort)
+- [ ] ChannelServer init/1 reconciles cache vs DB to recover un-persisted messages after crash
 - [ ] libcluster auto-discovers nodes (gossip in dev, K8s DNS in prod)
 - [ ] Redis cache serves as cross-node shared cache
 - [ ] Cache cascade: ETS → Redis → PostgreSQL works correctly
@@ -251,7 +273,9 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 - [ ] Messages table is partitioned by month
 - [ ] Partition maintenance worker creates future partitions
 - [ ] Reconnection catch-up delivers correct unread counts and missed messages
-- [ ] Health endpoint reports database, Redis, and cluster status
+- [ ] Liveness endpoint (`/health`) returns 200 when BEAM and database are responsive
+- [ ] Readiness endpoint (`/ready`) reports database, Redis (informational), and cluster status
+- [ ] Redis outage does NOT cause readiness failure (degraded status only, no 503)
 - [ ] Kubernetes manifests deploy a 3-pod cluster with sticky WebSocket sessions
 - [ ] `docker build` produces a working production release image
 - [ ] Local multi-node dev cluster works via gossip strategy

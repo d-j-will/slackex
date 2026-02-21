@@ -50,7 +50,8 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
 | boundary | ~> 0.10 | Compile-time module boundary enforcement (runtime: false) |
 | jason | ~> 1.4 | JSON encoding/decoding |
 | bandit | ~> 1.5 | HTTP server |
-| dns_cluster | ~> 0.1.1 | DNS-based cluster discovery |
+| html_sanitize_ex | ~> 1.4 | HTML content sanitization |
+| dns_cluster | ~> 0.1.1 | DNS-based cluster discovery (Phoenix default; replaced by libcluster in Phase 3 for K8s/gossip strategies) |
 | pgvector | ~> 0.3 | Vector similarity search |
 | pigeon | ~> 2.0 | Push notifications (FCM/APNs) |
 | telemetry | ~> 1.3 | Instrumentation |
@@ -74,25 +75,25 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
 The `boundary` library enforces module dependency rules at compile time. Instead of an umbrella project with separate apps, we define boundaries within a single application:
 
 ```
-Slackex (Application)
+Slackex (Application)                        # Canonical final-state (after all phases)
 ├── Slackex.Accounts        # User management, authentication
 │   ├── deps: [Slackex.Repo]
 │   └── exports: [User, Auth, UserToken]
 │
 ├── Slackex.Chat             # Channels, messages, subscriptions
-│   ├── deps: [Slackex.Accounts, Slackex.Repo]
-│   └── exports: [Channel, Message, Subscription, ReadCursor, DMConversation]
+│   ├── deps: [Slackex.Accounts, Slackex.Infrastructure, Slackex.Repo]
+│   └── exports: [Channel, Message, Subscription, ReadCursor, DMConversation, Permissions]
 │
 ├── Slackex.Messaging        # Real-time message delivery (GenServers, PubSub)
-│   ├── deps: [Slackex.Chat, Slackex.Accounts]
-│   └── exports: [ChannelServer, send_message/3, subscribe_channel/1]
+│   ├── deps: [Slackex.Chat, Slackex.Accounts, Slackex.Cache, Slackex.Infrastructure]
+│   └── exports: [ChannelServer]  # Messaging context module is implicitly exported
 │
 ├── Slackex.Pipeline         # CQRS write side (batch persistence via Task.Supervisor)
 │   ├── deps: [Slackex.Chat, Slackex.Repo]
 │   └── exports: [BatchWriter]
 │
 ├── Slackex.Search           # CQRS read side (cache cascade, FTS, pgvector)
-│   ├── deps: [Slackex.Chat, Slackex.Repo, Slackex.Cache]
+│   ├── deps: [Slackex.Chat, Slackex.Cache, Slackex.Embeddings]
 │   └── exports: [MessageSearch, HistoryLoader]
 │
 ├── Slackex.Cache            # ETS + Redis cache management
@@ -100,12 +101,12 @@ Slackex (Application)
 │   └── exports: [Local, Redis, get/2, put/3, invalidate/2]
 │
 ├── Slackex.Notifications    # Push notifications, unread tracking, catch-up
-│   ├── deps: [Slackex.Chat, Slackex.Accounts]
-│   └── exports: [PushWorker, UnreadTracker]
+│   ├── deps: [Slackex.Chat, Slackex.Accounts, Slackex.Cache]
+│   └── exports: [PushWorker, UnreadTracker, CatchupServer]
 │
 ├── Slackex.Embeddings       # AI/RAG pipeline (vector generation)
 │   ├── deps: [Slackex.Chat, Slackex.Repo]
-│   └── exports: [EmbeddingWorker, EmbeddingClient]
+│   └── exports: [EmbeddingWorker, EmbeddingClient, RAGContext]
 │
 ├── Slackex.Infrastructure   # Snowflake IDs, Rate Limiter, Clock
 │   ├── deps: []
@@ -120,6 +121,12 @@ Slackex (Application)
     │          Slackex.Search, Slackex.Notifications]
     └── exports: []  # No other boundary should depend on web
 ```
+
+> **Note:** This diagram reflects the canonical final-state boundaries after all four phases.
+> Phase docs show incremental boundary states — each phase spec documents only the boundaries
+> it introduces or modifies.
+
+**Boundary library convention:** The boundary module itself (e.g., `Slackex.Messaging`) is always implicitly exported — it serves as the public API. The `exports` list names additional submodules accessible from outside. All other submodules are internal implementation details.
 
 **Boundary rules enforced at compile time:**
 - `SlackexWeb` can depend on all domain boundaries, but no domain boundary can depend on `SlackexWeb`
@@ -197,14 +204,15 @@ User sends message
        ▼
   ChannelServer GenServer (via Horde Registry)
        │
-       ├──► PubSub broadcast to all subscribers (IMMEDIATE)
-       │     └── LiveView / Channel processes push to clients
-       │
-       ├──► ETS local cache update (IMMEDIATE)
-       │
-       ├──► Accumulate in pending_writes (ASYNC flush on timer)
+       ├──► Accumulate in pending_writes (IMMEDIATE, flushed on 2s timer)
        │     │
        │     └──► Task.Supervisor async batch INSERT to PostgreSQL
+       │           └── Reports {:batch_result, ref, :ok | :error} back to ChannelServer
+       │
+       ├──► In-memory queue + ETS local cache update (IMMEDIATE)
+       │
+       ├──► PubSub broadcast to all subscribers (IMMEDIATE)
+       │     └── LiveView / Channel processes push to clients
        │
        └──► Enqueue Oban job: embedding generation (ASYNC, low priority)
 ```
@@ -220,7 +228,7 @@ See Phase 1 spec for initial schema, Phase 3 for partitioning, Phase 4 for pgvec
 | Phase | Focus | Key Deliverables |
 |-------|-------|-----------------|
 | 1 — Foundation | Project setup, auth, basic messaging | Working app with channels, messages, LiveView UI |
-| 2 — Real-time & CQRS | GenServers, Broadway, caching | In-memory message delivery, async persistence, presence |
+| 2 — Real-time & CQRS | GenServers, async write pipeline, caching | In-memory message delivery, async persistence, presence |
 | 3 — Distribution | Horde, clustering, Redis | Multi-node deployment, push notifications, partitioning |
 | 4 — Intelligence | pgvector, search, RAG | Full-text + semantic search, embedding pipeline |
 

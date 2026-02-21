@@ -42,7 +42,7 @@ CREATE INDEX idx_embeddings_hnsw ON message_embeddings
 
 ## Step 3: Embedding Schema
 
-`Slackex.Chat.MessageEmbedding` — Ecto schema with `@primary_key {:message_id, :integer, autogenerate: false}`. Uses `Pgvector.Ecto.Vector` type for the embedding field.
+`Slackex.Embeddings.MessageEmbedding` — Ecto schema with `@primary_key {:message_id, :integer, autogenerate: false}`. Uses `Pgvector.Ecto.Vector` type for the embedding field. This schema lives in the `Embeddings` boundary (not `Chat`) to maintain clean boundary separation — the embedding concern is owned by `Slackex.Embeddings`.
 
 ## Step 4: Embedding Client
 
@@ -83,24 +83,26 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 
 ## Step 6: Search Module
 
-### 6.1 Full-Text Search (`Slackex.Search.MessageSearch.text_search/2`)
+### 6.1 Full-Text Search (`Slackex.Search.MessageSearch.text_search/3`)
 
 Uses PostgreSQL `tsvector/tsquery`:
 - Filter: `to_tsvector('english', content) @@ plainto_tsquery('english', query)`
 - Rank: `ts_rank(to_tsvector('english', content), plainto_tsquery('english', query))` descending
-- Options: `channel_id` (scope), `limit` (default 20), `offset`
+- **Authorization filter:** Joins through `subscriptions` to restrict results to channels the user is a member of. Private channels are only searchable by their members. Public channels are searchable by any authenticated user.
+- Options: `user_id` (required), `channel_id` (scope), `limit` (default 20), `offset`
 - Preloads `:sender`
 
-### 6.2 Semantic Search (`Slackex.Search.MessageSearch.semantic_search/2`)
+### 6.2 Semantic Search (`Slackex.Search.MessageSearch.semantic_search/3`)
 
 Uses pgvector cosine similarity:
 - Generates embedding for the query text via `EmbeddingClient.generate/1`
 - Joins `message_embeddings` with `messages`
+- **Authorization filter:** Same membership-based filtering as `text_search/3` — restricts results to channels the user can access
 - Filters by similarity threshold (default 0.3)
 - Orders by cosine distance ascending (`<=>` operator)
 - Returns messages with `:similarity` score attached
 
-### 6.3 Hybrid Search (`Slackex.Search.MessageSearch.hybrid_search/2`)
+### 6.3 Hybrid Search (`Slackex.Search.MessageSearch.hybrid_search/3`)
 
 Combines FTS and semantic search using **Reciprocal Rank Fusion (RRF)**:
 ```
@@ -114,7 +116,7 @@ Runs both searches in parallel via `Task.async`, merges by message ID, sorts by 
 Boundary: `deps: [Chat, Cache, Embeddings], exports: [MessageSearch, HistoryLoader]`
 
 Public API:
-- `search_messages(query, opts) :: {:ok, [Message.t()]}` — dispatches to `:text`, `:semantic`, or `:hybrid` mode (default: `:hybrid`)
+- `search_messages(user_id, query, opts) :: {:ok, [Message.t()]}` — dispatches to `:text`, `:semantic`, or `:hybrid` mode (default: `:hybrid`). `user_id` is required — all search paths filter results to channels the user can access (public channels + private channels where user is a member)
 
 ## Step 7: Search LiveView Component
 
@@ -150,7 +152,7 @@ Public API:
 - [ ] Hybrid search merges FTS and semantic results using Reciprocal Rank Fusion
 - [ ] Search can be scoped to a specific channel or search all channels
 - [ ] Embedding worker generates embeddings asynchronously via Oban
-- [ ] Embedding generation is triggered automatically after message persistence in Broadway
+- [ ] Embedding generation is triggered automatically after successful batch persistence in the write pipeline
 - [ ] Batch embedding supports up to 100 texts per API call
 - [ ] Channel backfill job can generate embeddings for existing message history
 - [ ] Stub embedding client works in test/dev without an API key
