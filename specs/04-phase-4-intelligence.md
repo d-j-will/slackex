@@ -122,7 +122,9 @@ Runs both searches in parallel via `Task.async`, merges by message ID, sorts by 
 
 ### 6.4 Search Context (`Slackex.Search`)
 
-Boundary: `deps: [Chat, Cache, Embeddings], exports: [MessageSearch, HistoryLoader]`
+Boundary: `deps: [Chat, Cache, Embeddings, Repo], exports: [MessageSearch, HistoryLoader]`
+
+> **Note on Repo dependency:** `MessageSearch` builds Ecto queries with direct SQL fragments (tsvector, pgvector cosine distance) and executes them via `ReadRepo` (Phase 3+) or `Repo`. `HistoryLoader` also queries the DB on cache miss. Both require `Repo` in the boundary deps. This is consistent with the canonical boundary graph in `00-overview.md`.
 
 Public API:
 - `search_messages(user_id, query, opts) :: {:ok, [Message.t()]}` — dispatches to `:text`, `:semantic`, or `:hybrid` mode (default: `:hybrid`). `user_id` is required — all search paths use the conditional join strategy: public channels are visible to any authenticated user, private channels are restricted to members only
@@ -142,7 +144,20 @@ Public API:
 Public API:
 - `retrieve(query, opts) :: {:ok, context_string, count} | {:error, reason}` — runs semantic search, formats as `[timestamp] username: content` lines, truncates to `max_tokens` (default 4000, estimated at 4 chars/token)
 
-## Step 9: Configuration
+## Step 9: Update Application Supervisor (Phase 4)
+
+Children added after Oban in the supervisor tree:
+1. `Slackex.Embeddings.PersistenceListener` — **new** (must start after Oban, subscribes to `"pipeline:events"`)
+
+The `ReconciliationWorker` does not need a supervisor entry — it runs as an Oban cron job (configured in Oban's `:plugins` list alongside the existing `CacheWarmer`):
+```elixir
+{Oban.Plugins.Cron, crontab: [
+  {"0 * * * *", Slackex.Workers.CacheWarmer},
+  {"*/15 * * * *", Slackex.Embeddings.ReconciliationWorker}
+]}
+```
+
+## Step 10: Configuration
 
 - `config/config.exs`: `:embedding_client` defaults to `OpenAIClient`
 - `config/dev.exs`: `:embedding_client` set to `StubClient`
@@ -161,7 +176,9 @@ Public API:
 - [ ] Hybrid search merges FTS and semantic results using Reciprocal Rank Fusion
 - [ ] Search can be scoped to a specific channel or search all channels
 - [ ] Embedding worker generates embeddings asynchronously via Oban
-- [ ] Embedding generation is triggered automatically after successful batch persistence in the write pipeline
+- [ ] Embedding generation is triggered automatically after successful batch persistence via PersistenceListener
+- [ ] PersistenceListener is supervised and restarts on crash without losing future events
+- [ ] ReconciliationWorker runs every 15 minutes and enqueues jobs for any unembedded messages
 - [ ] Batch embedding supports up to 100 texts per API call
 - [ ] Channel backfill job can generate embeddings for existing message history
 - [ ] Stub embedding client works in test/dev without an API key

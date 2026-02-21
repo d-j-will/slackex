@@ -146,7 +146,14 @@ Create table `dm_conversations`:
 | user_b_id | references(users) | NOT NULL, on_delete: delete_all, indexed |
 | inserted_at | utc_datetime_usec | no updated_at |
 
-Unique index on `[:user_a_id, :user_b_id]`. Invariant: `user_a_id < user_b_id` to prevent duplicate conversations. Also alter `messages` to add FK from `dm_conversation_id` to this table.
+Unique index on `[:user_a_id, :user_b_id]`. Invariant: `user_a_id < user_b_id` to prevent duplicate conversations — enforced at both the changeset level (`normalize_user_order/1`) and the database level:
+```sql
+ALTER TABLE dm_conversations ADD CONSTRAINT dm_conversations_user_order_check
+  CHECK (user_a_id < user_b_id);
+```
+This DB CHECK constraint prevents bypass paths (raw SQL, `insert_all`, data imports) from creating duplicate logical DM conversations with swapped user IDs.
+
+Also alter `messages` to add FK from `dm_conversation_id` to this table.
 
 ### 2.7 Read Cursors Table
 

@@ -69,6 +69,7 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
 | wallaby | ~> 0.30 | Browser E2E tests (test only) |
 | local_cluster | ~> 2.1 | Multi-node test clusters (test only) |
 | floki | ~> 0.36 | HTML parsing for tests (test only) |
+| mix_test_watch | ~> 1.2 | File-watching test runner (dev only) |
 
 ## Boundary Definitions
 
@@ -93,16 +94,16 @@ Slackex (Application)                        # Canonical final-state (after all 
 │   └── exports: [BatchWriter]
 │
 ├── Slackex.Search           # CQRS read side (cache cascade, FTS, pgvector)
-│   ├── deps: [Slackex.Chat, Slackex.Cache, Slackex.Embeddings]
+│   ├── deps: [Slackex.Chat, Slackex.Cache, Slackex.Embeddings, Slackex.Repo]
 │   └── exports: [MessageSearch, HistoryLoader]
 │
 ├── Slackex.Cache            # ETS + Redis cache management
 │   ├── deps: []
-│   └── exports: [Local, Redis, get/2, put/3, invalidate/2]
+│   └── exports: [Local, Redis]  # Public API (get/put/invalidate) is on the Slackex.Cache context module itself (implicitly exported)
 │
 ├── Slackex.Notifications    # Push notifications, unread tracking, catch-up
-│   ├── deps: [Slackex.Chat, Slackex.Accounts, Slackex.Cache]
-│   └── exports: [PushWorker, UnreadTracker, CatchupServer]
+│   ├── deps: [Slackex.Chat, Slackex.Accounts, Slackex.Cache, Slackex.Repo]
+│   └── exports: [PushWorker, OnlineTracker, CatchupServer, DeviceToken]
 │
 ├── Slackex.Embeddings       # AI/RAG pipeline (vector generation)
 │   ├── deps: [Slackex.Chat, Slackex.Repo]
