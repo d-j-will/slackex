@@ -20,10 +20,20 @@ defmodule SlackexWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", SlackexWeb do
-  #   pipe_through :api
-  # end
+  scope "/api", SlackexWeb.API do
+    pipe_through :api
+
+    scope "/auth" do
+      post "/login", AuthController, :login
+      post "/refresh", AuthController, :refresh
+    end
+  end
+
+  scope "/api", SlackexWeb.API do
+    pipe_through [:api, SlackexWeb.Plugs.ApiAuthPipeline]
+
+    get "/bootstrap", BootstrapController, :index
+  end
 
   if Application.compile_env(:slackex, :dev_routes) do
     scope "/dev" do

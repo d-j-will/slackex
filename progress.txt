@@ -36,8 +36,49 @@
 
 ### What's next
 - LiveView chat interface (Step 7): registration/login forms, real-time message list, channel sidebar
-- WebSocket channels for mobile clients (UserSocket, ChatChannel)
-- API routes: login, refresh, bootstrap
-- Shared serializers (MessageJSON, ChannelJSON)
+- Boundary compile-time checks
+- Git hooks and bin/setup script
+
+---
+
+## Phase 1 Foundation — API & WebSocket Layer (2026-02-21)
+
+### What was built
+- Shared JSON serializers: UserJSON, ChannelJSON, MessageJSON (Snowflake IDs as strings for JS safety)
+- API auth pipeline: Guardian plug pipeline (VerifyHeader, EnsureAuthenticated, LoadResource) with JSON 401 error handler
+- API auth controller: POST /api/auth/login (email+password -> tokens+user), POST /api/auth/refresh (token rotation)
+- API bootstrap controller: GET /api/bootstrap (JWT-protected, returns user+channels+DMs+unread_counts)
+- UserSocket: JWT-authenticated WebSocket with chat:* and dm:* channel routes
+- ChatChannel: join (role check, load messages, mark as read), send message (broadcast via Phoenix Channel)
+- DMChannel: join (participant check, load messages), send message (broadcast)
+- ChannelCase test support module for Phoenix Channel tests
+- Chat context additions: get_dm/1, list_dm_messages/2
+
+### Test coverage
+- 105 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 39 new behavioral tests covering: API login, refresh, bootstrap, WebSocket connect/join/send, serializer correctness
+
+### Bugs found and fixed during testing
+
+1. **Guardian.Plug.Pipeline requires `otp_app`**: `use Guardian.Plug.Pipeline` without `otp_app: :slackex` causes a RuntimeError at runtime. Not caught by compiler — only surfaced when tests actually exercised the pipeline.
+
+2. **Phoenix JSON view namespace must match controller namespace**: Controllers in `SlackexWeb.API.*` expect JSON views in the same namespace. Defining serializers as `SlackexWeb.MessageJSON` instead of `SlackexWeb.API.MessageJSON` causes Phoenix to fail to find the view module. The convention is: controller `SlackexWeb.API.AuthController` renders via `SlackexWeb.API.AuthJSON`.
+
+3. **`to_string/1` on non-atom Guardian error tuples**: `Auth.refresh_api_token/1` can return `{:error, %ErlangError{}}` for malformed tokens. Calling `to_string(reason)` on a struct raises `Protocol.UndefinedError`. Guard clause needed to handle non-atom/binary error reasons.
+
+4. **Nil sender crashes serializer**: `MessageJSON.data/1` called `UserJSON.data(sender)` without nil guard. When `sender` is nil (deleted user), `UserJSON.data/1` pattern match fails with `FunctionClauseError`. Fixed with a `serialize_sender/1` private function that returns nil for nil input.
+
+### Lessons learned
+
+9. **Phoenix JSON view naming convention**: For controllers namespaced under `SlackexWeb.API.*`, the JSON view must also be under `SlackexWeb.API.*`. Phoenix resolves view modules by replacing `Controller` with `JSON` in the controller module name.
+
+10. **Guardian.Plug.Pipeline needs `otp_app`**: Always pass `otp_app: :your_app` to `use Guardian.Plug.Pipeline`. Without it, Guardian cannot find the configuration and raises at runtime, not compile time.
+
+11. **Serializers need nil guards for optional associations**: Any serializer field that calls another serializer must guard against nil. Use a private helper: `defp serialize_foo(nil), do: nil; defp serialize_foo(foo), do: FooJSON.data(foo)`.
+
+12. **Snowflake GenServer is auto-started in test**: `Slackex.Infrastructure.Snowflake` is in the application supervision tree. Do NOT call `start_supervised!` in test setup — it will raise `{:already_started, pid}`. Only start it manually if the application supervisor is not running.
+
+### What's next
+- LiveView chat interface (Step 7): registration/login forms, real-time message list, channel sidebar
 - Boundary compile-time checks
 - Git hooks and bin/setup script

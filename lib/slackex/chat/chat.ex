@@ -167,9 +167,44 @@ defmodule Slackex.Chat do
     Repo.all(query)
   end
 
+  @doc """
+  Lists messages for a DM conversation, paginated by Snowflake ID descending.
+  Supports :limit and :before options.
+  """
+  def list_dm_messages(dm_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    before_id = Keyword.get(opts, :before)
+
+    query =
+      from m in Message,
+        where: m.dm_conversation_id == ^dm_id,
+        order_by: [desc: m.id],
+        limit: ^limit,
+        preload: [:sender]
+
+    query =
+      if before_id do
+        where(query, [m], m.id < ^before_id)
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
   # ---------------------------------------------------------------------------
   # DM operations
   # ---------------------------------------------------------------------------
+
+  @doc """
+  Gets a DM conversation by ID. Returns `{:ok, dm}` or `{:error, :not_found}`.
+  """
+  def get_dm(id) do
+    case Repo.get(DMConversation, id) do
+      nil -> {:error, :not_found}
+      dm -> {:ok, dm}
+    end
+  end
 
   @doc """
   Finds or creates a DM conversation between two users. Normalizes user order.

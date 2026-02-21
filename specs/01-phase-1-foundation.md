@@ -410,16 +410,16 @@ See `05-ci-cd-devops.md` for the full Docker Compose configuration. Phase 1 requ
 - [x] `docker-compose up` starts Postgres (with pgvector) and Redis
 - [x] 66 behavioral and unit tests pass
 
-### LiveView & WebSocket (Steps 7-8) — TODO
+### LiveView & WebSocket (Steps 7-8) — PARTIAL
 
 - [ ] User can register, log in, log out via LiveView
 - [ ] User can send messages via LiveView with real-time updates
 - [ ] Messages appear in real-time for all subscribed users via PubSub
-- [ ] Mobile client can authenticate via JWT and join channels via WebSocket
-- [ ] Mobile client can send/receive messages via Phoenix Channel protocol
-- [ ] LiveView and Channel modules follow adapter boundary rule (no domain logic or direct `Repo` reads/writes outside contexts)
-- [ ] Shared serializers are used for Channel and API payloads (single source of truth for payload shape)
-- [ ] `GET /api/bootstrap` provides JWT-authenticated bootstrap payload for non-LiveView clients
+- [x] Mobile client can authenticate via JWT and join channels via WebSocket
+- [x] Mobile client can send/receive messages via Phoenix Channel protocol
+- [x] LiveView and Channel modules follow adapter boundary rule (no domain logic or direct `Repo` reads/writes outside contexts)
+- [x] Shared serializers are used for Channel and API payloads (single source of truth for payload shape)
+- [x] `GET /api/bootstrap` provides JWT-authenticated bootstrap payload for non-LiveView clients
 
 ### Tooling & DevEx — PARTIAL
 
