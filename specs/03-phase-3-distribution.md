@@ -84,6 +84,8 @@ Horde's CRDT-based registry is eventually consistent. During a network partition
 
 **Ghost messages during split-brain:** Because the ChannelServer broadcasts messages to connected clients immediately (before batch flush), a stale writer on the losing partition side can broadcast messages that later fail the epoch check and are never persisted. Connected clients will see these messages appear and then vanish on reload. This is an **accepted tradeoff** — it falls within the existing durability contract (at-most-once delivery, Phase 2 Section 1.4). Mitigation: clients should treat messages as optimistic until they appear in scroll-back history. The ghost window is bounded by the partition duration + one flush interval (2s). Post-heal, the stale writer is terminated by Horde conflict resolution, stopping further ghost broadcasts.
 
+**Epoch-stale is terminal:** When `BatchWriter` returns `{:error, :epoch_stale}`, the ChannelServer must treat this as a **non-retryable terminal error** — unlike generic batch errors which are retried (Phase 2 Section 1.3). On receiving `:epoch_stale`, the ChannelServer: (1) stops accepting new `send_message` calls (returns `{:error, :not_writer}`), (2) drops all `pending_writes` and `in_flight` batches (they will never persist), (3) emits `[:slackex, :channel_server, :epoch_stale_shutdown]` telemetry, and (4) terminates itself via `{:stop, :normal, state}`. This prevents a stale writer from continuing to broadcast ghost messages after its first failed flush. Horde will not restart the process on this node since the winning writer already holds the registry entry.
+
 ### 2.3 Replace DynamicSupervisor with Horde.DynamicSupervisor
 
 `Slackex.Messaging.ChannelSupervisor` — wraps `Horde.DynamicSupervisor` with `process_redistribution: :active` to rebalance on node changes.
@@ -103,9 +105,9 @@ Horde automatically restarts affected processes on surviving nodes. ChannelServe
 **Best-effort flush on graceful shutdown:** Add a `terminate/2` callback that does a **synchronous** `BatchWriter.insert_batch(messages, epoch: epoch, type: channel_type, id: channel_id)` flush of pending writes (not async — the process is about to die). The epoch check still applies — if a newer writer has taken over, the flush is safely rejected. This handles graceful shutdowns (rolling deploys, manual stop) but **not** abrupt node failures (hardware crash, OOM kill, network partition) where `terminate/2` is not guaranteed to run.
 
 **Crash recovery in init/1:** On startup, the ChannelServer must reconcile cache state against the database:
-1. Load the latest N message IDs from cache (ETS/Redis) for this channel
-2. Query the database for which of those IDs exist
-3. Re-persist any IDs found in cache but missing from the DB via synchronous `BatchWriter.insert_batch(messages, epoch: epoch, type: channel_type, id: channel_id)` (using the freshly acquired epoch from this ChannelServer's startup)
+1. Load the latest N messages (full payloads, not just IDs) from cache (ETS/Redis) for this channel — the cache stores complete message structs, so all fields needed for re-persistence are available
+2. Query the database for which of those message IDs exist
+3. Re-persist any messages found in cache but missing from the DB via synchronous `BatchWriter.insert_batch(messages, epoch: epoch, type: channel_type, id: channel_id)` (using the freshly acquired epoch from this ChannelServer's startup). The full message payloads from cache provide all required columns (sender_id, content, inserted_at, etc.)
 4. This closes the durability gap for messages that were cached but not yet flushed when the previous process died
 
 **Monitoring:** Emit `[:slackex, :channel_server, :crash_recovery]` telemetry with `%{channel_id, recovered_count}` to track how often crash recovery finds un-persisted messages.
@@ -163,7 +165,7 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 
 | Query | Repo | Reason |
 |-------|------|--------|
-| `Chat.list_messages/2` (older history) | ReadRepo | Historical read, tolerates replication lag |
+| `Chat.list_messages/2` (older history) | `repo_for_age(oldest_id)` | See routing function below |
 | `Chat.list_user_channels/1` | ReadRepo | Channel list doesn't change often |
 | `Chat.list_public_channels/0` | ReadRepo | Read-only listing |
 | `Chat.unread_count/2` | Primary | Unread count must reflect recently sent messages (see consistency rules below) |
@@ -175,6 +177,22 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 | `Chat.join_channel/2` | Primary | Write |
 | `CatchupServer.build_catchup/1` | Primary | Recent messages — must not miss data from replication lag |
 | `HistoryLoader.recent/2` (cache miss) | Primary | Initial channel load — user expects to see latest messages |
+
+**Hard routing contract — `Slackex.ReadRepo.repo_for_age/1`:** A single function that encapsulates the replica-vs-primary decision so callers cannot accidentally pick the wrong repo. Takes a Snowflake ID (or `:recent` atom) and returns `ReadRepo` or `Repo`:
+
+```elixir
+def repo_for_age(:recent), do: Repo
+def repo_for_age(snowflake_id) do
+  if lag_exceeded?() do
+    Repo  # replica is behind — all reads go to primary
+  else
+    age_ms = System.os_time(:millisecond) - Snowflake.extract_timestamp(snowflake_id)
+    if age_ms < @recent_threshold_ms, do: Repo, else: ReadRepo
+  end
+end
+```
+
+`@recent_threshold_ms` defaults to 30_000 (30 seconds). The `lag_exceeded?()` check is evaluated **first** — when lag is detected, the function short-circuits to `Repo` regardless of message age. Only when lag is within bounds does the age-based branch apply. Callers like `Chat.list_messages/2` pass the oldest requested Snowflake ID; callers like `HistoryLoader.recent/2` pass `:recent`. This eliminates the risk of a caller accidentally reading stale data from the replica.
 
 **Consistency rules:**
 - **Recent window (< 30 seconds old):** Always read from Primary. This covers reconnection catch-up, initial channel load, and unread count after sending a message. Replication lag in this window would cause users to "miss" messages they just sent or received.
@@ -234,7 +252,7 @@ Standard Ecto schema. Validates platform inclusion in `["fcm", "apns"]`. PushWor
 **Strategy** (destructive — run during maintenance window):
 1. Rename `messages` to `messages_old`
 2. Create new `messages` table with `PARTITION BY RANGE (inserted_at)` and composite PK `(id, inserted_at)`
-3. Create monthly partitions (past 3 months, current, next 3)
+3. Create monthly partitions covering **all existing data plus future headroom**: query `SELECT date_trunc('month', min(inserted_at)) FROM messages_old` to find the earliest month, then create partitions from that month through current + 3 months ahead. Failing to cover the full historical range will cause the copy step (step 6) to error with "no partition of relation matches row"
 4. Recreate indexes: `(channel_id, inserted_at, id)`, `(dm_conversation_id, inserted_at, id)`, `(sender_id)`, GIN FTS — note: `inserted_at` is included in composite indexes to enable partition pruning on queries that filter by both `channel_id` and Snowflake-derived timestamp bounds
 5. Re-add CHECK constraint: `ALTER TABLE messages ADD CONSTRAINT messages_target_check CHECK ((channel_id IS NOT NULL AND dm_conversation_id IS NULL) OR (channel_id IS NULL AND dm_conversation_id IS NOT NULL));` — this was defined in Phase 1 and must be preserved through table recreation (CHECK constraints are not automatically carried over)
 6. Copy data from old table: `INSERT INTO messages SELECT * FROM messages_old`
@@ -242,7 +260,7 @@ Standard Ecto schema. Validates platform inclusion in `["fcm", "apns"]`. PushWor
    - **Row count match:** `SELECT count(*) FROM messages` = `SELECT count(*) FROM messages_old`
    - **Per-partition row counts:** `SELECT tableoid::regclass, count(*) FROM messages GROUP BY 1` — verify every expected partition has rows and no partition is unexpectedly empty
    - **Boundary integrity:** `SELECT min(inserted_at), max(inserted_at) FROM messages` matches old table, and each partition's min/max falls within its declared range
-   - **Checksum sample:** Compare `md5(array_agg(id ORDER BY id)::text)` for a random sample of 3 partitions between old and new tables
+   - **Checksum sample:** For a random sample of 3 partitions, compare chunked checksums between old and new tables. Use range-based hashing to avoid loading full partitions into memory: `SELECT md5(string_agg(id::text, ',' ORDER BY id)) FROM messages WHERE inserted_at BETWEEN $start AND $end AND id BETWEEN $lo AND $hi` in chunks of 100K rows. Compare each chunk's hash between old and new tables. This avoids the memory risk of `md5(array_agg(id ORDER BY id)::text)` on large partitions.
    - **Critical query smoke tests:** Run `HistoryLoader.recent/2`, `HistoryLoader.before/3`, and `MessageSearch.text_search/3` against the new table and verify results match old table for a set of test channel IDs
    - **EXPLAIN verification:** Run `EXPLAIN` on a typical `before` query and confirm partition pruning is active (not scanning all partitions)
 8. Drop old table (only after ALL validation checks pass)

@@ -217,6 +217,20 @@ Tagged `@moduletag :distributed`, excluded by default. Uses `LocalCluster` to st
 - **writer epoch prevents stale writes** — start ChannelServer, simulate epoch bump (another writer took over), verify batch write is rejected
 - **concurrent ChannelServers during partition** — use `LocalCluster` to create a network partition (`:net_kernel.disconnect/1`), verify both sides can accept messages, heal partition, verify only the higher-epoch writer's pending writes succeed, verify Snowflake dedup resolves overlapping IDs via `ON CONFLICT DO NOTHING`
 
+### Push Notification Tests
+
+- **PushWorker delivers to offline subscribers only** — send a channel message, mark one subscriber online and one offline via `OnlineTracker`, verify push job only targets the offline subscriber
+- **PushWorker skips sender** — send a message, verify sender never receives a push notification even if offline
+- **DM push notification fires immediately** — send a DM, verify push job is enqueued without `schedule_in` delay (unlike channel messages which use 5-second batching)
+- **OnlineTracker TTL refresh** — mark user online, advance time past 2-minute TTL without refresh, verify `online?/1` returns false
+- **OnlineTracker mount/unmount lifecycle** — mount LiveView, verify user marked online; unmount, verify user marked offline
+
+### Readiness Endpoint Degraded Mode Tests
+
+- **/ready reports degraded when Redis is unavailable** — stop Redis, hit `/ready`, verify response includes `redis: "degraded"` but still returns 200 (not 503)
+- **/ready reports healthy when all services are up** — verify database, Redis, and cluster status all report healthy
+- **/health returns 200 when BEAM and DB are responsive** — verify liveness probe succeeds independently of Redis status
+
 ### Replica Consistency Tests
 
 - **recent messages use primary after cache miss** — send message, immediately query via `HistoryLoader.recent/2`, verify it hits Primary (not ReadRepo)

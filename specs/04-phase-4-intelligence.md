@@ -93,6 +93,8 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 
 `Slackex.Embeddings.ReconciliationWorker` — Oban worker (queue: `:embeddings`, cron: every 15 minutes, max_attempts: 1). Queries for messages inserted in the last hour that have no corresponding row in `message_embeddings` (`LEFT JOIN message_embeddings ON ... WHERE embedding IS NULL`), and enqueues `EmbeddingWorker` jobs for the missing IDs in batches of 50. Uses `Oban.insert_all` with uniqueness constraints to avoid duplicate jobs. This ensures that even if the real-time listener misses events, embedding coverage self-heals within 15 minutes.
 
+**Lookback window tradeoff:** The 1-hour lookback is a deliberate bound — it limits the reconciliation query's scan range for performance. If `PersistenceListener` is down for longer than 1 hour (extended deployment, infrastructure outage), messages outside the window will not be auto-reconciled. For these cases, use the existing `enqueue_backfill(channel_id)` job to manually trigger full-channel embedding. Ops should monitor the `message_embeddings` coverage ratio via a periodic metric (`unembedded_count / total_messages_last_24h`) and alert if it drops below 95%.
+
 ## Step 6: Search Module
 
 ### 6.1 Full-Text Search (`Slackex.Search.MessageSearch.text_search/3`)
@@ -100,7 +102,7 @@ Generates deterministic fake embeddings for testing — uses `phash2(text)` as s
 Uses PostgreSQL `tsvector/tsquery`:
 - Filter: `to_tsvector('english', content) @@ plainto_tsquery('english', query)`
 - Rank: `ts_rank(to_tsvector('english', content), plainto_tsquery('english', query))` descending
-- **Authorization filter:** Uses a conditional join strategy — not a simple `JOIN subscriptions`. The query filters results as: **(a)** public channels (`channels.is_private = false`) are included for any authenticated user (no subscription required), **(b)** private channels are included only via `JOIN subscriptions` where the user has a membership row, **(c)** DMs (`dm_conversation_id IS NOT NULL`) are included only where the user is a participant (`user_a_id` or `user_b_id`). Implementation: `LEFT JOIN subscriptions ON ... LEFT JOIN dm_conversations ON ... WHERE (channels.is_private = false OR subscriptions.user_id = $user_id OR dm_conversations.user_a_id = $user_id OR dm_conversations.user_b_id = $user_id)`. This is a deliberate policy distinction from the `Permissions` module's `read_messages` check (which governs direct channel access, not search discoverability). See `01-phase-1-foundation.md` Step 6 for the policy rationale.
+- **Authorization filter:** Uses `EXISTS` subqueries (not JOINs) to prevent row duplication that would corrupt `ts_rank` ordering and pagination. The query filters results as: **(a)** channel messages where the channel is public (`channels.is_private = false`), **(b)** channel messages where the channel is private AND the user has a subscription (`EXISTS (SELECT 1 FROM subscriptions WHERE subscriptions.channel_id = messages.channel_id AND subscriptions.user_id = $user_id)`), **(c)** DM messages where the user is a participant (`EXISTS (SELECT 1 FROM dm_conversations WHERE dm_conversations.id = message_embeddings.dm_conversation_id AND (user_a_id = $user_id OR user_b_id = $user_id))`). Implementation uses `WHERE` with OR'd conditions — each branch is an EXISTS subquery, so no joins can multiply result rows. This is a deliberate policy distinction from the `Permissions` module's `read_messages` check (which governs direct channel access, not search discoverability). See `01-phase-1-foundation.md` Step 6 for the policy rationale.
 - Options: `user_id` (required), `channel_id` (scope), `limit` (default 20), `offset`
 - Preloads `:sender`
 
@@ -109,7 +111,7 @@ Uses PostgreSQL `tsvector/tsquery`:
 Uses pgvector cosine similarity:
 - Generates embedding for the query text via `EmbeddingClient.generate/1`
 - Joins `message_embeddings` with `messages` on `(message_id, message_inserted_at) = (id, inserted_at)` — enables PostgreSQL partition pruning on the partitioned messages table
-- **Authorization filter:** Same conditional join strategy as `text_search/3` — public channels visible to all authenticated users, private channels restricted to members, DMs restricted to participants
+- **Authorization filter:** Same `EXISTS`-based strategy as `text_search/3` — public channels visible to all authenticated users, private channels restricted to members, DMs restricted to participants. No JOINs used for authorization to avoid row duplication affecting cosine distance ordering.
 - Filters by similarity threshold (default 0.3)
 - Orders by cosine distance ascending (`<=>` operator)
 - Returns messages with `:similarity` score attached
@@ -130,7 +132,7 @@ Boundary: `deps: [Chat, Cache, Embeddings, Repo], exports: [MessageSearch, Histo
 > **Note on Repo dependency:** `MessageSearch` builds Ecto queries with direct SQL fragments (tsvector, pgvector cosine distance) and executes them via `ReadRepo` (Phase 3+) or `Repo`. `HistoryLoader` also queries the DB on cache miss. Both require `Repo` in the boundary deps. This is consistent with the canonical boundary graph in `00-overview.md`.
 
 Public API:
-- `search_messages(user_id, query, opts) :: {:ok, [Message.t()]}` — dispatches to `:text`, `:semantic`, or `:hybrid` mode (default: `:hybrid`). `user_id` is required — all search paths use the conditional join strategy: public channels are visible to any authenticated user, private channels are restricted to members only
+- `search_messages(user_id, query, opts) :: {:ok, [Message.t()]}` — dispatches to `:text`, `:semantic`, or `:hybrid` mode (default: `:hybrid`). `user_id` is required — all search paths use `EXISTS`-based authorization: public channels are visible to any authenticated user, private channels are restricted to members, DMs are restricted to participants
 
 ## Step 7: Search LiveView Component
 

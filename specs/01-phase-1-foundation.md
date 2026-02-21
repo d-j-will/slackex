@@ -166,6 +166,8 @@ Create table `read_cursors` with composite primary key `(user_id, channel_id)`:
 | last_read_message_id | bigint | NOT NULL |
 | timestamps | utc_datetime_usec | |
 
+**DM cursor scope:** This table only tracks channel read cursors. DM read cursors are stored in Redis only (`cursor:{user_id}:dm:{id}` with 24h TTL, see Phase 3 Section 3.1). This is an intentional durability tradeoff — DM unread state is lower priority than channel unread state, and adding a DB-backed DM cursor table can be deferred to a future iteration if needed. If Redis is unavailable or the TTL expires, DM conversations simply show as unread (safe default).
+
 ## Step 3: Ecto Schemas
 
 ### 3.1 User Schema (`Slackex.Accounts.User`)
@@ -211,7 +213,7 @@ Composite PK (`@primary_key false`). Tracks `last_read_message_id` per user per 
 ```
 
 - **Epoch:** 2025-01-01T00:00:00Z (ms)
-- **Node ID:** 10-bit identifier (0-1023), assigned deterministically — not derived from node-name hash (which is collision-prone at 10 bits). In production (K8s), use the StatefulSet pod ordinal via `SNOWFLAKE_NODE_ID` env var. In dev, derive from the port number via `rem(port - 4000, 1024)` — this maps port 4000→0, 4001→1, 4002→2 (the typical local multi-node range), and clamps any port value to the valid 10-bit range (0-1023). On startup, the Snowflake GenServer verifies uniqueness by attempting a PostgreSQL advisory lock on `node_id` — if the lock fails, another node holds the same ID and startup is aborted with a clear error.
+- **Node ID:** 10-bit identifier (0-1023), assigned deterministically — not derived from node-name hash (which is collision-prone at 10 bits). In production (K8s), use the StatefulSet pod ordinal via `SNOWFLAKE_NODE_ID` env var. In dev, derive from the port number via `rem(port - 4000, 1024)` — this maps port 4000→0, 4001→1, 4002→2 (the typical local multi-node range). `rem/2` wraps values into the valid 10-bit range (0-1023) via modular arithmetic, not clamping. On startup, the Snowflake GenServer verifies uniqueness by attempting a PostgreSQL advisory lock on `node_id` — if the lock fails, another node holds the same ID and startup is aborted with a clear error.
 - **Sequence:** 4096 IDs per millisecond per node
 - **Clock drift:** if clock goes backwards, waits until it advances past `last_timestamp`
 
@@ -244,7 +246,7 @@ Public API:
 - `generate_api_token(user) :: String.t()` — JWT access token, TTL 15 minutes
 - `generate_refresh_token(user) :: String.t()` — JWT refresh token with `"typ" => "refresh"`, TTL 30 days
 - `verify_api_token(token) :: {:ok, user_id} | {:error, reason}` — decodes and verifies JWT
-- `refresh_api_token(refresh_token) :: {:ok, %{access_token, refresh_token}} | {:error, reason}` — exchanges refresh token for a new access token **and a new refresh token** (rotation). The old refresh token's JTI is revoked immediately. If a revoked refresh token is ever presented, all tokens for that user are revoked (token family invalidation — indicates potential token theft).
+- `refresh_api_token(refresh_token) :: {:ok, %{access_token, refresh_token}} | {:error, reason}` — exchanges refresh token for a new access token **and a new refresh token** (rotation). The old refresh token's JTI is revoked immediately. If a revoked refresh token is ever presented, all tokens for that user are revoked (token family invalidation — indicates potential token theft). **Grace window for client retries:** To prevent accidental global logout from legitimate client retries/races after rotation, the old refresh token's JTI is not hard-deleted but instead marked with a `revoked_at` timestamp. Presentations of a revoked JTI within a **10-second grace window** from `revoked_at` return the same new token pair (idempotent response, no family invalidation). Only presentations **after** the grace window trigger family invalidation. This absorbs retry storms from mobile clients on flaky networks without weakening the replay-detection guarantee.
 - `revoke_token(token) :: :ok` — revokes a token (e.g., on logout)
 
 **Token revocation strategy:**
