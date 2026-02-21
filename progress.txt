@@ -1,0 +1,43 @@
+## Phase 1 Foundation — Backend Complete (2026-02-21)
+
+### What was built
+- Phoenix 1.8.1 project skeleton with Elixir 1.19.2 / OTP 28
+- 8 database migrations (citext, users, user_tokens, channels, subscriptions, messages, dm_conversations, read_cursors)
+- 7 Ecto schemas with full changesets, validations, and associations
+- Accounts context: registration, password auth, session tokens
+- Auth module: JWT access/refresh tokens via Guardian, token rotation with 10s grace window, family invalidation on replay
+- Chat context: channels (create/join/leave), messages (permission-checked, Snowflake ID, PubSub broadcast), DMs (user ordering invariant), read cursors (upsert-based unread tracking)
+- Snowflake ID generator GenServer: 64-bit IDs with advisory lock, clock drift handling, sequence overflow
+- Rate limiter: pure functional token bucket (no GenServer)
+- Permissions module: role hierarchy (owner > admin > member > viewer > nil)
+- ExMachina test factory with builders for all schemas
+- docker-compose.yml with pgvector Postgres (port 5433) and Redis
+
+### Test coverage
+- 66 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+
+### Lessons learned
+
+1. **Elixir Bitwise operators require explicit import**: `<<<`, `>>>`, `|||`, `&&&` are not available by default. Must `import Bitwise` in any module using them, including test files.
+
+2. **Ecto schema type `:text` does not exist**: In migrations you use `:text` for the DB column type, but in Ecto schemas you must use `:string` for both varchar and text columns. `:text` is only valid in migrations.
+
+3. **`:utc_datetime_usec` requires microsecond precision (6 decimal places)**: `DateTime.from_unix!(ms, :millisecond)` creates a DateTime with precision=3 (milliseconds), e.g. `~U[2026-02-21 23:23:22.291Z]`. Ecto's `:utc_datetime_usec` rejects this. Fix: use `DateTime.from_unix!(ms * 1000, :microsecond)` to get precision=6. Note: `DateTime.truncate(:microsecond)` does NOT upgrade precision — it only truncates downward and preserves the original precision marker.
+
+4. **`replace_all` in edits catches alias lines too**: When doing a global replace of `Slackex.Repo` -> `Repo`, the `alias Slackex.Repo` line also gets replaced to `alias Repo` which is invalid. Always be careful with global replacements near alias declarations.
+
+5. **Phoenix 1.8 no longer includes Swoosh by default but still generates mailer code**: After `mix phx.new`, manually remove `lib/slackex/mailer.ex` and all Swoosh config if email is not needed.
+
+6. **Credo alias ordering**: Credo --strict checks that aliases within a group are alphabetically ordered. Multi-alias `{A, B, C}` must also be sorted. `Slackex.Accounts` should come before `Slackex.Accounts.{Auth, Guardian}` which comes before `Slackex.Repo`.
+
+7. **Credo nested module aliases**: When a module is used more than once, Credo prefers a top-level `alias` rather than inline fully-qualified names. Use `# credo:disable-for-this-file Credo.Check.Design.AliasUsage` for Phoenix-generated files.
+
+8. **Credo function nesting depth**: `with` clauses containing nested `case`/`if` easily exceed max depth of 2. Extract the inner logic into private functions to flatten the nesting.
+
+### What's next
+- LiveView chat interface (Step 7): registration/login forms, real-time message list, channel sidebar
+- WebSocket channels for mobile clients (UserSocket, ChatChannel)
+- API routes: login, refresh, bootstrap
+- Shared serializers (MessageJSON, ChannelJSON)
+- Boundary compile-time checks
+- Git hooks and bin/setup script

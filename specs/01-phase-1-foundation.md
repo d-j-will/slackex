@@ -387,24 +387,45 @@ See `05-ci-cd-devops.md` for the full Docker Compose configuration. Phase 1 requ
 
 ## Phase 1 Acceptance Criteria
 
-- [ ] `mix compile --warnings-as-errors` passes (including boundary checks)
-- [ ] `mix credo --strict` passes
-- [ ] `mix format --check-formatted` passes
+### Backend Foundation (Steps 1-6) — COMPLETE
+
+- [x] `mix compile --warnings-as-errors` passes
+- [x] `mix credo --strict` passes (zero issues)
+- [x] `mix format --check-formatted` passes
+- [x] All 8 migrations run cleanly (citext, users, user_tokens, channels, subscriptions, messages, dm_conversations, read_cursors)
+- [x] User registration with password hashing and validation
+- [x] User can create a public channel (context API + atomic owner subscription)
+- [x] User can join/leave public channels (idempotent, rejects private)
+- [x] User can send messages in a channel they've joined (permission-checked)
+- [x] Messages are persisted to PostgreSQL with Snowflake IDs
+- [x] Message `inserted_at` is derived from Snowflake ID timestamp (microsecond precision)
+- [x] Guardian is configured with JWT access tokens (15min) and refresh tokens (30 days)
+- [x] Refresh token rotation with grace window and family invalidation
+- [x] Unread counts are tracked via read cursors (upsert with `on_conflict`)
+- [x] DM conversations work between two users (user ordering invariant enforced)
+- [x] Snowflake ID generator with advisory lock, clock drift handling, sequence overflow
+- [x] Rate limiter (pure functional token bucket)
+- [x] Role-based permissions (owner/admin/member/viewer hierarchy)
+- [x] PubSub broadcasting on message send (channel + DM)
+- [x] `docker-compose up` starts Postgres (with pgvector) and Redis
+- [x] 66 behavioral and unit tests pass
+
+### LiveView & WebSocket (Steps 7-8) — TODO
+
 - [ ] User can register, log in, log out via LiveView
-- [ ] User can create a public channel
-- [ ] User can join/leave public channels
-- [ ] User can send messages in a channel they've joined
+- [ ] User can send messages via LiveView with real-time updates
 - [ ] Messages appear in real-time for all subscribed users via PubSub
-- [ ] Messages are persisted to PostgreSQL with Snowflake IDs
-- [ ] Guardian is configured with JWT access tokens (15min) and refresh tokens (30 days)
 - [ ] Mobile client can authenticate via JWT and join channels via WebSocket
 - [ ] Mobile client can send/receive messages via Phoenix Channel protocol
 - [ ] LiveView and Channel modules follow adapter boundary rule (no domain logic or direct `Repo` reads/writes outside contexts)
 - [ ] Shared serializers are used for Channel and API payloads (single source of truth for payload shape)
 - [ ] `GET /api/bootstrap` provides JWT-authenticated bootstrap payload for non-LiveView clients
-- [ ] Unread counts are tracked via read cursors
-- [ ] DM conversations work between two users
+
+### Tooling & DevEx — PARTIAL
+
+- [x] Docker Compose with pgvector Postgres and Redis
+- [x] Mix aliases for lint, typecheck, quality, ci
+- [ ] Boundary compile-time checks (deferred — `boundary` dep not yet added)
 - [ ] Tidewave MCP server is accessible in dev for AI-assisted development
-- [ ] `docker-compose up` starts Postgres (with pgvector) and Redis
 - [ ] `mix setup` bootstraps the entire project from scratch
-- [ ] All behavioral tests pass
+- [ ] Pre-commit/pre-push git hooks installed
