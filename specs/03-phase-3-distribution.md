@@ -50,7 +50,24 @@ Public API:
 - `lookup(channel_id) :: {:ok, pid} | :not_found`
 - `via(channel_id)` — returns `{:via, Horde.Registry, {__MODULE__, channel_id}}` tuple
 
-### 2.2 Replace DynamicSupervisor with Horde.DynamicSupervisor
+### 2.2 Writer Fencing (Split-Brain Safety)
+
+Horde's CRDT-based registry is eventually consistent. During a network partition, two nodes may each start a ChannelServer for the same channel, violating the single-writer invariant and producing divergent writes, duplicate rate-limit state, and message ordering conflicts.
+
+**Fencing strategy — writer epoch:**
+1. Each ChannelServer acquires a **writer epoch** on startup by atomically incrementing a per-channel counter in PostgreSQL: `UPDATE channels SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch`. The epoch is stored in ChannelServer state.
+2. `BatchWriter.insert_batch/1` includes the `writer_epoch` in every write. Before executing the batch insert, it checks: `SELECT writer_epoch FROM channels WHERE id = $1`. If the DB epoch is higher than the caller's epoch, the write is **rejected** (a newer writer has taken over).
+3. On Horde conflict resolution (when the partition heals and CRDTs converge), the losing ChannelServer is terminated. Its pending writes will fail the epoch check. The winning ChannelServer's writes succeed.
+4. **Snowflake IDs remain unique** regardless of split-brain (different nodes have different node_id bits), so `ON CONFLICT DO NOTHING` safely deduplicates any overlapping writes.
+
+**Migration:** Add `writer_epoch` integer column (default 0, NOT NULL) to `channels` table in Phase 3.
+
+> **Note:** This makes the single-writer invariant **verifiable** rather than merely assumed.
+> Rate limiters may briefly allow excess throughput during split-brain (two ChannelServers
+> each tracking independent state), but this is bounded by the partition duration and
+> is an acceptable tradeoff vs. the complexity of distributed rate limiting.
+
+### 2.3 Replace DynamicSupervisor with Horde.DynamicSupervisor
 
 `Slackex.Messaging.ChannelSupervisor` — wraps `Horde.DynamicSupervisor` with `process_redistribution: :active` to rebalance on node changes.
 
@@ -58,11 +75,11 @@ Public API:
 - `ensure_started(channel_id, opts \\ [])` — cluster-wide lookup then start. Same API as Phase 2 but now distributed.
 - `count()` — active channel processes across the cluster
 
-### 2.3 Update ChannelServer
+### 2.4 Update ChannelServer
 
 Change `via/1` from `{:via, Registry, ...}` to `Slackex.Messaging.ChannelRegistry.via(channel_id)`.
 
-### 2.4 Process Handoff on Node Down
+### 2.5 Process Handoff on Node Down
 
 Horde automatically restarts affected processes on surviving nodes. ChannelServer's `init/1` rehydrates from cache/DB.
 
@@ -122,7 +139,7 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 
 | Query | Repo | Reason |
 |-------|------|--------|
-| `Chat.list_messages/2` | ReadRepo | Historical read, tolerates replication lag |
+| `Chat.list_messages/2` (older history) | ReadRepo | Historical read, tolerates replication lag |
 | `Chat.list_user_channels/1` | ReadRepo | Channel list doesn't change often |
 | `Chat.list_public_channels/0` | ReadRepo | Read-only listing |
 | `Chat.unread_count/2` | ReadRepo | Read-only count |
@@ -132,6 +149,14 @@ On cache miss, load from DB and backfill both Redis (`cache_messages`) and ETS (
 | `Chat.create_channel/2` | Primary | Write operation |
 | `Chat.mark_as_read/2` | Primary | Write (upsert) |
 | `Chat.join_channel/2` | Primary | Write |
+| `CatchupServer.build_catchup/1` | Primary | Recent messages — must not miss data from replication lag |
+| `HistoryLoader.recent/2` (cache miss) | Primary | Initial channel load — user expects to see latest messages |
+
+**Consistency rules:**
+- **Recent window (< 30 seconds old):** Always read from Primary. This covers reconnection catch-up, initial channel load, and unread count after sending a message. Replication lag in this window would cause users to "miss" messages they just sent or received.
+- **Older history (scroll-up pagination):** ReadRepo is safe — the data is stable and replication lag is imperceptible for older messages.
+- **Search:** ReadRepo is acceptable — search results being a few seconds behind is tolerable.
+- **Lag detection fallback:** If `Slackex.ReadRepo` detects replication lag > 5 seconds (via `pg_last_wal_replay_lsn()` monitoring), all queries automatically fall back to Primary until lag recovers. Emit `[:slackex, :read_repo, :lag_fallback]` telemetry.
 
 ### 3.5.3 Test Support
 
@@ -186,10 +211,24 @@ Standard Ecto schema. Validates platform inclusion in `["fcm", "apns"]`. PushWor
 1. Rename `messages` to `messages_old`
 2. Create new `messages` table with `PARTITION BY RANGE (inserted_at)` and composite PK `(id, inserted_at)`
 3. Create monthly partitions (past 3 months, current, next 3)
-4. Recreate indexes: `(channel_id, id)`, `(dm_conversation_id, id)`, `(sender_id)`, GIN FTS
-5. Copy data from old table
-6. Drop old table
-7. Re-add foreign keys to users, channels, dm_conversations
+4. Recreate indexes: `(channel_id, inserted_at, id)`, `(dm_conversation_id, inserted_at, id)`, `(sender_id)`, GIN FTS — note: `inserted_at` is included in composite indexes to enable partition pruning on queries that filter by both `channel_id` and Snowflake-derived timestamp bounds
+5. Copy data from old table: `INSERT INTO messages SELECT * FROM messages_old`
+6. **Validate:** Compare row counts (`SELECT count(*) FROM messages` vs `messages_old`), spot-check min/max IDs per partition
+7. Drop old table (only after validation passes)
+8. Re-add foreign keys to users, channels, dm_conversations
+
+**Rollback plan:**
+- Before step 1, take a logical backup: `pg_dump --table=messages --data-only`
+- If migration fails at any step before dropping `messages_old` (steps 1-6), reverse by: `DROP TABLE IF EXISTS messages; ALTER TABLE messages_old RENAME TO messages;`
+- If failure occurs after step 7 (old table dropped), restore from the logical backup
+- **Rehearsal:** Run the full migration on a staging environment with production-scale data before the real cutover. Measure duration, validate row counts, and test application queries against the partitioned table.
+
+**Pre-migration checklist:**
+- [ ] Staging rehearsal completed successfully
+- [ ] Logical backup of messages table taken
+- [ ] Application put into maintenance mode (no writes)
+- [ ] Row count recorded: `SELECT count(*) FROM messages`
+- [ ] Estimated migration duration: ______ (from staging rehearsal)
 
 **Note on FKs:** Partitioned tables require FK references to match the full partition key `(id, inserted_at)`. Tables referencing just `message_id` (like `message_embeddings`) should NOT use FK constraints — enforce referential integrity at the application level.
 

@@ -234,6 +234,17 @@ See Phase 1 spec for initial schema, Phase 3 for partitioning, Phase 4 for pgvec
 
 Each phase has its own detailed spec document.
 
+### Phase-Scoped Dependency Introduction
+
+| Dependency | Introduced In | Notes |
+|------------|---------------|-------|
+| phoenix, phoenix_live_view, ecto_sql, postgrex, bcrypt_elixir, guardian, boundary, jason, bandit, html_sanitize_ex, dns_cluster | Phase 1 | Core application stack |
+| oban | Phase 2 | Background jobs (embeddings, notifications, cache warming) |
+| horde, libcluster, redix, nimble_pool, pigeon | Phase 3 | Distribution, clustering, cross-node cache, push notifications. `dns_cluster` (Phase 1) superseded by `libcluster` for K8s/gossip strategies. |
+| pgvector, req | Phase 4 | Vector search, HTTP client for embedding API |
+| telemetry, telemetry_metrics, telemetry_poller, telemetry_metrics_prometheus | Phase 1 | Observability (used across all phases) |
+| Dev/test: tidewave, credo, dialyxir, ex_machina, wallaby, local_cluster, floki | Phase 1 | Development and testing tooling |
+
 ## Explicitly Deferred Features
 
 These features are intentionally out of scope for the initial 4-phase plan. The schema and architecture accommodate them for future implementation.

@@ -204,12 +204,12 @@ Composite PK (`@primary_key false`). Tracks `last_read_message_id` per user per 
 ```
 
 - **Epoch:** 2025-01-01T00:00:00Z (ms)
-- **Node ID:** derived from `node()` name hash, supports 1024 nodes
+- **Node ID:** 10-bit identifier (0-1023), assigned deterministically — not derived from node-name hash (which is collision-prone at 10 bits). In production (K8s), use the StatefulSet pod ordinal via `SNOWFLAKE_NODE_ID` env var. In dev, derive from the port number. On startup, the Snowflake GenServer verifies uniqueness by attempting a PostgreSQL advisory lock on `node_id` — if the lock fails, another node holds the same ID and startup is aborted with a clear error.
 - **Sequence:** 4096 IDs per millisecond per node
 - **Clock drift:** if clock goes backwards, waits until it advances past `last_timestamp`
 
 **Public API:**
-- `start_link(opts)` — starts the GenServer, `node_id` derived from `node()` by default
+- `start_link(opts)` — starts the GenServer, `node_id` from `SNOWFLAKE_NODE_ID` env var (required in prod) or derived from port number in dev. Acquires a PostgreSQL advisory lock on the node_id to prevent collisions.
 - `generate() :: integer()` — returns a unique, monotonically increasing 64-bit ID
 - `extract_timestamp(id) :: integer()` — extracts the creation timestamp (ms since Unix epoch) from an ID
 
@@ -281,7 +281,7 @@ Boundary: `deps: [Slackex.Accounts, Slackex.Infrastructure, Slackex.Repo], expor
 
 **Message operations (Phase 1 — direct persistence, replaced by ChannelServer in Phase 2):**
 - `send_message(channel_id, sender_id, content)` — checks role (owner/admin/member), generates Snowflake ID, sanitizes HTML via `HtmlSanitizeEx.strip_tags/1`, inserts to DB, preloads sender, broadcasts via PubSub to `"channel:#{channel_id}"`
-- `list_messages(channel_id, opts)` — paginated by Snowflake ID, supports `limit` and `before` options, preloads sender
+- `list_messages(channel_id, opts)` — paginated by Snowflake ID, supports `limit` and `before` options, preloads sender. **Partition-aware (Phase 3+):** When a `before` cursor is provided, derives `inserted_at` bounds from the Snowflake timestamp to enable partition pruning (see HistoryLoader).
 
 **DM operations:**
 - `find_or_create_dm(user_a_id, user_b_id)` — normalizes user order, finds existing or creates new

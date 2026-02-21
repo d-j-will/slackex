@@ -183,8 +183,30 @@ Tagged `@tag :e2e`, excluded by default. Uses Wallaby with `SlackexWeb.FeatureCa
 
 Tagged `@moduletag :distributed`, excluded by default. Uses `LocalCluster` to start 3 BEAM nodes.
 
+### Core Distribution Tests
+
 - **channel process exists on exactly one node** — starts channel, verifiable from all nodes via Horde registry
 - **channel process migrates on node failure** — kills hosting node, verifies channel restarts on surviving node within timeout
+
+### Split-Brain & Fencing Tests
+
+- **writer epoch prevents stale writes** — start ChannelServer, simulate epoch bump (another writer took over), verify batch write is rejected
+- **concurrent ChannelServers during partition** — use `LocalCluster` to create a network partition (`:net_kernel.disconnect/1`), verify both sides can accept messages, heal partition, verify only the higher-epoch writer's pending writes succeed, verify Snowflake dedup resolves overlapping IDs via `ON CONFLICT DO NOTHING`
+
+### Replica Consistency Tests
+
+- **recent messages use primary after cache miss** — send message, immediately query via `HistoryLoader.recent/2`, verify it hits Primary (not ReadRepo)
+- **lag fallback triggers on high replication delay** — mock `pg_last_wal_replay_lsn()` monitoring to simulate >5s lag, verify all queries fall back to Primary, verify telemetry event emitted
+
+### Partition Migration Tests (tagged `@tag :migration`, manual only)
+
+- **row count matches after migration** — run partition migration on test data, verify `count(*)` matches pre-migration count
+- **Snowflake-based pagination with partition pruning** — query with `before_id`, verify `EXPLAIN` shows partition pruning (not scanning all partitions)
+- **embedding join uses partition key** — verify `EXPLAIN` on semantic search join shows partition pruning via `(message_id, message_inserted_at)`
+
+### Crash Recovery Tests
+
+- **ChannelServer recovers un-persisted messages on restart** — send messages, kill ChannelServer before flush, restart, verify init/1 reconciliation re-persists from cache
 
 ## Test Configuration
 
@@ -219,7 +241,9 @@ mix test --cover                   # With coverage report
 - [ ] Cache tests verify: miss fallthrough, cache population, invalidation
 - [ ] Unit tests cover only: Snowflake, Permissions, RateLimiter (pure functions, including token refill behavior)
 - [ ] E2E tests cover: full registration→chat flow, DM flow
-- [ ] Distributed tests cover: single-writer guarantee, node failover
+- [ ] Distributed tests cover: single-writer guarantee, node failover, split-brain fencing, crash recovery reconciliation
+- [ ] Replica consistency tests cover: recent-window primary routing, lag fallback
+- [ ] Migration tests (manual) cover: row count validation, partition pruning verification
 - [ ] Test config uses: SQL Sandbox, inline Oban, stub embeddings, reduced bcrypt rounds
 - [ ] `mix test` runs all standard tests (excluding :e2e and :distributed)
 - [ ] `mix test --include e2e` runs browser tests

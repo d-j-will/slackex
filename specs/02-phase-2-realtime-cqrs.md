@@ -43,7 +43,7 @@ The core of the real-time system. One GenServer process per active channel, runn
 
 ### 1.2 Public API
 
-- `start_link({channel_id, opts})` — starts GenServer, registered via `{:via, Registry, {Slackex.ChannelRegistry, channel_id}}`
+- `start_link({channel_id, opts})` — starts GenServer, registered via `{:via, Registry, {Slackex.Messaging.ChannelRegistry, channel_id}}`
 - `send_message(channel_id, sender_id, content) :: {:ok, message} | {:error, reason}` — validates permissions, checks rate limit, generates Snowflake ID, sanitizes content, then: (1) adds to pending_writes, (2) appends to in-memory queue, (3) updates ETS cache, (4) broadcasts via PubSub to all subscribers
 - `get_recent_messages(channel_id, limit \\ 50) :: [message]` — returns from in-memory queue
 
@@ -60,6 +60,8 @@ The core of the real-time system. One GenServer process per active channel, runn
 **At-most-once delivery guarantee:** Messages are broadcast to connected clients immediately upon acceptance by the ChannelServer, before durable persistence to PostgreSQL. This is a deliberate latency tradeoff — clients see messages in <10ms rather than waiting for a DB round-trip.
 
 **Failure window:** If a node crashes between accepting a message and the next batch flush (up to 2 seconds), messages in `pending_writes` are lost. Connected clients may have already rendered these messages.
+
+**Product-level SLO:** Message durability target is **99.99%** under normal operation (no node crashes). During a node crash, up to 2 seconds of messages (one flush interval) may be lost. This is an explicit product tradeoff accepted for <10ms delivery latency. User-facing behavior: messages that vanish after a crash are not re-shown to other users on reload. Clients should treat messages as "optimistic" until they appear in scroll-back history (which is always read from the durable DB). If this tradeoff is unacceptable for a future use case, the architecture supports upgrading to at-least-once semantics by making the flush synchronous (at the cost of ~5-20ms additional latency per message).
 
 **Mitigations:**
 1. **Batch flush acknowledgment:** `BatchWriter.async_insert_batch/2` reports success/failure back to the ChannelServer via `send(caller, {:batch_result, ref, result})`. On failure, the ChannelServer retains the messages in `pending_writes` and retries on the next flush cycle.
@@ -100,7 +102,7 @@ The ChannelServer accumulates messages in `pending_writes` and flushes them on a
 
 ### 2.1 Batch Writer (`Slackex.Pipeline.BatchWriter`)
 
-**Single-writer invariant:** Each ChannelServer is the single writer for its channel. Concurrent writes from different channels are safe (different rows).
+**Single-writer invariant (best-effort):** Each ChannelServer is the single writer for its channel. Concurrent writes from different channels are safe (different rows). In Phase 2 (single-node), this is enforced by Registry's `:unique` keys. In Phase 3 (Horde), this is **best-effort** — Horde's CRDT-based registry is eventually consistent, so during a network partition, two ChannelServers for the same channel can briefly coexist (split-brain). See Phase 3 for the fencing strategy that makes writes safe under this condition.
 
 Public API:
 - `insert_batch(messages) :: {:ok, count} | {:error, term}` — single `Repo.insert_all("messages", entries, on_conflict: :nothing)` for the batch. No `conflict_target` is specified — `ON CONFLICT DO NOTHING` catches any unique constraint violation, which remains correct after Phase 3 changes the PK to `(id, inserted_at)` for partitioning
@@ -116,7 +118,7 @@ Public API:
 
 GenServer that owns an ETS table (`:set`, `:public`, `:named_table`, `read_concurrency: true`, `write_concurrency: true`).
 
-**Single-writer invariant for ETS:** Only ChannelServer processes call `put_message/2` for their `channel_id`. Since each channel has exactly one ChannelServer (enforced by Registry/Horde), this guarantees single-writer semantics per channel and eliminates ETS TOCTOU races in the read-then-write pattern.
+**Single-writer invariant for ETS (local node):** Only ChannelServer processes call `put_message/2` for their `channel_id`. In Phase 2 (single-node), Registry enforces exactly one ChannelServer per channel. In Phase 3 (distributed), Horde provides this as a best-effort guarantee — see Phase 3 fencing strategy for split-brain safety. ETS is node-local so concurrent writes from different nodes don't conflict at the ETS level, only at the PostgreSQL level (where fencing applies).
 
 **Constants:** `@max_channels 1_000`, `@max_messages_per_channel 200`
 
@@ -166,7 +168,7 @@ CQRS read side — loads message history from the cache cascade (ETS → Postgre
 
 Public API:
 - `recent(channel_id, limit \\ 50)` — checks cache first, falls through to DB on miss, backfills cache from DB results
-- `before(channel_id, before_id, limit \\ 50)` — always from DB (older messages not worth caching)
+- `before(channel_id, before_id, limit \\ 50)` — always from DB (older messages not worth caching). **Partition-aware (Phase 3+):** Derives an `inserted_at` upper bound from `before_id` via `Snowflake.extract_timestamp/1` and includes it in the WHERE clause (`inserted_at <= ?`) to enable PostgreSQL partition pruning on the time-partitioned messages table.
 
 ## Step 6: Update LiveView to Use CQRS
 

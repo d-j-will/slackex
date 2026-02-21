@@ -26,6 +26,7 @@ Create table `message_embeddings` (primary key: `message_id`):
 | Column | Type | Constraints |
 |--------|------|-------------|
 | message_id | bigint | PK (references messages.id — no FK constraint, see note) |
+| message_inserted_at | utc_datetime_usec | NOT NULL — copied from message's `inserted_at` (derived from Snowflake ID). Enables partition-aware joins with the partitioned `messages` table. |
 | channel_id | bigint | indexed |
 | embedding | vector(1536) | OpenAI text-embedding-3-small dimensions |
 | content_hash | string(64) | SHA-256 of content, for dedup |
@@ -96,7 +97,7 @@ Uses PostgreSQL `tsvector/tsquery`:
 
 Uses pgvector cosine similarity:
 - Generates embedding for the query text via `EmbeddingClient.generate/1`
-- Joins `message_embeddings` with `messages`
+- Joins `message_embeddings` with `messages` on `(message_id, message_inserted_at) = (id, inserted_at)` — enables PostgreSQL partition pruning on the partitioned messages table
 - **Authorization filter:** Same membership-based filtering as `text_search/3` — restricts results to channels the user can access
 - Filters by similarity threshold (default 0.3)
 - Orders by cosine distance ascending (`<=>` operator)
@@ -142,7 +143,7 @@ Public API:
 
 ## Embeddings Boundary
 
-`Slackex.Embeddings` — `deps: [Chat], exports: [EmbeddingWorker, EmbeddingClient, RAGContext]`
+`Slackex.Embeddings` — `deps: [Chat, Repo], exports: [EmbeddingWorker, EmbeddingClient, RAGContext, MessageEmbedding]`
 
 ## Phase 4 Acceptance Criteria
 

@@ -205,6 +205,7 @@ Production config reads from environment variables:
 | `POOL_SIZE` | no | `20` | DB connection pool size |
 | `OPENAI_API_KEY` | no | - | OpenAI API key for embeddings |
 | `K8S_SERVICE_NAME` | k8s | `slackex-headless` | Kubernetes headless service |
+| `SNOWFLAKE_NODE_ID` | prod | - | Unique 10-bit node ID (0-1023) for Snowflake ID generation. Use K8s StatefulSet pod ordinal. |
 | `RELEASE_NODE` | cluster | - | BEAM node name (e.g., `slackex@10.0.1.5`) |
 | `DATABASE_SSL` | no | `false` | Enable SSL for DB connection |
 
