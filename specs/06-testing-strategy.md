@@ -523,6 +523,21 @@ defmodule Slackex.ChatTest do
       dms = Chat.list_dms(bob.id)
       assert length(dms) == 1
     end
+
+    test "only DM participants can send messages" do
+      alice = insert(:user)
+      bob = insert(:user)
+      outsider = insert(:user)
+
+      {:ok, dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      # Participants can send
+      assert {:ok, _} = Chat.send_dm(dm.id, alice.id, "From Alice")
+      assert {:ok, _} = Chat.send_dm(dm.id, bob.id, "From Bob")
+
+      # Non-participant is rejected
+      assert {:error, :unauthorized} = Chat.send_dm(dm.id, outsider.id, "Sneaky!")
+    end
   end
 end
 ```
@@ -863,6 +878,28 @@ defmodule Slackex.Infrastructure.RateLimiterTest do
     {:ok, limiter} = RateLimiter.check(limiter)
     assert {:error, :rate_limited} = elem(RateLimiter.check(limiter), 0)
   end
+
+  test "tokens refill after the time window elapses" do
+    limiter = RateLimiter.new(rate: 1, per: :second)
+
+    {:ok, limiter} = RateLimiter.check(limiter)
+    {:error, :rate_limited} = elem(RateLimiter.check(limiter), 0)
+
+    # Simulate time passing (the pure functional limiter uses timestamps)
+    Process.sleep(1_100)
+
+    # Should be allowed again after refill
+    assert {:ok, _limiter} = RateLimiter.check(limiter)
+  end
+
+  test "rate limiter is independent per instance" do
+    limiter_a = RateLimiter.new(rate: 1, per: :second)
+    limiter_b = RateLimiter.new(rate: 1, per: :second)
+
+    {:ok, _limiter_a} = RateLimiter.check(limiter_a)
+    # limiter_b is unaffected by limiter_a's usage
+    assert {:ok, _limiter_b} = RateLimiter.check(limiter_b)
+  end
 end
 ```
 
@@ -1066,12 +1103,12 @@ mix test
 
 - [ ] All test support modules (Factory, DataCase, ConnCase, ChannelCase) are configured
 - [ ] ExMachina factories exist for all schemas (User, Channel, Message, etc.)
-- [ ] Behavioral integration tests cover: registration, auth, channel CRUD, messaging, DMs, unread tracking
+- [ ] Behavioral integration tests cover: registration, auth, channel CRUD, messaging, DMs (including sender authorization), unread tracking
 - [ ] LiveView tests verify: channel selection, message sending, real-time delivery, auth redirect
 - [ ] Channel tests verify: join, send, broadcast, auth rejection
 - [ ] Search tests verify: FTS keyword matching, scoping by channel
 - [ ] Cache tests verify: miss fallthrough, cache population, invalidation
-- [ ] Unit tests cover only: Snowflake, Permissions, RateLimiter (pure functions)
+- [ ] Unit tests cover only: Snowflake, Permissions, RateLimiter (pure functions, including token refill behavior)
 - [ ] E2E tests cover: full registration→chat flow, DM flow
 - [ ] Distributed tests cover: single-writer guarantee, node failover
 - [ ] Test config uses: SQL Sandbox, inline Oban, stub embeddings, reduced bcrypt rounds

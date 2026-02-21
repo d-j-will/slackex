@@ -158,7 +158,7 @@ end
 ```elixir
 defmodule Slackex.Chat do
   use Boundary,
-    deps: [Slackex.Accounts],
+    deps: [Slackex.Accounts, Slackex.Infrastructure],
     exports: [Channel, Message, Subscription, DMConversation, ReadCursor, Permissions]
 end
 ```
@@ -391,6 +391,17 @@ defmodule Slackex.Accounts.User do
     |> unique_constraint(:username)
     |> unique_constraint(:email)
     |> hash_password()
+  end
+
+  @doc "Verifies the password against the stored hash. Returns false if user is nil (timing-safe)."
+  def valid_password?(%__MODULE__{hashed_password: hashed_password}, password)
+      when is_binary(hashed_password) and byte_size(password) > 0 do
+    Bcrypt.verify_pass(password, hashed_password)
+  end
+
+  def valid_password?(_, _) do
+    Bcrypt.no_user_verify()
+    false
   end
 
   defp hash_password(changeset) do
@@ -667,6 +678,177 @@ defmodule Slackex.Infrastructure.Snowflake do
 end
 ```
 
+## Step 4.5: Rate Limiter
+
+A pure functional token bucket rate limiter. No GenServer — the caller owns the state.
+
+```elixir
+defmodule Slackex.Infrastructure.RateLimiter do
+  @moduledoc """
+  Token bucket rate limiter. Pure functional — caller stores the state.
+
+  ## Example
+
+      limiter = RateLimiter.new(rate: 5, per: :second)
+      {:ok, limiter} = RateLimiter.check(limiter)
+      {:error, :rate_limited} = RateLimiter.check(limiter)  # after 5 calls
+  """
+
+  defstruct [:rate, :per_ms, :tokens, :last_refill]
+
+  @per_ms %{second: 1_000, minute: 60_000, hour: 3_600_000}
+
+  def new(opts) do
+    rate = Keyword.fetch!(opts, :rate)
+    per = Keyword.fetch!(opts, :per)
+
+    %__MODULE__{
+      rate: rate,
+      per_ms: Map.fetch!(@per_ms, per),
+      tokens: rate,
+      last_refill: System.monotonic_time(:millisecond)
+    }
+  end
+
+  def check(%__MODULE__{} = limiter) do
+    limiter = refill(limiter)
+
+    if limiter.tokens >= 1 do
+      {:ok, %{limiter | tokens: limiter.tokens - 1}}
+    else
+      {:error, :rate_limited}
+    end
+  end
+
+  defp refill(%__MODULE__{} = limiter) do
+    now = System.monotonic_time(:millisecond)
+    elapsed = now - limiter.last_refill
+    new_tokens = elapsed / limiter.per_ms * limiter.rate
+    tokens = min(limiter.rate, limiter.tokens + new_tokens)
+
+    %{limiter | tokens: tokens, last_refill: now}
+  end
+end
+```
+
+## Step 4.6: Guardian & Auth Module
+
+### 4.5.1 Guardian Configuration
+
+```elixir
+defmodule Slackex.Accounts.Guardian do
+  use Guardian, otp_app: :slackex
+
+  alias Slackex.Accounts
+
+  def subject_for_token(%{id: id}, _claims) do
+    {:ok, to_string(id)}
+  end
+
+  def resource_from_claims(%{"sub" => id}) do
+    case Accounts.get_user!(String.to_integer(id)) do
+      nil -> {:error, :user_not_found}
+      user -> {:ok, user}
+    end
+  rescue
+    Ecto.NoResultsError -> {:error, :user_not_found}
+  end
+end
+```
+
+### 4.5.2 Guardian Config
+
+```elixir
+# config/config.exs
+config :slackex, Slackex.Accounts.Guardian,
+  issuer: "slackex",
+  secret_key: "dev-secret-override-in-prod"
+
+# config/runtime.exs (in prod block)
+config :slackex, Slackex.Accounts.Guardian,
+  issuer: "slackex",
+  secret_key: System.fetch_env!("GUARDIAN_SECRET_KEY")
+```
+
+### 4.5.3 Auth Module
+
+```elixir
+defmodule Slackex.Accounts.Auth do
+  @moduledoc """
+  Authentication logic for both web sessions and mobile JWT tokens.
+  """
+
+  alias Slackex.Accounts.Guardian
+
+  @access_token_ttl {15, :minute}
+  @refresh_token_ttl {30, :day}
+
+  @doc "Generate a JWT access token for mobile API authentication."
+  def generate_api_token(user) do
+    {:ok, token, _claims} = Guardian.encode_and_sign(user, %{}, ttl: @access_token_ttl)
+    token
+  end
+
+  @doc "Generate a long-lived refresh token."
+  def generate_refresh_token(user) do
+    {:ok, token, _claims} = Guardian.encode_and_sign(
+      user,
+      %{"typ" => "refresh"},
+      ttl: @refresh_token_ttl
+    )
+    token
+  end
+
+  @doc "Verify an access token and return the user_id."
+  def verify_api_token(token) do
+    case Guardian.decode_and_verify(token) do
+      {:ok, claims} -> {:ok, String.to_integer(claims["sub"])}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Exchange a refresh token for a new access token."
+  def refresh_api_token(refresh_token) do
+    with {:ok, _old_claims} <- Guardian.decode_and_verify(refresh_token, %{"typ" => "refresh"}),
+         {:ok, _old, {new_token, _new_claims}} <- Guardian.refresh(refresh_token) do
+      {:ok, new_token}
+    end
+  end
+
+  @doc "Revoke a token (e.g., on logout)."
+  def revoke_token(token) do
+    Guardian.revoke(token)
+  end
+end
+```
+
+### 4.5.4 Guardian Pipeline for API Routes
+
+```elixir
+defmodule SlackexWeb.Plugs.ApiAuthPipeline do
+  use Guardian.Plug.Pipeline,
+    otp_app: :slackex,
+    module: Slackex.Accounts.Guardian,
+    error_handler: SlackexWeb.Plugs.ApiAuthErrorHandler
+
+  plug Guardian.Plug.VerifyHeader, scheme: "Bearer"
+  plug Guardian.Plug.EnsureAuthenticated
+  plug Guardian.Plug.LoadResource
+end
+
+defmodule SlackexWeb.Plugs.ApiAuthErrorHandler do
+  @behaviour Guardian.Plug.ErrorHandler
+
+  @impl true
+  def auth_error(conn, {type, _reason}, _opts) do
+    conn
+    |> Plug.Conn.put_status(:unauthorized)
+    |> Phoenix.Controller.json(%{error: to_string(type)})
+    |> Plug.Conn.halt()
+  end
+end
+```
+
 ## Step 5: Context Modules (Public APIs)
 
 ### 5.1 Accounts Context
@@ -714,7 +896,7 @@ end
 ```elixir
 defmodule Slackex.Chat do
   use Boundary,
-    deps: [Slackex.Accounts],
+    deps: [Slackex.Accounts, Slackex.Infrastructure],
     exports: [Channel, Message, Subscription, DMConversation, ReadCursor, Permissions]
 
   import Ecto.Query
@@ -837,6 +1019,10 @@ defmodule Slackex.Chat do
   end
 
   # --- DMs ---
+
+  def get_dm_conversation(dm_id) do
+    Repo.get(DMConversation, dm_id)
+  end
 
   def find_or_create_dm(user_a_id, user_b_id) do
     {a, b} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
@@ -1003,6 +1189,25 @@ defmodule SlackexWeb.Router do
     post "/auth/refresh", AuthController, :refresh
   end
 end
+```
+
+### 7.1.1 Security Headers
+
+Phoenix's `:put_secure_browser_headers` plug sets reasonable defaults. For production, add explicit CSP and CORS configuration:
+
+```elixir
+# In the :browser pipeline, :put_secure_browser_headers already sets:
+#   x-frame-options: SAMEORIGIN
+#   x-content-type-options: nosniff
+#   x-xss-protection: 1; mode=block
+#
+# For production, configure CSP in endpoint.ex:
+#   plug :put_secure_browser_headers, %{
+#     "content-security-policy" => "default-src 'self'; connect-src 'self' wss://chat.example.com"
+#   }
+#
+# For the mobile API, add CORS headers via a plug or cors_plug dependency
+# if the API will be accessed from browser-based mobile apps (React Native web).
 ```
 
 ### 7.2 Main Chat LiveView
@@ -1292,6 +1497,7 @@ volumes:
 - [ ] User can send messages in a channel they've joined
 - [ ] Messages appear in real-time for all subscribed users via PubSub
 - [ ] Messages are persisted to PostgreSQL with Snowflake IDs
+- [ ] Guardian is configured with JWT access tokens (15min) and refresh tokens (30 days)
 - [ ] Mobile client can authenticate via JWT and join channels via WebSocket
 - [ ] Mobile client can send/receive messages via Phoenix Channel protocol
 - [ ] Unread counts are tracked via read cursors

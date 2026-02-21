@@ -12,10 +12,14 @@ Phase 1 complete and all acceptance criteria met.
 
 ```elixir
 # Add to mix.exs deps (Phase 1 deps remain)
-{:broadway, "~> 1.1"},
 {:oban, "~> 2.18"},
 {:phoenix_pubsub, "~> 2.1"},  # Already present from Phase 1
 ```
+
+> **Note:** The write pipeline uses `Task.Supervisor` (built into OTP) for async batch
+> inserts rather than Broadway. The ChannelServer already owns batching logic via its
+> flush timer, so Broadway's producer/batcher abstraction adds unnecessary complexity
+> at this stage. Broadway can be layered in later if back-pressure becomes necessary.
 
 ## Step 1: ChannelServer GenServer
 
@@ -30,7 +34,7 @@ defmodule Slackex.Messaging.ChannelServer do
   alias Slackex.Chat
   alias Slackex.Cache
   alias Slackex.Infrastructure.Snowflake
-  alias Slackex.Pipeline.MessagePipeline
+  alias Slackex.Pipeline.BatchWriter
 
   @max_cached_messages 200
   @idle_timeout :timer.minutes(30)
@@ -42,8 +46,11 @@ defmodule Slackex.Messaging.ChannelServer do
     messages: :queue.new(),         # Bounded recent message queue
     message_count: 0,
     pending_writes: [],             # Messages awaiting persistence
+    rate_limiters: %{},             # %{user_id => RateLimiter.t()}
     metadata: %{}                   # Channel name, topic, member count
   ]
+
+  @message_rate_limit [rate: 10, per: :second]
 
   # --- Public API ---
 
@@ -88,34 +95,33 @@ defmodule Slackex.Messaging.ChannelServer do
 
   @impl true
   def handle_call({:send_message, sender_id, content}, _from, state) do
-    # Validate permissions
-    case validate_send(sender_id, state) do
-      :ok ->
-        message_id = Snowflake.generate()
+    with :ok <- validate_send(sender_id, state),
+         {:ok, new_state} <- check_rate_limit(sender_id, state) do
+      message_id = Snowflake.generate()
 
-        message = %{
-          id: message_id,
-          channel_id: if(state.channel_type == :channel, do: state.channel_id),
-          dm_conversation_id: if(state.channel_type == :dm, do: state.channel_id),
-          sender_id: sender_id,
-          content: HtmlSanitizeEx.strip_tags(content),
-          inserted_at: DateTime.utc_now()
-        }
+      message = %{
+        id: message_id,
+        channel_id: if(new_state.channel_type == :channel, do: new_state.channel_id),
+        dm_conversation_id: if(new_state.channel_type == :dm, do: new_state.channel_id),
+        sender_id: sender_id,
+        content: HtmlSanitizeEx.strip_tags(content),
+        inserted_at: DateTime.utc_now()
+      }
 
-        # 1. Broadcast immediately to all subscribers
-        broadcast_message(state, message)
+      # 1. Broadcast immediately to all subscribers
+      broadcast_message(new_state, message)
 
-        # 2. Update in-memory queue
-        new_state = append_message(state, message)
+      # 2. Update in-memory queue
+      new_state = append_message(new_state, message)
 
-        # 3. Update ETS cache
-        Cache.Local.put_message(state.channel_id, message)
+      # 3. Update ETS cache
+      Cache.Local.put_message(new_state.channel_id, message)
 
-        # 4. Add to pending writes (flushed on timer)
-        new_state = %{new_state | pending_writes: [message | new_state.pending_writes]}
+      # 4. Add to pending writes (flushed on timer)
+      new_state = %{new_state | pending_writes: [message | new_state.pending_writes]}
 
-        {:reply, {:ok, message}, new_state, @idle_timeout}
-
+      {:reply, {:ok, message}, new_state, @idle_timeout}
+    else
       {:error, reason} ->
         {:reply, {:error, reason}, state, @idle_timeout}
     end
@@ -173,7 +179,7 @@ defmodule Slackex.Messaging.ChannelServer do
 
   defp flush_pending_writes(state) do
     messages = Enum.reverse(state.pending_writes)
-    MessagePipeline.enqueue(messages)
+    BatchWriter.async_insert_batch(messages)
     %{state | pending_writes: []}
   end
 
@@ -188,7 +194,31 @@ defmodule Slackex.Messaging.ChannelServer do
     end
   end
 
-  defp validate_send(_sender_id, %{channel_type: :dm}), do: :ok
+  defp validate_send(sender_id, %{channel_type: :dm, channel_id: dm_id}) do
+    case Chat.get_dm_conversation(dm_id) do
+      %{user_a_id: ^sender_id} -> :ok
+      %{user_b_id: ^sender_id} -> :ok
+      _ -> {:error, :unauthorized}
+    end
+  end
+
+  defp check_rate_limit(sender_id, state) do
+    alias Slackex.Infrastructure.RateLimiter
+
+    limiter = Map.get(
+      state.rate_limiters,
+      sender_id,
+      RateLimiter.new(@message_rate_limit)
+    )
+
+    case RateLimiter.check(limiter) do
+      {:ok, limiter} ->
+        {:ok, %{state | rate_limiters: Map.put(state.rate_limiters, sender_id, limiter)}}
+
+      {:error, :rate_limited} ->
+        {:error, :rate_limited}
+    end
+  end
 
   defp load_recent_messages(channel_id, :channel) do
     case Cache.Local.get_messages(channel_id) do
@@ -290,80 +320,31 @@ defmodule Slackex.Messaging do
 end
 ```
 
-## Step 2: Broadway Write Pipeline
+## Step 2: Async Write Pipeline
 
-### 2.1 Pipeline Definition
+The ChannelServer accumulates messages in `pending_writes` and flushes them on a 2-second timer (see `@batch_interval` in Step 1). The flush dispatches an async task via `Task.Supervisor` to batch-insert into PostgreSQL. This keeps the ChannelServer non-blocking while ensuring durable persistence.
 
-```elixir
-defmodule Slackex.Pipeline.MessagePipeline do
-  use Broadway
-
-  alias Slackex.Pipeline.BatchWriter
-
-  @queue_name :message_write_queue
-
-  def start_link(_opts) do
-    Broadway.start_link(__MODULE__,
-      name: __MODULE__,
-      producer: [
-        module: {Slackex.Pipeline.MessageProducer, queue_name: @queue_name},
-        concurrency: 1
-      ],
-      processors: [
-        default: [concurrency: 4]
-      ],
-      batchers: [
-        postgres: [
-          batch_size: 100,
-          batch_timeout: 2_000,
-          concurrency: 2
-        ]
-      ]
-    )
-  end
-
-  @doc "Enqueue messages for async persistence."
-  def enqueue(messages) when is_list(messages) do
-    Enum.each(messages, fn msg ->
-      Broadway.push_messages(__MODULE__, [
-        %Broadway.Message{
-          data: msg,
-          acknowledger: {__MODULE__, :ack_id, :ack_data}
-        }
-      ])
-    end)
-  end
-
-  @impl true
-  def handle_message(_processor, message, _context) do
-    # Validate and transform the message for DB insertion
-    message
-    |> Broadway.Message.put_batcher(:postgres)
-  end
-
-  @impl true
-  def handle_batch(:postgres, messages, _batch_info, _context) do
-    message_data = Enum.map(messages, & &1.data)
-    BatchWriter.insert_batch(message_data)
-    messages
-  end
-
-  def ack(_ack_ref, _successful, _failed) do
-    :ok
-  end
-end
-```
-
-### 2.2 Batch Writer
+### 2.1 Batch Writer
 
 ```elixir
 defmodule Slackex.Pipeline.BatchWriter do
+  @moduledoc """
+  Batch-inserts messages into PostgreSQL. Called asynchronously from
+  ChannelServer flush via Task.Supervisor.
+
+  INVARIANT: Each ChannelServer is the single writer for its channel.
+  Concurrent writes from different channels are safe (different rows).
+  """
+
   alias Slackex.Repo
+  require Logger
 
   @doc """
   Insert a batch of messages into PostgreSQL using a single INSERT statement.
-  Falls back to individual inserts on conflict.
+  Uses on_conflict: :nothing to handle rare duplicate IDs gracefully.
   """
+  def insert_batch([]), do: {:ok, 0}
+
   def insert_batch(messages) when is_list(messages) do
     now = DateTime.utc_now()
 
@@ -378,62 +359,40 @@ defmodule Slackex.Pipeline.BatchWriter do
       }
     end)
 
-    Repo.insert_all("messages", entries,
+    case Repo.insert_all("messages", entries,
       on_conflict: :nothing,
       conflict_target: [:id]
-    )
+    ) do
+      {count, _} ->
+        {:ok, count}
+
+      error ->
+        Logger.error("Batch write failed: #{inspect(error)}")
+        {:error, error}
+    end
+  end
+
+  @doc """
+  Async batch write via Task.Supervisor. Fire-and-forget — messages
+  are already in ETS cache and have been broadcast via PubSub.
+  If this fails, messages are still available in-memory and will be
+  persisted on the next successful flush or ChannelServer restart.
+  """
+  def async_insert_batch(messages) do
+    Task.Supervisor.start_child(Slackex.WriteSupervisor, fn ->
+      insert_batch(messages)
+    end)
   end
 end
 ```
 
-### 2.3 Producer (Simple In-Memory Queue)
-
-For Phase 2, we use a simple GenStage producer backed by a :queue. Phase 3 can swap this for a more robust producer if needed.
+### 2.2 Pipeline Boundary
 
 ```elixir
-defmodule Slackex.Pipeline.MessageProducer do
-  use GenStage
-
-  def start_link(opts) do
-    GenStage.start_link(__MODULE__, opts, name: __MODULE__)
-  end
-
-  @impl true
-  def init(_opts) do
-    {:producer, %{queue: :queue.new(), demand: 0}}
-  end
-
-  def push(messages) when is_list(messages) do
-    GenStage.cast(__MODULE__, {:push, messages})
-  end
-
-  @impl true
-  def handle_cast({:push, messages}, state) do
-    queue = Enum.reduce(messages, state.queue, &:queue.in(&1, &2))
-    {events, new_state} = dispatch(%{state | queue: queue})
-    {:noreply, events, new_state}
-  end
-
-  @impl true
-  def handle_demand(demand, state) do
-    {events, new_state} = dispatch(%{state | demand: state.demand + demand})
-    {:noreply, events, new_state}
-  end
-
-  defp dispatch(%{demand: demand, queue: queue} = state) do
-    {events, remaining_queue, remaining_demand} = take_from_queue(queue, demand, [])
-    {Enum.reverse(events), %{state | queue: remaining_queue, demand: remaining_demand}}
-  end
-
-  defp take_from_queue(queue, 0, acc), do: {acc, queue, 0}
-  defp take_from_queue(queue, demand, acc) do
-    case :queue.out(queue) do
-      {{:value, event}, new_queue} ->
-        take_from_queue(new_queue, demand - 1, [event | acc])
-      {:empty, queue} ->
-        {acc, queue, demand}
-    end
-  end
+defmodule Slackex.Pipeline do
+  use Boundary,
+    deps: [Slackex.Chat],
+    exports: [BatchWriter]
 end
 ```
 
@@ -443,6 +402,14 @@ end
 
 ```elixir
 defmodule Slackex.Cache.Local do
+  @moduledoc """
+  ETS-backed local message cache. Provides zero-latency reads for recent messages.
+
+  INVARIANT: Only ChannelServer processes call `put_message/2` for their channel_id.
+  Since each channel has exactly one ChannelServer (enforced by Registry/Horde),
+  this guarantees single-writer semantics per channel and eliminates ETS TOCTOU
+  races in the read-then-write pattern of put_message/2.
+  """
   use GenServer
 
   @table_name :slackex_message_cache
@@ -839,8 +806,8 @@ defmodule Slackex.Application do
       {Registry, keys: :unique, name: Slackex.ChannelRegistry},
       Slackex.Messaging.ChannelSupervisor,
 
-      # Async write pipeline
-      Slackex.Pipeline.MessagePipeline,
+      # Async batch write tasks
+      {Task.Supervisor, name: Slackex.WriteSupervisor},
 
       # Background jobs
       {Oban, Application.fetch_env!(:slackex, Oban)},
@@ -875,7 +842,7 @@ end
 defmodule Slackex.Pipeline do
   use Boundary,
     deps: [Slackex.Chat],
-    exports: [MessagePipeline]
+    exports: [BatchWriter]
 end
 
 defmodule Slackex.Search do
@@ -895,7 +862,7 @@ end
 
 - [ ] ChannelServer GenServer starts on first message to a channel
 - [ ] Messages are broadcast immediately via PubSub (< 10ms latency)
-- [ ] Messages are persisted asynchronously via Broadway pipeline
+- [ ] Messages are persisted asynchronously via Task.Supervisor batch writes
 - [ ] In-memory message queue is bounded at 200 messages per channel
 - [ ] ChannelServer hibernates after 30 minutes of inactivity
 - [ ] ETS cache serves recent messages without hitting PostgreSQL
@@ -905,7 +872,9 @@ end
 - [ ] Scroll-up loads older messages via paginated DB query
 - [ ] Auto-scroll to bottom on new messages (only if already at bottom)
 - [ ] Oban is configured and the cache warmer runs hourly
-- [ ] Broadway batches writes (up to 100 messages per batch, 2s timeout)
+- [ ] Batch writes group pending messages per flush interval (2s)
+- [ ] Rate limiting prevents >10 messages/second per user per channel
+- [ ] DM sender is validated as a participant (not just any authenticated user)
 - [ ] All boundary constraints compile without warnings
 - [ ] All behavioral tests from Phase 1 still pass
 - [ ] New behavioral tests cover: GenServer message flow, cache hit/miss, presence, typing

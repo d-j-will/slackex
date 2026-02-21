@@ -40,9 +40,17 @@ end
 defmodule Slackex.Repo.Migrations.CreateMessageEmbeddings do
   use Ecto.Migration
 
+  @doc """
+  NOTE: message_id is NOT a foreign key to the messages table.
+  After Phase 3, messages is a partitioned table with composite PK (id, inserted_at).
+  PostgreSQL does not support FK references to partitioned tables unless the FK
+  includes the full partition key. Since embeddings are derived data, we enforce
+  referential integrity at the application level instead. Orphaned embeddings
+  (from deleted messages) are harmless and can be cleaned by a periodic Oban job.
+  """
   def change do
     create table(:message_embeddings, primary_key: false) do
-      add :message_id, :bigint, primary_key: true
+      add :message_id, :bigint, primary_key: true  # References messages.id (no FK constraint)
       add :channel_id, :bigint
       add :embedding, :vector, size: 1536    # OpenAI text-embedding-3-small dimensions
       add :content_hash, :string, size: 64   # SHA-256 of content, for dedup
@@ -582,7 +590,13 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
   end
 
   def handle_event("set_mode", %{"mode" => mode}, socket) do
-    mode = String.to_existing_atom(mode)
+    mode = case mode do
+      "text" -> :text
+      "semantic" -> :semantic
+      "hybrid" -> :hybrid
+      _ -> :hybrid
+    end
+
     {:noreply, assign(socket, :search_mode, mode)}
   end
 

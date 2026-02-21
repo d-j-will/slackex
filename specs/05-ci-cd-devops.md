@@ -602,6 +602,14 @@ if config_env() == :prod do
     secret_key_base: secret_key_base,
     server: true
 
+  # Guardian (JWT for mobile API auth)
+  guardian_secret =
+    System.get_env("GUARDIAN_SECRET_KEY") ||
+      raise "GUARDIAN_SECRET_KEY environment variable is not set"
+
+  config :slackex, Slackex.Guardian,
+    secret_key: guardian_secret
+
   # Redis
   config :slackex, :redis_url,
     System.get_env("REDIS_URL") || "redis://localhost:6379"
@@ -635,9 +643,11 @@ end
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | prod | - | PostgreSQL connection URL |
-| `DATABASE_READ_URL` | no | - | Read replica URL |
+| `DATABASE_READ_URL` | no | - | Read replica PostgreSQL URL (see Phase 3 ReadRepo) |
+| `READ_POOL_SIZE` | no | `10` | Read replica connection pool size |
 | `REDIS_URL` | prod | `redis://localhost:6379` | Redis connection URL |
 | `SECRET_KEY_BASE` | prod | - | Phoenix secret (min 64 bytes) |
+| `GUARDIAN_SECRET_KEY` | prod | - | JWT signing key for Guardian (mobile API auth) |
 | `PHX_HOST` | prod | - | Hostname for URL generation |
 | `PORT` | no | `4000` | HTTP port |
 | `POOL_SIZE` | no | `20` | DB connection pool size |

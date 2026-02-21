@@ -15,17 +15,18 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
 | Process Distribution | Horde | CRDT-based distributed Registry + DynamicSupervisor with automatic failover |
 | Node Discovery | libcluster | Pluggable strategies (K8s DNS, gossip, epmd) for automatic BEAM cluster formation |
 | Caching | ETS (local) + Redis (cross-node) | ETS for zero-latency hot cache, Redis for shared state across cluster nodes |
-| Write Pipeline | Broadway | High-throughput batched message persistence with back-pressure and concurrency control |
+| Write Pipeline | ChannelServer batch flush + Task.Supervisor | ChannelServer accumulates pending writes and flushes via async Task on a timer. Simple, no extra process overhead. Broadway can be layered in later if back-pressure is needed at scale |
 | Background Jobs | Oban | Postgres-backed durable job queue for embeddings, notifications, maintenance tasks |
 | Database | PostgreSQL 16+ with pgvector | Relational data + full-text search + vector embeddings in one system |
 | Message Search | Postgres FTS + pgvector semantic | Keyword search via tsvector, semantic search via vector similarity for future AI/RAG |
-| Message Ordering | Snowflake IDs (64-bit) | Sortable, unique, encodes timestamp + node + sequence. Proven at Discord's scale |
+| Message Ordering | Snowflake IDs (64-bit) | Sortable, unique, encodes timestamp + node + sequence. Proven at Discord's scale. Note: Phase 1 GenServer impl is single-process; consider `:atomics`-based sharding if >4096 IDs/ms/node becomes a bottleneck |
 | Auth (Web) | Session-based (phx.gen.auth) | Secure HttpOnly cookies, CSRF protection, standard Phoenix pattern |
 | Auth (Mobile) | JWT access + refresh tokens | Stateless access tokens (15min), revocable refresh tokens (30 days) |
-| CQRS Pattern | Command: GenServer → PubSub → Broadway; Query: ETS → Redis → Postgres | Immediate delivery via in-memory broadcast, async durable persistence |
+| CQRS Pattern | Command: GenServer → PubSub → async batch write; Query: ETS → Redis → Postgres | Immediate delivery via in-memory broadcast, async durable persistence |
 | Real-time | Phoenix PubSub (pg2 adapter) | Distributed pub/sub across BEAM cluster nodes, zero external dependencies |
 | Deployment | Docker + Kubernetes | Horizontal scaling, rolling deploys, libcluster K8s DNS discovery |
 | AI Dev Tooling | Tidewave | MCP server for AI-assisted development in dev environment |
+| Observability | Telemetry + telemetry_metrics_prometheus | BEAM-native instrumentation; Phoenix, Ecto, Oban emit events automatically |
 
 ## Technology Stack
 
@@ -51,7 +52,6 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
   {:libcluster, "~> 3.4"},
 
   # Async Processing
-  {:broadway, "~> 1.1"},
   {:oban, "~> 2.18"},
 
   # Auth
@@ -71,6 +71,12 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
 
   # Push Notifications
   {:pigeon, "~> 2.0"},
+
+  # Observability
+  {:telemetry, "~> 1.3"},
+  {:telemetry_metrics, "~> 1.0"},
+  {:telemetry_poller, "~> 1.1"},
+  {:telemetry_metrics_prometheus, "~> 1.1"},
 
   # Dev & Test
   {:tidewave, "~> 0.5", only: :dev},
@@ -104,9 +110,9 @@ Slackex (Application)
 │   ├── deps: [Slackex.Chat, Slackex.Accounts]
 │   └── exports: [ChannelServer, send_message/3, subscribe_channel/1]
 │
-├── Slackex.Pipeline         # CQRS write side (Broadway, batch persistence)
+├── Slackex.Pipeline         # CQRS write side (batch persistence via Task.Supervisor)
 │   ├── deps: [Slackex.Chat, Slackex.Repo]
-│   └── exports: [MessagePipeline]
+│   └── exports: [BatchWriter]
 │
 ├── Slackex.Search           # CQRS read side (cache cascade, FTS, pgvector)
 │   ├── deps: [Slackex.Chat, Slackex.Repo, Slackex.Cache]
@@ -196,10 +202,11 @@ Slackex.Application
 ├── {Horde.DynamicSupervisor,                        # Distributed supervisor
 │    name: Slackex.ChannelSupervisor}
 ├── Slackex.Infrastructure.Snowflake                 # ID generator
+├── SlackexWeb.Telemetry                             # Telemetry metrics + poller
 ├── Slackex.Cache.Local                              # ETS table manager
 ├── Slackex.Cache.Redis                              # Redix connection pool
+├── {Task.Supervisor, name: Slackex.WriteSupervisor}  # Async batch write tasks
 ├── {Oban, oban_config()}                            # Background job processor
-└── Slackex.Pipeline.MessagePipeline                 # Broadway write pipeline
 ```
 
 ## CQRS Message Flow
@@ -218,11 +225,9 @@ User sends message
        │
        ├──► ETS local cache update (IMMEDIATE)
        │
-       ├──► Enqueue to Broadway write pipeline (ASYNC)
+       ├──► Accumulate in pending_writes (ASYNC flush on timer)
        │     │
-       │     ├──► Batch INSERT to PostgreSQL
-       │     │
-       │     └──► Enqueue Oban job: Redis cache update
+       │     └──► Task.Supervisor async batch INSERT to PostgreSQL
        │
        └──► Enqueue Oban job: embedding generation (ASYNC, low priority)
 ```
@@ -243,6 +248,21 @@ See Phase 1 spec for initial schema, Phase 3 for partitioning, Phase 4 for pgvec
 | 4 — Intelligence | pgvector, search, RAG | Full-text + semantic search, embedding pipeline |
 
 Each phase has its own detailed spec document.
+
+## Explicitly Deferred Features
+
+These features are intentionally out of scope for the initial 4-phase plan. The schema and architecture accommodate them for future implementation.
+
+| Feature | Rationale | Earliest Phase |
+|---------|-----------|---------------|
+| Message editing/deletion | `edited_at` column exists in schema, handlers deferred | Post Phase 2 |
+| File/image uploads | Requires object storage (S3/R2), CDN integration | Post Phase 4 |
+| Threads/replies | Requires `parent_message_id`, nested UI components | Post Phase 4 |
+| Reactions/emoji | Requires reactions table, UI components | Post Phase 2 |
+| User profiles/settings | Basic user schema exists, settings UI deferred | Post Phase 1 |
+| Admin dashboard | LiveDashboard in deps, custom admin deferred | Post Phase 3 |
+| Email notifications | Requires email provider integration (Swoosh) | Post Phase 3 |
+| Group DMs (3+ users) | Current DM model is 1:1 only | Post Phase 2 |
 
 ## File Structure
 
@@ -275,9 +295,7 @@ slackex/
 │   │   │   ├── channel_supervisor.ex   # Horde.DynamicSupervisor wrapper
 │   │   │   └── message_broadcaster.ex  # PubSub broadcast logic
 │   │   ├── pipeline/                   # Boundary: Slackex.Pipeline
-│   │   │   ├── message_pipeline.ex     # Broadway definition
-│   │   │   ├── message_producer.ex     # Broadway producer
-│   │   │   └── batch_writer.ex         # Batched Postgres inserts
+│   │   │   └── batch_writer.ex         # Batched Postgres inserts (called async via Task.Supervisor)
 │   │   ├── search/                     # Boundary: Slackex.Search
 │   │   │   ├── search.ex              # Context module (public API)
 │   │   │   ├── message_search.ex       # FTS + pgvector queries

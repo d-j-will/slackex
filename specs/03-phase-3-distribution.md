@@ -219,7 +219,8 @@ When a node goes down, Horde automatically restarts affected processes on surviv
 
 @impl true
 def terminate(_reason, state) do
-  # Best-effort flush before shutdown
+  # Best-effort SYNCHRONOUS flush before shutdown — do NOT use async here
+  # because the process is about to die. Direct insert ensures writes persist.
   if state.pending_writes != [] do
     messages = Enum.reverse(state.pending_writes)
     Slackex.Pipeline.BatchWriter.insert_batch(messages)
@@ -238,7 +239,11 @@ defmodule Slackex.Cache.Redis do
   @moduledoc """
   Redis connection pool and cache operations.
   Used for cross-node shared cache when ETS (local) misses.
+  All commands are wrapped with rescue to gracefully degrade
+  when Redis is unavailable — the system falls through to Postgres.
   """
+
+  require Logger
 
   @pool_size 10
   @default_ttl :timer.hours(1)
@@ -322,10 +327,18 @@ defmodule Slackex.Cache.Redis do
 
   defp command(args) do
     Redix.command(random_connection(), args)
+  rescue
+    e ->
+      Logger.warning("Redis command failed: #{inspect(e)}")
+      {:error, :redis_unavailable}
   end
 
   defp pipeline(commands) do
     Redix.pipeline(random_connection(), commands)
+  rescue
+    e ->
+      Logger.warning("Redis pipeline failed: #{inspect(e)}")
+      {:error, :redis_unavailable}
   end
 
   defp random_connection do
@@ -421,6 +434,99 @@ defmodule Slackex.Search.HistoryLoader do
     # Older messages always come from DB (not worth caching)
     Chat.list_messages(channel_id, limit: limit, before: before_id)
   end
+end
+```
+
+## Step 3.5: Read Replica Support
+
+### 3.5.1 ReadRepo Module
+
+```elixir
+defmodule Slackex.ReadRepo do
+  @moduledoc """
+  Read-only Ecto Repo for routing queries to a PostgreSQL read replica.
+  Falls back to the primary database if DATABASE_READ_URL is not configured.
+  """
+  use Ecto.Repo,
+    otp_app: :slackex,
+    adapter: Ecto.Adapters.Postgres,
+    read_only: true
+end
+```
+
+### 3.5.2 Configuration
+
+```elixir
+# config/dev.exs — same DB in dev (no replica)
+config :slackex, Slackex.ReadRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "slackex_dev",
+  pool_size: 5
+
+# config/test.exs
+config :slackex, Slackex.ReadRepo,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  port: 5433,
+  database: "slackex_test#{System.get_env("MIX_TEST_PARTITION")}",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: System.schedulers_online()
+
+# config/runtime.exs (in prod block)
+read_url = System.get_env("DATABASE_READ_URL") || database_url
+
+config :slackex, Slackex.ReadRepo,
+  url: read_url,
+  pool_size: String.to_integer(System.get_env("READ_POOL_SIZE") || "10")
+```
+
+### 3.5.3 Query Routing
+
+Read-only queries route to the replica. Writes and authorization checks stay on primary.
+
+| Query | Repo | Reason |
+|-------|------|--------|
+| `Chat.list_messages/2` | ReadRepo | Historical read, tolerates replication lag |
+| `Chat.list_user_channels/1` | ReadRepo | Channel list doesn't change often |
+| `Chat.list_public_channels/0` | ReadRepo | Read-only listing |
+| `Chat.unread_count/2` | ReadRepo | Read-only count |
+| `Search.MessageSearch.*` | ReadRepo | All search is read-only |
+| `Chat.get_role/2` | Primary | Authorization before writes |
+| `Chat.send_message/3` | Primary | Write operation |
+| `Chat.create_channel/2` | Primary | Write operation |
+| `Chat.mark_as_read/2` | Primary | Write (upsert) |
+| `Chat.join_channel/2` | Primary | Write |
+
+Usage in context modules:
+
+```elixir
+# Read-only queries use ReadRepo:
+def list_messages(channel_id, opts \\ []) do
+  # ... query building ...
+  |> Slackex.ReadRepo.all()
+end
+
+# Write operations stay on primary Repo:
+def send_message(channel_id, sender_id, content) do
+  # ... uses Repo.insert() as before
+end
+```
+
+### 3.5.4 Test Support Update
+
+```elixir
+# In test/support/data_case.ex, update setup_sandbox:
+def setup_sandbox(tags) do
+  pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.Repo, shared: not tags[:async])
+  read_pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.ReadRepo, shared: not tags[:async])
+
+  on_exit(fn ->
+    Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
+    Ecto.Adapters.SQL.Sandbox.stop_owner(read_pid)
+  end)
 end
 ```
 
@@ -602,6 +708,75 @@ defmodule Slackex.Notifications.OnlineTracker do
 end
 ```
 
+## Step 4.5: Device Tokens Table
+
+Push notifications require storing device tokens for each user's mobile devices.
+
+### 4.5.1 Migration
+
+```elixir
+defmodule Slackex.Repo.Migrations.CreateDeviceTokens do
+  use Ecto.Migration
+
+  def change do
+    create table(:device_tokens) do
+      add :user_id, references(:users, on_delete: :delete_all), null: false
+      add :token, :string, null: false
+      add :platform, :string, null: false, size: 10  # "fcm" | "apns"
+      add :device_name, :string, size: 100
+
+      timestamps(type: :utc_datetime_usec)
+    end
+
+    create unique_index(:device_tokens, [:token])
+    create index(:device_tokens, [:user_id])
+  end
+end
+```
+
+### 4.5.2 Schema
+
+```elixir
+defmodule Slackex.Notifications.DeviceToken do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  schema "device_tokens" do
+    belongs_to :user, Slackex.Accounts.User
+    field :token, :string
+    field :platform, :string
+    field :device_name, :string
+
+    timestamps(type: :utc_datetime_usec)
+  end
+
+  def changeset(device_token, attrs) do
+    device_token
+    |> cast(attrs, [:user_id, :token, :platform, :device_name])
+    |> validate_required([:user_id, :token, :platform])
+    |> validate_inclusion(:platform, ["fcm", "apns"])
+    |> unique_constraint(:token)
+  end
+end
+```
+
+### 4.5.3 Update PushWorker to Use Device Tokens
+
+```elixir
+# Replace the placeholder in PushWorker:
+defp get_device_tokens(user_id) do
+  import Ecto.Query
+
+  Slackex.Repo.all(
+    from(dt in Slackex.Notifications.DeviceToken,
+      where: dt.user_id == ^user_id,
+      select: {fragment("?::text", dt.platform), dt.token}
+    )
+  )
+  |> Enum.map(fn {platform, token} -> {String.to_existing_atom(platform), token} end)
+end
+```
+
 ## Step 5: Message Table Partitioning
 
 ### 5.1 Migration: Convert to Partitioned Table
@@ -655,6 +830,10 @@ defmodule Slackex.Repo.Migrations.PartitionMessagesTable do
     execute "DROP TABLE messages_old"
 
     # Step 7: Add foreign keys
+    # NOTE: Partitioned tables in PostgreSQL require that FK references pointing
+    # TO this table match the full partition key (id, inserted_at). Tables like
+    # message_embeddings that reference message_id alone should NOT use FK
+    # constraints — enforce referential integrity at the application level instead.
     execute """
     ALTER TABLE messages
       ADD CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -819,6 +998,7 @@ defmodule Slackex.Application do
     children = [
       # Database
       Slackex.Repo,
+      Slackex.ReadRepo,
 
       # Clustering
       {Cluster.Supervisor, [
@@ -844,8 +1024,8 @@ defmodule Slackex.Application do
       Slackex.Messaging.ChannelRegistry,
       Slackex.Messaging.ChannelSupervisor,
 
-      # Async write pipeline
-      Slackex.Pipeline.MessagePipeline,
+      # Async batch write tasks
+      {Task.Supervisor, name: Slackex.WriteSupervisor},
 
       # Background jobs
       {Oban, Application.fetch_env!(:slackex, Oban)},
@@ -1139,8 +1319,11 @@ config :slackex, SlackexWeb.Endpoint,
 - [ ] libcluster auto-discovers nodes (gossip in dev, K8s DNS in prod)
 - [ ] Redis cache serves as cross-node shared cache
 - [ ] Cache cascade: ETS → Redis → PostgreSQL works correctly
-- [ ] Push notification Oban worker dispatches to FCM/APNs
+- [ ] ReadRepo is configured and routes read-only queries to replica (or primary as fallback)
+- [ ] Device tokens table stores FCM/APNs tokens per user
+- [ ] Push notification Oban worker dispatches to FCM/APNs using stored device tokens
 - [ ] Notifications only sent to offline users (online status tracked in Redis)
+- [ ] Redis commands gracefully degrade when Redis is unavailable
 - [ ] Messages table is partitioned by month
 - [ ] Partition maintenance worker creates future partitions
 - [ ] Reconnection catch-up delivers correct unread counts and missed messages
