@@ -32,65 +32,42 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
 
 ### Core Dependencies
 
-```elixir
-# mix.exs deps
-[
-  # Web Framework
-  {:phoenix, "~> 1.7"},
-  {:phoenix_live_view, "~> 1.0"},
-  {:phoenix_html, "~> 4.0"},
-  {:phoenix_live_dashboard, "~> 0.8"},
-
-  # Database & Cache
-  {:ecto_sql, "~> 3.12"},
-  {:postgrex, "~> 0.19"},
-  {:redix, "~> 1.5"},
-
-  # Real-time & Distribution
-  {:phoenix_pubsub, "~> 2.1"},
-  {:horde, "~> 0.9"},
-  {:libcluster, "~> 3.4"},
-
-  # Async Processing
-  {:oban, "~> 2.18"},
-
-  # Auth
-  {:bcrypt_elixir, "~> 3.0"},
-  {:guardian, "~> 2.3"},           # JWT for mobile
-
-  # Architecture
-  {:boundary, "~> 0.10", runtime: false},
-
-  # Utilities
-  {:jason, "~> 1.4"},
-  {:bandit, "~> 1.5"},
-  {:dns_cluster, "~> 0.1.1"},
-
-  # Search & AI
-  {:pgvector, "~> 0.3"},
-
-  # Push Notifications
-  {:pigeon, "~> 2.0"},
-
-  # Observability
-  {:telemetry, "~> 1.3"},
-  {:telemetry_metrics, "~> 1.0"},
-  {:telemetry_poller, "~> 1.1"},
-  {:telemetry_metrics_prometheus, "~> 1.1"},
-
-  # Dev & Test
-  {:tidewave, "~> 0.5", only: :dev},
-  {:phoenix_live_reload, "~> 1.2", only: :dev},
-  {:esbuild, "~> 0.8", runtime: false, only: :dev},
-  {:tailwind, "~> 0.2", runtime: false, only: :dev},
-  {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-  {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-  {:ex_machina, "~> 2.8", only: :test},
-  {:wallaby, "~> 0.30", only: :test},
-  {:local_cluster, "~> 2.1", only: :test},
-  {:floki, "~> 0.36", only: :test}
-]
-```
+| Library | Version | Purpose |
+|---------|---------|---------|
+| phoenix | ~> 1.7 | Web framework |
+| phoenix_live_view | ~> 1.0 | Server-rendered real-time UI |
+| phoenix_html | ~> 4.0 | HTML helpers |
+| phoenix_live_dashboard | ~> 0.8 | Runtime monitoring dashboard |
+| ecto_sql | ~> 3.12 | Database wrapper and query DSL |
+| postgrex | ~> 0.19 | PostgreSQL driver |
+| redix | ~> 1.5 | Redis driver |
+| phoenix_pubsub | ~> 2.1 | Distributed pub/sub |
+| horde | ~> 0.9 | CRDT-based distributed process management |
+| libcluster | ~> 3.4 | Automatic BEAM cluster formation |
+| oban | ~> 2.18 | Postgres-backed background job queue |
+| bcrypt_elixir | ~> 3.0 | Password hashing |
+| guardian | ~> 2.3 | JWT for mobile API auth |
+| boundary | ~> 0.10 | Compile-time module boundary enforcement (runtime: false) |
+| jason | ~> 1.4 | JSON encoding/decoding |
+| bandit | ~> 1.5 | HTTP server |
+| dns_cluster | ~> 0.1.1 | DNS-based cluster discovery |
+| pgvector | ~> 0.3 | Vector similarity search |
+| pigeon | ~> 2.0 | Push notifications (FCM/APNs) |
+| telemetry | ~> 1.3 | Instrumentation |
+| telemetry_metrics | ~> 1.0 | Metrics definitions |
+| telemetry_poller | ~> 1.1 | Periodic measurements |
+| telemetry_metrics_prometheus | ~> 1.1 | Prometheus export |
+| **Dev & Test** | | |
+| tidewave | ~> 0.5 | MCP server for AI-assisted dev (dev only) |
+| phoenix_live_reload | ~> 1.2 | Live reload in dev |
+| esbuild | ~> 0.8 | JavaScript bundler (dev only) |
+| tailwind | ~> 0.2 | CSS framework (dev only) |
+| dialyxir | ~> 1.4 | Static type analysis (dev/test) |
+| credo | ~> 1.7 | Linting (dev/test) |
+| ex_machina | ~> 2.8 | Test factories (test only) |
+| wallaby | ~> 0.30 | Browser E2E tests (test only) |
+| local_cluster | ~> 2.1 | Multi-node test clusters (test only) |
+| floki | ~> 0.36 | HTML parsing for tests (test only) |
 
 ## Boundary Definitions
 
