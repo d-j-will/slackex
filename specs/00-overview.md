@@ -22,11 +22,22 @@ Slackex is a Discord-like real-time chat messaging platform built in Elixir, des
 | Message Ordering | Snowflake IDs (64-bit) | Sortable, unique, encodes timestamp + node + sequence. Proven at Discord's scale. Note: Phase 1 GenServer impl is single-process; consider `:atomics`-based sharding if >4096 IDs/ms/node becomes a bottleneck |
 | Auth (Web) | Session-based (phx.gen.auth) | Secure HttpOnly cookies, CSRF protection, standard Phoenix pattern |
 | Auth (Mobile) | JWT access + refresh tokens | Stateless access tokens (15min), revocable refresh tokens (30 days) |
+| Frontend Strategy | LiveView-first, contract-first backend | Build web UI with LiveView now while treating APIs and WebSocket events as stable contracts so a future SPA client (SolidJS/Vite/Bun) is a presentation-layer migration, not a domain rewrite |
 | CQRS Pattern | Command: GenServer → PubSub → async batch write; Query: ETS → Redis → Postgres | Immediate delivery via in-memory broadcast, async durable persistence |
 | Real-time | Phoenix PubSub (pg2 adapter) | Distributed pub/sub across BEAM cluster nodes, zero external dependencies |
 | Deployment | Docker + Kubernetes | Horizontal scaling, rolling deploys, libcluster K8s DNS discovery |
 | AI Dev Tooling | Tidewave | MCP server for AI-assisted development in dev environment |
 | Observability | Telemetry + telemetry_metrics_prometheus | BEAM-native instrumentation; Phoenix, Ecto, Oban emit events automatically |
+
+## Frontend Portability Guardrails
+
+These constraints are mandatory across all phases to keep a future web-client migration low-risk:
+
+1. LiveView is an adapter layer. Business rules, authorization, rate limiting, and persistence live in contexts (`Slackex.*`) and channel/message services, not in LiveView callbacks or HEEX templates.
+2. Realtime events are contract-first. Channel/DM topics and payloads are versioned (`v1`) and documented as public contracts shared by web and mobile clients.
+3. HTTP JSON contracts exist in parallel with LiveView flows for auth/bootstrap/read paths so non-LiveView clients can adopt incrementally.
+4. Write outcomes use normalized server semantics (`:ok`, `:backpressure`, `:rate_limited`, `:not_writer`, etc.) so optimistic UI behavior is consistent across clients.
+5. Test strategy prioritizes context/channel behavior and contract tests; LiveView tests focus on wiring and rendering.
 
 ## Technology Stack
 

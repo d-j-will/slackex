@@ -41,6 +41,7 @@ We follow the **Testing Trophy** approach (Kent C. Dodds), not the traditional t
 - Authorization boundaries (who can do what)
 - Reconnection and catch-up accuracy
 - Search relevance (FTS + semantic)
+- API and WebSocket contract stability across clients
 
 ## Static Analysis Layer
 
@@ -165,6 +166,18 @@ Helper: `with_subscription(channel, user, role)` — inserts a subscription and 
   - a message found by both FTS and semantic ranks higher than one found by only one
   - respects channel scoping in hybrid mode
 
+### Contract Tests (`test/contracts/*`, `@tag :contract`)
+
+- **WebSocket envelope contract (`realtime-v1`)**
+  - channel/DM events include required fields: `v`, `event`, `target`, `payload`, `meta`
+  - `v` remains `1` for all documented events in this phase
+  - write rejections map to stable error codes (`rate_limited`, `backpressure`, `not_writer`, `unauthorized`, `invalid_content`)
+
+- **JSON API contract**
+  - `POST /api/auth/login` and `POST /api/auth/refresh` response shapes remain backward-compatible
+  - `GET /api/bootstrap` returns required shell payload fields (`user`, `channels`, `dms`, `unread_counts`)
+  - serializer parity: equivalent message fields between channel payloads and JSON endpoints
+
 ### Cache Behavioral Tests (`test/slackex/cache_test.exs`, async: false)
 
 - `describe "cache cascade behavior"`
@@ -256,14 +269,15 @@ Tagged `@moduletag :distributed`, excluded by default. Uses `LocalCluster` to st
 - **Embeddings:** `StubClient` (no API key needed)
 - **Bcrypt:** `log_rounds: 4` (faster hashing in tests)
 - **libcluster:** `topologies: []` (no clustering)
-- **test_helper.exs:** `exclude: [:e2e, :distributed]`, `capture_log: true`, manual sandbox mode
+- **test_helper.exs:** `exclude: [:e2e, :distributed, :contract]`, `capture_log: true`, manual sandbox mode
 
 ## Running Test Subsets
 
 ```bash
-mix test                           # Standard tests (excludes :e2e, :distributed)
+mix test                           # Standard tests (excludes :e2e, :distributed, :contract)
 mix test --include e2e             # Include browser tests
 mix test --include distributed     # Include cluster tests
+mix test --only contract           # API + WebSocket contract tests
 mix test test/slackex/chat_test.exs  # Specific file
 mix test --only search             # Tests matching a tag
 mix test --cover                   # With coverage report
@@ -278,6 +292,7 @@ mix test --cover                   # With coverage report
 - [ ] Channel tests verify: join, send, broadcast, auth rejection
 - [ ] Search tests verify: FTS keyword matching, semantic similarity, hybrid RRF ranking, scoping by channel, authorization filtering
 - [ ] Cache tests verify: miss fallthrough, cache population, invalidation
+- [ ] Contract tests verify stable JSON and WebSocket payload schemas (`@tag :contract`)
 - [ ] Unit tests cover only: Snowflake, Permissions, RateLimiter (pure functions, including token refill behavior)
 - [ ] E2E tests cover: full registration→chat flow, DM flow
 - [ ] Distributed tests cover: single-writer guarantee, node failover, split-brain fencing, crash recovery reconciliation

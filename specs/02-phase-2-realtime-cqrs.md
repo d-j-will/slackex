@@ -87,6 +87,17 @@ channel: "channel:#{channel_id}"
 dm:      "dm:#{dm_id}"
 ```
 
+Contract rule: all client-visible realtime payloads use a versioned envelope so web/mobile clients share one protocol:
+```elixir
+%{
+  v: 1,
+  event: "message.new" | "message.ack" | "typing" | "presence.diff" | ...,
+  target: %{type: :channel | :dm, id: integer()},
+  payload: map(),
+  meta: %{sent_at: DateTime.t(), correlation_id: String.t() | nil}
+}
+```
+
 ### 1.6 Channel Registry & Supervisor (Phase 2: Local)
 
 In Phase 2, we use standard Elixir `Registry` (`:unique` keys) and `DynamicSupervisor`. Phase 3 replaces these with Horde.
@@ -210,6 +221,16 @@ Modify all DM write paths:
 - `send_dm(dm_id, sender_id, content, opts \\ [])` — validates sender is a DM participant, ensures ChannelServer (type: `:dm`) is started, delegates to it
 - `subscribe_dm(dm_id)` — subscribes calling process to `"dm:#{dm_id}"`
 
+### 6.4 Write Outcome Contract (Cross-Client Consistency)
+
+All write paths (`Messaging.send_message/4`, `Messaging.send_dm/4`) return normalized outcomes consumed identically by LiveView, mobile, and future SPA clients:
+
+- Success: `{:ok, message}`
+- Rejection outcomes: `{:error, :rate_limited | :backpressure | :not_writer | :unauthorized | :invalid_content}`
+
+Channel handlers translate these outcomes into stable client events/errors without client-specific branching in domain code.
+The contract tests (`@tag :contract`, see `06-testing-strategy.md`) serve as the canonical, executable specification of the realtime protocol — no separate documentation file is needed.
+
 ## Step 7: Oban Setup (Background Jobs)
 
 ### 7.1 Configuration
@@ -264,6 +285,8 @@ Children added to Phase 1 supervisor (in order):
 - [ ] Batch writes group pending messages per flush interval (2s)
 - [ ] Rate limiting prevents >10 messages/second per user per channel
 - [ ] DM sender is validated as a participant (not just any authenticated user)
+- [ ] Realtime payloads follow versioned `v1` envelope contract shared across web/mobile clients
+- [ ] Write rejection semantics are normalized (`rate_limited`, `backpressure`, `not_writer`, etc.) and exposed consistently to clients
 - [ ] All boundary constraints compile without warnings
 - [ ] All behavioral tests from Phase 1 still pass
-- [ ] New behavioral tests cover: GenServer message flow, cache hit/miss, presence, typing
+- [ ] New behavioral tests cover: GenServer message flow, cache hit/miss, presence, typing, and realtime contract payload shape

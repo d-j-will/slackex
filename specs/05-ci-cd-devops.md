@@ -112,11 +112,12 @@ defp aliases do
     lint: ["format --check-formatted", "credo --strict", "compile --warnings-as-errors"],
     "lint.fix": ["format"],
     typecheck: ["dialyzer"],
-    quality: ["lint", "typecheck", "test"],
+    "contract.verify": ["test --only contract"],
+    quality: ["lint", "typecheck", "contract.verify", "test"],
     test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
     "test.watch": ["test.watch --stale"],
     ci: ["deps.get", "compile --warnings-as-errors", "format --check-formatted",
-         "credo --strict", "dialyzer", "ecto.create --quiet", "ecto.migrate --quiet", "test"]
+         "credo --strict", "dialyzer", "ecto.create --quiet", "ecto.migrate --quiet", "test --only contract", "test"]
   ]
 end
 ```
@@ -162,10 +163,11 @@ Runs on push/PR to main and develop.
 5. `mix credo --strict`
 6. `mix dialyzer --format github`
 7. `mix ecto.create && mix ecto.migrate`
-8. `mix test --cover --warnings-as-errors`
-9. `mix test --only distributed --warnings-as-errors` — distributed cluster tests (Phase 3+). These verify Horde failover, split-brain fencing, and replica consistency. Uses `--only` (not `--include`) so that these tests run exclusively here and are excluded from step 8's general suite (which runs all tests *except* those tagged `@tag :distributed`). This prevents distributed tests from executing twice.
-10. `mix hex.audit` — check for retired dependencies
-11. `mix deps.unlock --check-unused` — check for unused dependencies
+8. `mix test --cover --warnings-as-errors` — general suite (`:contract`, `:distributed`, `:e2e` excluded by default via `test_helper.exs`)
+9. `mix test --only contract --warnings-as-errors` — API + WebSocket contract tests. Verifies versioned realtime envelope (`v1`), normalized write errors, and stable JSON response shapes used by LiveView/mobile/future SPA clients.
+10. `mix test --only distributed --warnings-as-errors` — distributed cluster tests (Phase 3+). These verify Horde failover, split-brain fencing, and replica consistency. Uses `--only` (not `--include`) so that these tests run exclusively here and are excluded from step 8's general suite (`:distributed` excluded by default via `test_helper.exs`). This prevents distributed tests from executing twice.
+11. `mix hex.audit` — check for retired dependencies
+12. `mix deps.unlock --check-unused` — check for unused dependencies
 
 ### Docker Job (`docker`)
 
@@ -231,6 +233,7 @@ Production config reads from environment variables:
 - [ ] GitHub Actions CI passes on push/PR to main and develop
 - [ ] CI caches deps, _build, and Dialyzer PLTs across runs
 - [ ] CI runs hex.audit and deps.unlock --check-unused for security
+- [ ] CI runs `contract.verify` checks for JSON and WebSocket payload compatibility
 - [ ] Docker build produces a working production image
 - [ ] Production image runs as non-root user
 - [ ] Liveness endpoint at `/health` returns 200 when BEAM node and database are responsive

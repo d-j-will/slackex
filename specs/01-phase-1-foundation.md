@@ -332,7 +332,7 @@ Route structure:
 - **Public routes:** `/` (landing page)
 - **Auth live_session** (`:redirect_if_authenticated`): `/users/register`, `/users/log-in`
 - **Auth actions:** `DELETE /users/log-out`
-- **Mobile API:** `POST /api/auth/login`, `POST /api/auth/refresh`
+- **Mobile/API routes:** `POST /api/auth/login`, `POST /api/auth/refresh`, `GET /api/bootstrap`
 
 Security: Phoenix's `:put_secure_browser_headers` provides default headers. For production, add explicit CSP in endpoint.ex and CORS for mobile API if needed.
 
@@ -363,6 +363,14 @@ Security: Phoenix's `:put_secure_browser_headers` provides default headers. For 
 - `join("chat:" <> channel_id)` — checks user role, returns recent messages, marks as read
 - `handle_in("new_message", %{"content" => content})` — sends message via `Chat.send_message/3`, broadcasts `"new_message"` event with message payload (id, content, sender info, timestamp)
 
+### 7.4 Frontend Portability Baseline (LiveView-first)
+
+To keep a future SPA migration (e.g., SolidJS/Vite/Bun) low-risk without changing the current LiveView-first plan:
+
+- **Adapter boundary rule:** LiveView and Channel modules orchestrate only. They call context/messaging APIs and must not contain domain business rules or direct `Repo` queries.
+- **Shared serialization rule:** Message/channel/user payloads are produced through shared serializer modules (e.g., `SlackexWeb.MessageJSON`) reused by both Phoenix Channels and JSON API responses, preventing divergent payload shapes.
+- **Bootstrap API baseline:** Add `GET /api/bootstrap` (JWT-authenticated) returning the minimum app shell data for non-LiveView clients: current user, channels, DM list, and unread counts. LiveView remains the primary web UI; this endpoint exists for contract stability and future incremental client migration.
+
 ## Step 8: Application Supervisor (Phase 1)
 
 Children (in start order):
@@ -391,6 +399,9 @@ See `05-ci-cd-devops.md` for the full Docker Compose configuration. Phase 1 requ
 - [ ] Guardian is configured with JWT access tokens (15min) and refresh tokens (30 days)
 - [ ] Mobile client can authenticate via JWT and join channels via WebSocket
 - [ ] Mobile client can send/receive messages via Phoenix Channel protocol
+- [ ] LiveView and Channel modules follow adapter boundary rule (no domain logic or direct `Repo` reads/writes outside contexts)
+- [ ] Shared serializers are used for Channel and API payloads (single source of truth for payload shape)
+- [ ] `GET /api/bootstrap` provides JWT-authenticated bootstrap payload for non-LiveView clients
 - [ ] Unread counts are tracked via read cursors
 - [ ] DM conversations work between two users
 - [ ] Tidewave MCP server is accessible in dev for AI-assisted development
