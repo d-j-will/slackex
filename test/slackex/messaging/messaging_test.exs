@@ -7,9 +7,10 @@ defmodule Slackex.MessagingTest do
 
   # Stop a ChannelServer by target tuple if one is running.
   defp stop_server(target) do
-    case Registry.lookup(Slackex.Messaging.ChannelRegistry, target) do
+    case Horde.Registry.lookup(Slackex.Messaging.ChannelRegistry, target) do
       [{pid, _}] ->
-        if Process.alive?(pid), do: DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+        if Process.alive?(pid),
+          do: Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
 
       [] ->
         :ok
@@ -219,7 +220,9 @@ defmodule Slackex.MessagingTest do
       on_exit(fn -> stop_server({:channel, channel.id}) end)
 
       {:ok, pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
-      [{^pid, _}] = Registry.lookup(Slackex.Messaging.ChannelRegistry, {:channel, channel.id})
+
+      [{^pid, _}] =
+        Horde.Registry.lookup(Slackex.Messaging.ChannelRegistry, {:channel, channel.id})
     end
 
     test "via_tuple routes GenServer calls to the correct process" do

@@ -61,6 +61,10 @@ defmodule Slackex.MixProject do
       # Background jobs
       {:oban, "~> 2.18"},
 
+      # Distribution & clustering
+      {:horde, "~> 0.9"},
+      {:libcluster, "~> 3.4"},
+
       # Telemetry
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},

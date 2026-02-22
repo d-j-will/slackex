@@ -213,3 +213,45 @@
 - Phase 3: Scalability (time-partitioned messages, Redis caching, connection pooling)
 - Phase 4: Search (full-text search, pgvector embeddings)
 - Boundary compile-time checks, Tidewave setup, git hooks
+
+---
+
+## Phase 3 Distribution — Steps 1 + 2.1/2.3/2.4: libcluster & Horde (2026-02-22)
+
+### What was built
+- **libcluster integration** (`config/config.exs`, `config/dev.exs`, `config/test.exs`, `config/runtime.exs`): Automatic BEAM cluster formation. Gossip strategy for local multi-node dev, K8s DNS strategy for production (configurable via env vars), empty topologies for test.
+- **`Slackex.NodeListener`** (`lib/slackex/node_listener.ex`): GenServer monitoring node join/leave events via `:net_kernel.monitor_nodes/2`. Logs cluster membership changes for observability.
+- **`Slackex.Messaging.ChannelRegistry`** (`lib/slackex/messaging/channel_registry.ex`): Horde.Registry wrapper with `members: :auto` for CRDT-based distributed process registration. Public API: `via/1`, `via_dm/1`, `lookup/1`, `count/0`. Composite keys `{:channel, id}` / `{:dm, id}` prevent ID collisions.
+- **`Slackex.Messaging.ChannelSupervisor`** (`lib/slackex/messaging/channel_supervisor.ex`): Rewritten to use Horde.DynamicSupervisor with `process_redistribution: :active` for automatic rebalancing on node changes. `ensure_started/2` uses Horde.Registry lookup + Horde.DynamicSupervisor.start_child.
+- **`Slackex.Messaging.ChannelServer`** (`lib/slackex/messaging/channel_server.ex`): Updated `via_tuple/2` from stdlib Registry to Horde.Registry via tuples.
+- **`Slackex.Messaging`** (`lib/slackex/messaging/messaging.ex`): Updated `get_recent_messages/2` and `channel_count/0` from stdlib Registry to Horde.Registry.
+- **Application supervisor** (`lib/slackex/application.ex`): Added `{Cluster.Supervisor, ...}` and `Slackex.NodeListener` before PubSub. ChannelRegistry and ChannelSupervisor now use Horde child specs.
+- **Writer epoch migration** (`priv/repo/migrations/20260222175604_add_writer_epoch.exs`): Added `writer_epoch` integer column (default 0, NOT NULL) to both `channels` and `dm_conversations` tables. Forward-looking for Step 2.2 (writer fencing).
+- **Dependencies**: Added `{:horde, "~> 0.9"}` (installed 0.10.0), `{:libcluster, "~> 3.4"}` (installed 3.5.0).
+
+### Test coverage
+- 220 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 9 new tests:
+  - NodeListener (5): start_link, nodeup logging, nodedown logging, multiple events, initial state
+  - ChannelRegistry (4): via/1 tuple format, via_dm/1 tuple format, lookup miss for channel, lookup miss for DM
+- All 211 existing tests updated and passing after Horde migration (3 test files updated: messaging_test, channel_server_test, cache_warmer_test)
+
+### Steps deferred
+- **Step 2.2 (Writer Fencing)**: Requires epoch-aware BatchWriter + ChannelServer integration. Migration is ready (writer_epoch columns added).
+- **Step 2.5 (Process Handoff/Crash Recovery)**: Requires terminate/2 flush + init/1 reconciliation. Needs LocalCluster for distributed testing.
+
+### Lessons learned
+
+31. **Horde is a drop-in replacement for stdlib Registry/DynamicSupervisor**: The API is nearly identical. `{:via, Registry, {Name, key}}` becomes `{:via, Horde.Registry, {Name, key}}`. `DynamicSupervisor.start_child` becomes `Horde.DynamicSupervisor.start_child`. The main difference is configuration: `members: :auto` for automatic cluster discovery and `process_redistribution: :active` for rebalancing.
+
+32. **Test files reference supervisor/registry APIs directly**: When migrating from stdlib to Horde, test files that call `DynamicSupervisor.terminate_child`, `DynamicSupervisor.which_children`, or `Registry.lookup` must also be updated. These are not caught by `mix compile` — they only surface when running `mix test`.
+
+33. **`replace_all` can double-prefix existing Horde references**: If a file already has some `Horde.DynamicSupervisor` references and you do `replace_all` of `DynamicSupervisor` → `Horde.DynamicSupervisor`, the existing ones become `Horde.Horde.DynamicSupervisor`. Always check for pre-existing prefixed references before bulk replacement, or do a targeted replace instead.
+
+34. **Horde.DynamicSupervisor child_spec needs explicit members**: Unlike stdlib DynamicSupervisor which just needs `name:`, Horde requires `members: :auto` (or explicit member list) in the child spec. Without it, the supervisor starts but doesn't participate in the distributed cluster.
+
+### What's next
+- Phase 3 Step 2.2: Writer fencing (epoch-aware BatchWriter)
+- Phase 3 Step 2.5: Process handoff and crash recovery
+- Phase 3 Step 3: Redis cross-node cache
+- Phase 3 Steps 4-8: Push notifications, partitioning, reconnection, K8s deployment

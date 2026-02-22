@@ -55,7 +55,7 @@ defmodule Slackex.Messaging do
   """
   @spec get_recent_messages(integer(), pos_integer()) :: [map()] | [struct()]
   def get_recent_messages(channel_id, limit \\ 50) do
-    case Registry.lookup(Slackex.Messaging.ChannelRegistry, {:channel, channel_id}) do
+    case Horde.Registry.lookup(Slackex.Messaging.ChannelRegistry, {:channel, channel_id}) do
       [{pid, _}] ->
         ChannelServer.get_recent_messages(pid, limit)
 
@@ -103,7 +103,7 @@ defmodule Slackex.Messaging do
   @doc "Returns the count of active ChannelServer processes."
   @spec channel_count() :: non_neg_integer()
   def channel_count do
-    Registry.count(Slackex.Messaging.ChannelRegistry)
+    Horde.Registry.count(Slackex.Messaging.ChannelRegistry)
   end
 
   # ---------------------------------------------------------------------------

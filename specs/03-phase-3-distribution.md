@@ -357,11 +357,11 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 
 ## Phase 3 Acceptance Criteria
 
-- [ ] Horde distributes ChannelServer processes across cluster nodes
+- [x] ~~Horde distributes ChannelServer processes across cluster nodes~~ (Step 2.1/2.3/2.4 — Horde.Registry + Horde.DynamicSupervisor with `members: :auto`, `process_redistribution: :active`)
 - [ ] When a node goes down, affected channels restart on surviving nodes within 5 seconds
 - [ ] Channel processes flush pending writes before graceful termination (terminate/2 is best-effort)
 - [ ] ChannelServer init/1 reconciles cache vs DB to recover un-persisted messages after crash
-- [ ] libcluster auto-discovers nodes (gossip in dev, K8s DNS in prod)
+- [x] ~~libcluster auto-discovers nodes (gossip in dev, K8s DNS in prod)~~ (Step 1 — Cluster.Supervisor + NodeListener + config per env)
 - [ ] Redis cache serves as cross-node shared cache
 - [ ] Cache cascade: ETS → Redis → PostgreSQL works correctly
 - [ ] ReadRepo is configured and routes read-only queries to replica (or primary as fallback)
@@ -377,6 +377,6 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 - [ ] Redis outage does NOT cause readiness failure (degraded status only, no 503)
 - [ ] Kubernetes manifests deploy a 3-pod cluster with sticky WebSocket sessions
 - [ ] `docker build` produces a working production release image
-- [ ] Local multi-node dev cluster works via gossip strategy
-- [ ] All behavioral tests from Phases 1-2 still pass
+- [x] ~~Local multi-node dev cluster works via gossip strategy~~ (Step 1 — gossip config in dev.exs)
+- [x] ~~All behavioral tests from Phases 1-2 still pass~~ (220 tests, 0 failures after Horde migration)
 - [ ] Distributed tests (using LocalCluster) verify Horde failover

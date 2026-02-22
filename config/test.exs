@@ -35,3 +35,5 @@ config :phoenix_live_view,
 config :bcrypt_elixir, log_rounds: 4
 
 config :slackex, Oban, testing: :inline
+
+config :libcluster, topologies: []

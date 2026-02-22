@@ -17,7 +17,7 @@ defmodule Slackex.Messaging.ChannelServerTest do
     server = ChannelServer.via_tuple(:channel, channel.id)
 
     on_exit(fn ->
-      if Process.alive?(pid), do: DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+      if Process.alive?(pid), do: Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
     end)
 
     %{user: user, channel: channel, server: server}

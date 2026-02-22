@@ -59,7 +59,7 @@ defmodule Slackex.Messaging.ChannelServer do
   @doc "Returns the via-tuple for registering or looking up a ChannelServer."
   @spec via_tuple(:channel | :dm, integer()) :: {:via, module(), {atom(), tuple()}}
   def via_tuple(channel_type, channel_id) do
-    {:via, Registry, {Slackex.Messaging.ChannelRegistry, {channel_type, channel_id}}}
+    {:via, Horde.Registry, {Slackex.Messaging.ChannelRegistry, {channel_type, channel_id}}}
   end
 
   # ---------------------------------------------------------------------------

@@ -11,9 +11,9 @@ defmodule Slackex.Workers.CacheWarmerTest do
     on_exit(fn ->
       # Clean up any ChannelServer processes started during tests
       ChannelSupervisor
-      |> DynamicSupervisor.which_children()
+      |> Horde.DynamicSupervisor.which_children()
       |> Enum.each(fn {_, pid, _, _} ->
-        DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+        Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
       end)
     end)
 
@@ -43,7 +43,7 @@ defmodule Slackex.Workers.CacheWarmerTest do
       # Count children before
       before_count =
         ChannelSupervisor
-        |> DynamicSupervisor.which_children()
+        |> Horde.DynamicSupervisor.which_children()
         |> length()
 
       job = %Oban.Job{args: %{}, id: 1, worker: "Slackex.Workers.CacheWarmer"}
@@ -51,7 +51,7 @@ defmodule Slackex.Workers.CacheWarmerTest do
 
       after_count =
         ChannelSupervisor
-        |> DynamicSupervisor.which_children()
+        |> Horde.DynamicSupervisor.which_children()
         |> length()
 
       assert after_count == before_count
