@@ -378,5 +378,40 @@ Three issues identified during code review, addressed in a single commit:
 50. **ETS remains authoritative for hot data**: Redis writes are best-effort (100ms timeout, fire-and-forget on failure). ETS is always written first and is the source of truth within a node. Redis serves as a warm cache for newly started nodes or nodes with cold ETS. This prevents Redis latency from affecting the message broadcast path.
 
 ### What's next
-- Phase 3 Step 3.5: Read replica routing
-- Phase 3 Steps 4-8: Push notifications, partitioning, reconnection, K8s deployment
+- Phase 3 Step 4: Push notifications (mobile)
+- Phase 3 Steps 5-8: Partitioning, reconnection, health endpoints, K8s deployment
+
+---
+
+## Phase 3 Distribution — Step 3.5: Read Replica Support (2026-02-22)
+
+### What was built
+- **`Slackex.ReadRepo`** (`lib/slackex/read_repo.ex`): Ecto Repo with `read_only: true`. Delegates routing functions to LagMonitor: `repo_for_age/1`, `lag_exceeded?/0`, `no_replica?/0`, `read_repo/0`.
+- **`Slackex.ReadRepo.LagMonitor`** (`lib/slackex/read_repo/lag_monitor.ex`): GenServer that monitors replication lag on the read replica. Queries `pg_last_xact_replay_timestamp()` every 5 seconds. If lag exceeds 5s, sets a `:persistent_term` flag causing all reads to fall back to primary. **No-replica mode**: detects when ReadRepo and Repo share the same database (by comparing URLs or hostname/port/database), sets `@no_replica_key` persistent_term, and skips all monitoring — `read_repo/0` returns `Slackex.Repo` directly. **`repo_for_age/1`**: `:recent` → Repo; no-replica or lag exceeded → Repo; Snowflake ID within 30s → Repo; Snowflake ID older than 30s → ReadRepo. Telemetry events: `[:slackex, :read_repo, :lag_fallback]` (with `%{lag_seconds: float}`), `[:slackex, :read_repo, :lag_null_standby]` (NULL replay timestamp on standby).
+- **Chat context routing** (`lib/slackex/chat/chat.ex`): `list_public_channels/0`, `list_active_channels/1`, `list_user_channels/1` now use `ReadRepo.read_repo().all(...)` — routes to primary in no-replica mode, to ReadRepo when a replica is configured. `list_messages/2` and `list_dm_messages/2` use `ReadRepo.repo_for_age(before_id || :recent)` for age-based routing. Write operations (`send_message`, `create_channel`, `mark_as_read`, `join_channel`, `get_role`, `unread_count`) remain on primary `Repo`.
+- **Configuration**: `config/dev.exs` and `config/test.exs` mirror Repo config for ReadRepo (same DB). `config/runtime.exs` supports `DATABASE_READ_URL` env var for prod replica. ReadRepo excluded from `ecto_repos` (no migrations needed for read-only repo).
+- **Supervision tree**: ReadRepo and LagMonitor added after Repo, before PubSub.
+- **Test support**: `DataCase.setup_sandbox/1` starts sandbox owners for both Repo and ReadRepo.
+
+### Test coverage
+- 301 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean, mix assets.build clean
+- 24 new behavioral tests:
+  - ReadRepo basics (3): raw SQL query, read_repo/0 returns Repo in no-replica mode, read_repo/0 returns ReadRepo with replica configured
+  - repo_for_age/1 routing (5): :recent always returns Repo, recent Snowflake ID returns Repo, old ID returns Repo in no-replica mode, old ID returns ReadRepo with replica configured, lag exceeded falls back to Repo, delegation correctness
+  - Lag detection (4): LagMonitor process running, lag_exceeded? false in no-replica mode, lag_exceeded? reflects persistent_term, perform_lag_check handles NULL gracefully
+  - Telemetry (2): lag_null_standby event emitted, lag_fallback event shape correct
+  - Chat context integration (10): list_user_channels returns/excludes channels, list_public_channels returns/excludes private, list_messages recent/before_id/old cursor routing, list_active_channels with recent messages
+
+### Lessons learned
+
+51. **Dual-repo sandbox isolation trap**: Two Ecto Repos with separate sandbox connections cannot see each other's uncommitted transaction data — even when pointing at the same physical database. In tests, `ReadRepo.all()` returns empty when data was written through `Repo`'s sandbox transaction. Fix: detect no-replica mode at startup (same DB URL) and route all reads through the primary `Repo` in that mode. The `no_replica?()` check makes `read_repo/0` return `Slackex.Repo`, so all queries go through one sandbox connection.
+
+52. **`:persistent_term` for read-optimized flags**: `no_replica?()` and `lag_exceeded?()` are checked on every database read query. Using `:persistent_term` (which is globally shared, requires no process lookup, and is optimized for reads) avoids the overhead of GenServer calls or ETS lookups on the hot path. The tradeoff: writes to persistent_term trigger a global GC sweep — acceptable here since lag state changes at most every 5 seconds.
+
+53. **`read_only: true` on Ecto Repo**: Setting `read_only: true` on the ReadRepo prevents accidental writes through the replica connection. Ecto raises at compile time if you try to call `insert`, `update`, or `delete` on a read-only repo. This is a compile-time safety net, not just a convention.
+
+54. **ReadRepo should NOT be in `ecto_repos`**: Adding ReadRepo to the `ecto_repos` config list causes `mix ecto.migrate` to look for `priv/read_repo/migrations/` which doesn't exist. Read-only repos share the primary's schema — they need no separate migration directory. Only include repos that own migrations in `ecto_repos`.
+
+### What's next
+- Phase 3 Step 4: Push notifications (mobile)
+- Phase 3 Steps 5-8: Partitioning, reconnection, health endpoints, K8s deployment

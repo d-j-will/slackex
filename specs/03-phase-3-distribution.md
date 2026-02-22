@@ -364,7 +364,7 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 - [x] ~~libcluster auto-discovers nodes (gossip in dev, K8s DNS in prod)~~ (Step 1 — Cluster.Supervisor + NodeListener + config per env)
 - [x] ~~Redis cache serves as cross-node shared cache~~ (Step 3 — Cache.Redis Supervisor with 10 Redix connections, push/get/cache/invalidate API)
 - [x] ~~Cache cascade: ETS → Redis → PostgreSQL works correctly~~ (Step 3 — Cache facade: ETS→Redis→miss read path, write-through put_message)
-- [ ] ReadRepo is configured and routes read-only queries to replica (or primary as fallback)
+- [x] ~~ReadRepo is configured and routes read-only queries to replica (or primary as fallback)~~ (Step 3.5 — ReadRepo module with read_only: true, LagMonitor GenServer with periodic lag checks, no_replica? detection, repo_for_age/1 routing, Chat context updated to use ReadRepo.read_repo() for reads)
 - [ ] Device tokens table stores FCM/APNs tokens per user
 - [ ] Push notification Oban worker dispatches to FCM/APNs using stored device tokens
 - [ ] Notifications only sent to offline users (online status tracked in Redis)

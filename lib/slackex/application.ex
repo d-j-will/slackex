@@ -10,6 +10,8 @@ defmodule Slackex.Application do
     children = [
       SlackexWeb.Telemetry,
       Slackex.Repo,
+      Slackex.ReadRepo,
+      Slackex.ReadRepo.LagMonitor,
       {Cluster.Supervisor,
        [Application.get_env(:libcluster, :topologies, []), [name: Slackex.ClusterSupervisor]]},
       Slackex.NodeListener,

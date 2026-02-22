@@ -8,6 +8,7 @@ defmodule Slackex.Chat do
   alias Ecto.Multi
   alias Slackex.Chat.{Channel, DMConversation, Message, Permissions, ReadCursor, Subscription}
   alias Slackex.Infrastructure.Snowflake
+  alias Slackex.ReadRepo
   alias Slackex.Repo
 
   # ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ defmodule Slackex.Chat do
   Lists all public channels.
   """
   def list_public_channels do
-    Repo.all(from c in Channel, where: not c.is_private, order_by: c.name)
+    ReadRepo.read_repo().all(from c in Channel, where: not c.is_private, order_by: c.name)
   end
 
   @doc "Lists channels with message activity since the given datetime."
@@ -56,14 +57,14 @@ defmodule Slackex.Chat do
             distinct: true
         )
     )
-    |> Repo.all()
+    |> ReadRepo.read_repo().all()
   end
 
   @doc """
   Lists channels that a user is subscribed to.
   """
   def list_user_channels(user_id) do
-    Repo.all(
+    ReadRepo.read_repo().all(
       from c in Channel,
         join: s in Subscription,
         on: s.channel_id == c.id and s.user_id == ^user_id,
@@ -166,6 +167,7 @@ defmodule Slackex.Chat do
   def list_messages(channel_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
     before_id = Keyword.get(opts, :before)
+    repo = ReadRepo.repo_for_age(before_id || :recent)
 
     query =
       from m in Message,
@@ -181,7 +183,7 @@ defmodule Slackex.Chat do
         query
       end
 
-    Repo.all(query)
+    repo.all(query)
   end
 
   @doc """
@@ -191,6 +193,7 @@ defmodule Slackex.Chat do
   def list_dm_messages(dm_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
     before_id = Keyword.get(opts, :before)
+    repo = ReadRepo.repo_for_age(before_id || :recent)
 
     query =
       from m in Message,
@@ -206,7 +209,7 @@ defmodule Slackex.Chat do
         query
       end
 
-    Repo.all(query)
+    repo.all(query)
   end
 
   # ---------------------------------------------------------------------------
