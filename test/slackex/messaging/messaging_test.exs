@@ -113,7 +113,7 @@ defmodule Slackex.MessagingTest do
   end
 
   describe "subscribe_channel/1 and unsubscribe_channel/1" do
-    test "subscriber receives :new_message after subscribe" do
+    test "subscriber receives {:envelope, envelope} after subscribe" do
       user = insert(:user)
 
       {:ok, channel} =
@@ -124,7 +124,9 @@ defmodule Slackex.MessagingTest do
       Messaging.subscribe_channel(channel.id)
       {:ok, msg} = Messaging.send_message(channel.id, user.id, "subscribed")
 
-      assert_receive {:new_message, ^msg}, 1000
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.event == "message.new"
+      assert envelope.payload == msg
     end
 
     test "unsubscribed process no longer receives messages" do
@@ -139,12 +141,12 @@ defmodule Slackex.MessagingTest do
       Messaging.unsubscribe_channel(channel.id)
       Messaging.send_message(channel.id, user.id, "invisible")
 
-      refute_receive {:new_message, _}, 200
+      refute_receive {:envelope, _}, 200
     end
   end
 
   describe "broadcast_typing/2" do
-    test "delivers {:user_typing, user} to channel subscribers" do
+    test "delivers {:envelope, envelope} with typing event to channel subscribers" do
       user = insert(:user)
 
       {:ok, channel} =
@@ -153,7 +155,11 @@ defmodule Slackex.MessagingTest do
       Messaging.subscribe_channel(channel.id)
       Messaging.broadcast_typing(channel.id, user)
 
-      assert_receive {:user_typing, ^user}, 1000
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.v == 1
+      assert envelope.event == "typing"
+      assert envelope.target == %{type: :channel, id: channel.id}
+      assert envelope.payload == %{user_id: user.id, username: user.username}
     end
   end
 

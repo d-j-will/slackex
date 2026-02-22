@@ -23,6 +23,7 @@ defmodule SlackexWeb.DMChannel do
       {:ok, dm} when dm.user_a_id == user_id or dm.user_b_id == user_id ->
         messages = Chat.list_dm_messages(dm_id, limit: 50)
         serialized = Enum.map(messages, &MessageJSON.data/1)
+        Phoenix.PubSub.subscribe(Slackex.PubSub, "dm:#{dm_id}")
         {:ok, %{messages: serialized}, assign(socket, :dm_id, dm_id)}
 
       {:ok, _dm} ->
@@ -42,14 +43,35 @@ defmodule SlackexWeb.DMChannel do
       {:ok, _message} ->
         {:reply, :ok, socket}
 
+      {:error, :rate_limited} ->
+        {:reply, {:error, %{reason: "rate_limited", message: "Too many messages, slow down"}},
+         socket}
+
+      {:error, :backpressure} ->
+        {:reply, {:error, %{reason: "backpressure", message: "Server is busy, try again"}},
+         socket}
+
+      {:error, :unauthorized} ->
+        {:reply, {:error, %{reason: "unauthorized", message: "You cannot send messages here"}},
+         socket}
+
+      {:error, :invalid_content} ->
+        {:reply, {:error, %{reason: "invalid_content", message: "Message content is invalid"}},
+         socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: to_string(reason)}}, socket}
     end
   end
 
   @impl true
-  def handle_info({:new_message, message}, socket) do
-    push(socket, "new_message", serialize_message(message))
+  def handle_info({:envelope, %{event: "message.new", payload: message}}, socket) do
+    push(socket, "message.new", serialize_message(message))
+    {:noreply, socket}
+  end
+
+  def handle_info({:envelope, %{event: "typing", payload: payload}}, socket) do
+    push(socket, "typing", payload)
     {:noreply, socket}
   end
 

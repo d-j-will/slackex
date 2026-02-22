@@ -73,7 +73,7 @@ defmodule SlackexWeb.PresenceTest do
   end
 
   describe "Messaging.broadcast_typing/2" do
-    test "delivers {:user_typing, user} to channel subscribers" do
+    test "delivers {:envelope, envelope} with typing event to channel subscribers" do
       user = insert(:user)
 
       {:ok, channel} =
@@ -82,7 +82,9 @@ defmodule SlackexWeb.PresenceTest do
       Messaging.subscribe_channel(channel.id)
       :ok = Messaging.broadcast_typing(channel.id, user)
 
-      assert_receive {:user_typing, ^user}, 1_000
+      assert_receive {:envelope, envelope}, 1_000
+      assert envelope.event == "typing"
+      assert envelope.payload == %{user_id: user.id, username: user.username}
     end
 
     test "does not deliver typing events to unsubscribed processes" do
@@ -93,7 +95,7 @@ defmodule SlackexWeb.PresenceTest do
 
       :ok = Messaging.broadcast_typing(channel.id, user)
 
-      refute_receive {:user_typing, _}, 200
+      refute_receive {:envelope, _}, 200
     end
 
     test "multiple subscribers all receive typing event" do
@@ -111,7 +113,7 @@ defmodule SlackexWeb.PresenceTest do
           send(parent, :subscribed)
 
           receive do
-            {:user_typing, _} -> :received
+            {:envelope, %{event: "typing"}} -> :received
           after
             2_000 -> :timeout
           end
@@ -120,7 +122,8 @@ defmodule SlackexWeb.PresenceTest do
       assert_receive :subscribed, 1_000
       :ok = Messaging.broadcast_typing(channel.id, user)
 
-      assert_receive {:user_typing, ^user}, 1_000
+      assert_receive {:envelope, envelope}, 1_000
+      assert envelope.event == "typing"
       assert Task.await(task, 2_000) == :received
     end
   end

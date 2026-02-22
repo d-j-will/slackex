@@ -296,8 +296,15 @@ Children added to Phase 1 supervisor (in order):
 - [x] All boundary constraints compile without warnings
 - [x] New behavioral tests cover: presence, typing, HistoryLoader cache cascade, CacheWarmer, write path migration
 
-### Steps 8-9: Remaining
+### Steps 8-9: Envelope Contract & Write Rejection Normalization — COMPLETE
 
-- [ ] Auto-scroll to bottom on new messages (only if already at bottom) — requires LiveView/JS hook
-- [ ] Realtime payloads follow versioned `v1` envelope contract shared across web/mobile clients
-- [ ] Write rejection semantics are normalized (`rate_limited`, `backpressure`, `not_writer`, etc.) and exposed consistently to clients
+- [ ] Auto-scroll to bottom on new messages (only if already at bottom) — requires LiveView/JS hook (deferred to Phase 1 Step 7)
+- [x] Realtime payloads follow versioned `v1` envelope contract shared across web/mobile clients
+- [x] Write rejection semantics are normalized (`rate_limited`, `backpressure`, `invalid_content`, `unauthorized`) and exposed consistently to clients
+- [x] `Slackex.Messaging.Envelope` module wraps all PubSub broadcasts in `%{v: 1, event, target, payload, meta}` structure
+- [x] ChannelServer validates content (empty, >4000 chars) and returns `{:error, :invalid_content}`
+- [x] ChannelServer returns `{:error, :backpressure}` when pending writes are full (previously silent drop)
+- [x] ChatChannel and DMChannel normalize all error replies with `%{reason, message}` shape
+- [x] DMChannel PubSub subscription bug fixed (was missing `Phoenix.PubSub.subscribe` on join)
+- [x] Contract tests (`@tag :contract`) verify envelope shape and write rejection semantics for both channels
+- [x] 206 tests pass (194 default + 12 contract), mix credo --strict clean

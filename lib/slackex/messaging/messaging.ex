@@ -12,6 +12,7 @@ defmodule Slackex.Messaging do
   alias Slackex.Chat
   alias Slackex.Messaging.ChannelServer
   alias Slackex.Messaging.ChannelSupervisor
+  alias Slackex.Messaging.Envelope
 
   @pubsub Slackex.PubSub
 
@@ -90,7 +91,13 @@ defmodule Slackex.Messaging do
   @doc "Broadcasts a typing indicator to channel subscribers."
   @spec broadcast_typing(integer(), map()) :: :ok | {:error, term()}
   def broadcast_typing(channel_id, user) do
-    Phoenix.PubSub.broadcast(@pubsub, "channel:#{channel_id}", {:user_typing, user})
+    envelope =
+      Envelope.wrap("typing", {:channel, channel_id}, %{
+        user_id: user.id,
+        username: user.username
+      })
+
+    Phoenix.PubSub.broadcast(@pubsub, "channel:#{channel_id}", {:envelope, envelope})
   end
 
   @doc "Returns the count of active ChannelServer processes."

@@ -72,12 +72,43 @@ defmodule Slackex.Messaging.ChannelServerTest do
       assert {:ok, _msg} = ChannelServer.send_message(server, member.id, "member ok")
     end
 
-    test "broadcasts {:new_message, message} to PubSub channel topic",
+    test "broadcasts {:envelope, envelope} with message.new event to PubSub channel topic",
          %{user: user, channel: channel, server: server} do
       Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel.id}")
       {:ok, msg} = ChannelServer.send_message(server, user.id, "broadcast me")
 
-      assert_receive {:new_message, ^msg}, 1000
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.v == 1
+      assert envelope.event == "message.new"
+      assert envelope.target == %{type: :channel, id: channel.id}
+      assert envelope.payload == msg
+    end
+
+    test "returns {:error, :backpressure} when pending_writes is full",
+         %{user: user, server: server} do
+      pid = GenServer.whereis(server)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | pending_writes: List.duplicate(%{}, 1_000)}
+      end)
+
+      assert {:error, :backpressure} = ChannelServer.send_message(server, user.id, "overflow")
+    end
+
+    test "returns {:error, :invalid_content} for empty content",
+         %{user: user, server: server} do
+      assert {:error, :invalid_content} = ChannelServer.send_message(server, user.id, "")
+    end
+
+    test "returns {:error, :invalid_content} for whitespace-only content",
+         %{user: user, server: server} do
+      assert {:error, :invalid_content} = ChannelServer.send_message(server, user.id, "   ")
+    end
+
+    test "returns {:error, :invalid_content} for content exceeding 4000 chars",
+         %{user: user, server: server} do
+      long = String.duplicate("a", 4_001)
+      assert {:error, :invalid_content} = ChannelServer.send_message(server, user.id, long)
     end
 
     test "consecutive messages produce strictly increasing IDs",

@@ -140,5 +140,37 @@
 20. **struct_to_map for cache backfill**: When backfilling ETS cache from DB results, Ecto structs must be converted to maps via `Map.from_struct/1`. Direct ETS storage of structs works but is inconsistent with the map-based cache contract used by ChannelServer.
 
 ### Phase 2 steps remaining
-- Steps 8-9: Versioned envelope contract (`v1` payload shape), write rejection normalization
 - LiveView chat UI (from Phase 1 remaining work)
+- Auto-scroll JS hook (deferred to Phase 1 Step 7 — requires LiveView)
+
+---
+
+## Phase 2 CQRS — Steps 8–9: Envelope Contract & Write Rejection Normalization (2026-02-22)
+
+### What was built
+- **`Slackex.Messaging.Envelope`** (`lib/slackex/messaging/envelope.ex`): Versioned envelope module wrapping all realtime payloads. `wrap/4` converts `{:channel, id}` or `{:dm, id}` target tuples into `%{v: 1, event, target: %{type, id}, payload, meta: %{sent_at, correlation_id}}`. `unwrap/1` extracts event, target, payload for pattern matching.
+- **ChannelServer updates** (`lib/slackex/messaging/channel_server.ex`): Broadcasts now use `{:envelope, envelope}` instead of raw `{:new_message, message}`. Added `check_backpressure/1` — returns `{:error, :backpressure}` when `pending_writes >= @max_pending_writes` (was silently dropping). Added `validate_content/1` — returns `{:error, :invalid_content}` for empty or >4000 char content. Both checks run before Snowflake ID generation in the `with` chain.
+- **Messaging context** (`lib/slackex/messaging/messaging.ex`): `broadcast_typing/2` now wraps typing events in envelope.
+- **ChatChannel + DMChannel** (`lib/slackex_web/channels/`): Handle `{:envelope, %{event: "message.new"}}` and `{:envelope, %{event: "typing"}}` patterns. Push events as `"message.new"` and `"typing"` (not `"new_message"`). All write rejection errors normalized to `%{reason: string, message: string}` shape with specific clauses for `:rate_limited`, `:backpressure`, `:unauthorized`, `:invalid_content`.
+- **DMChannel PubSub bug fix**: Added missing `Phoenix.PubSub.subscribe(Slackex.PubSub, "dm:#{dm_id}")` in `join/3` — DM real-time message delivery from ChannelServer was broken.
+- **Contract tests** (`test/slackex_web/channels/envelope_contract_test.exs`): 12 contract tests tagged `@tag :contract` covering write rejection shapes and envelope delivery for both ChatChannel and DMChannel.
+
+### Test coverage
+- 206 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 23 new tests: 6 envelope unit, 5 ChannelServer validation, 12 contract tests
+- Contract tests excluded from default run; `mix test --include contract` runs all 206
+
+### Lessons learned
+
+21. **Silent drops become invisible bugs**: ChannelServer was silently dropping messages when `pending_writes` was full — the caller got `{:ok, message}` even though the message would never be persisted. The spec correctly required `{:error, :backpressure}` so the client knows the message was rejected. Always fail visibly at system boundaries.
+
+22. **DMChannel PubSub subscription was missing**: DMChannel.join did not call `Phoenix.PubSub.subscribe/2`, so `handle_info({:envelope, _})` would never fire for DM messages delivered by ChannelServer. ChatChannel had the subscription but DMChannel didn't — copy-paste divergence. The bug was masked in tests because Phoenix channel test helpers may auto-subscribe. Always verify PubSub wiring with integration-level assertions.
+
+23. **Contract tests as executable protocol spec**: Tagging tests with `@tag :contract` and excluding from default run (`ExUnit.configure(exclude: [:contract])`) creates a clear separation between implementation tests and protocol-level contracts. `mix test` runs fast behavioral tests; `mix test --include contract` adds protocol verification. This pattern from the spec (Section 6.4) avoids coupling fast CI feedback with slower contract checks.
+
+24. **Content validation belongs in the GenServer, not the schema**: ChannelServer bypasses Ecto changesets (builds maps directly for performance). This means Message schema's 1-4000 char validation never runs. Content validation must be duplicated in the GenServer's write path. The check must run before Snowflake ID generation to avoid wasting IDs on invalid messages.
+
+### What's next
+- Phase 1 Step 7: LiveView chat UI (registration/login forms, real-time message list, channel sidebar)
+- Auto-scroll JS hook (requires LiveView)
+- Phase 2 is now COMPLETE (all backend acceptance criteria met)

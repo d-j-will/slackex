@@ -17,6 +17,7 @@ defmodule Slackex.Messaging.ChannelServer do
   alias Slackex.Chat.Permissions
   alias Slackex.Infrastructure.RateLimiter
   alias Slackex.Infrastructure.Snowflake
+  alias Slackex.Messaging.Envelope
   alias Slackex.Pipeline.BatchWriter
 
   require Logger
@@ -98,7 +99,9 @@ defmodule Slackex.Messaging.ChannelServer do
 
   @impl true
   def handle_call({:send_message, sender_id, content}, _from, state) do
-    with :ok <- check_permission(state.channel_type, state.channel_id, sender_id),
+    with :ok <- check_backpressure(state.pending_writes),
+         :ok <- validate_content(content),
+         :ok <- check_permission(state.channel_type, state.channel_id, sender_id),
          {:ok, new_limiters} <- update_rate_limiter(state.rate_limiters, sender_id) do
       id = Snowflake.generate()
       sanitized = HtmlSanitizeEx.strip_tags(content)
@@ -111,19 +114,15 @@ defmodule Slackex.Messaging.ChannelServer do
 
       LocalCache.put_message({state.channel_type, state.channel_id}, message)
       new_queue = bounded_enqueue(state.messages, message, @max_cached_messages)
+      new_pending = [message | state.pending_writes]
 
-      new_pending =
-        if length(state.pending_writes) < @max_pending_writes do
-          [message | state.pending_writes]
-        else
-          Logger.warning("ChannelServer pending_writes full, dropping message #{id}")
-          state.pending_writes
-        end
+      envelope =
+        Envelope.wrap("message.new", {state.channel_type, state.channel_id}, message)
 
       Phoenix.PubSub.broadcast(
         Slackex.PubSub,
         pubsub_topic(state.channel_type, state.channel_id),
-        {:new_message, message}
+        {:envelope, envelope}
       )
 
       new_state = %{
@@ -229,6 +228,24 @@ defmodule Slackex.Messaging.ChannelServer do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp check_backpressure(pending_writes) do
+    if length(pending_writes) >= @max_pending_writes do
+      {:error, :backpressure}
+    else
+      :ok
+    end
+  end
+
+  defp validate_content(content) do
+    sanitized = HtmlSanitizeEx.strip_tags(content)
+
+    cond do
+      String.trim(sanitized) == "" -> {:error, :invalid_content}
+      String.length(sanitized) > 4_000 -> {:error, :invalid_content}
+      true -> :ok
+    end
+  end
 
   defp check_permission(:channel, channel_id, sender_id) do
     role = Chat.get_role(sender_id, channel_id)

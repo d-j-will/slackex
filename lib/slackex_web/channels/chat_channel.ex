@@ -41,14 +41,35 @@ defmodule SlackexWeb.ChatChannel do
       {:ok, _message} ->
         {:reply, :ok, socket}
 
+      {:error, :rate_limited} ->
+        {:reply, {:error, %{reason: "rate_limited", message: "Too many messages, slow down"}},
+         socket}
+
+      {:error, :backpressure} ->
+        {:reply, {:error, %{reason: "backpressure", message: "Server is busy, try again"}},
+         socket}
+
+      {:error, :unauthorized} ->
+        {:reply, {:error, %{reason: "unauthorized", message: "You cannot send messages here"}},
+         socket}
+
+      {:error, :invalid_content} ->
+        {:reply, {:error, %{reason: "invalid_content", message: "Message content is invalid"}},
+         socket}
+
       {:error, reason} ->
         {:reply, {:error, %{reason: to_string(reason)}}, socket}
     end
   end
 
   @impl true
-  def handle_info({:new_message, message}, socket) do
-    push(socket, "new_message", serialize_message(message))
+  def handle_info({:envelope, %{event: "message.new", payload: message}}, socket) do
+    push(socket, "message.new", serialize_message(message))
+    {:noreply, socket}
+  end
+
+  def handle_info({:envelope, %{event: "typing", payload: payload}}, socket) do
+    push(socket, "typing", payload)
     {:noreply, socket}
   end
 

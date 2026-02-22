@@ -47,13 +47,13 @@ defmodule SlackexWeb.DMChannelTest do
     test "sending a DM is pushed back to the sender", %{socket: socket} do
       ref = push(socket, "new_message", %{"content" => "Direct message test"})
       assert_reply ref, :ok
-      assert_push "new_message", %{content: "Direct message test"}
+      assert_push "message.new", %{content: "Direct message test"}
     end
 
     test "message payload includes sender_id and string ID", %{socket: socket, alice: alice} do
       ref = push(socket, "new_message", %{"content" => "Hello"})
       assert_reply ref, :ok
-      assert_push "new_message", %{id: id, sender_id: sender_id}
+      assert_push "message.new", %{id: id, sender_id: sender_id}
       assert is_binary(id)
       assert sender_id == to_string(alice.id)
     end
