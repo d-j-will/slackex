@@ -42,6 +42,23 @@ defmodule Slackex.Chat do
     Repo.all(from c in Channel, where: not c.is_private, order_by: c.name)
   end
 
+  @doc "Lists channels with message activity since the given datetime."
+  def list_active_channels(opts \\ []) do
+    since = Keyword.fetch!(opts, :since)
+
+    from(c in Channel,
+      where:
+        c.id in subquery(
+          from m in Message,
+            where: m.inserted_at >= ^since,
+            where: not is_nil(m.channel_id),
+            select: m.channel_id,
+            distinct: true
+        )
+    )
+    |> Repo.all()
+  end
+
   @doc """
   Lists channels that a user is subscribed to.
   """

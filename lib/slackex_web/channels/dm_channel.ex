@@ -2,11 +2,16 @@ defmodule SlackexWeb.DMChannel do
   @moduledoc """
   Phoenix Channel for real-time direct message conversations.
   Clients join with a JWT-authenticated socket and send/receive messages.
+
+  Write path routes through `Slackex.Messaging` (ChannelServer → BatchWriter).
+  Incoming messages arrive via Phoenix's internal PubSub subscription to "dm:{id}"
+  (ChannelServer broadcasts to the same topic) and are pushed to the connected client.
   """
 
   use Phoenix.Channel
 
   alias Slackex.Chat
+  alias Slackex.Messaging
   alias SlackexWeb.API.MessageJSON
 
   @impl true
@@ -33,13 +38,27 @@ defmodule SlackexWeb.DMChannel do
     dm_id = socket.assigns.dm_id
     user_id = socket.assigns.current_user_id
 
-    case Chat.send_dm(dm_id, user_id, content) do
-      {:ok, message} ->
-        broadcast!(socket, "new_message", MessageJSON.data(message))
+    case Messaging.send_dm(dm_id, user_id, content) do
+      {:ok, _message} ->
         {:reply, :ok, socket}
 
       {:error, reason} ->
         {:reply, {:error, %{reason: to_string(reason)}}, socket}
     end
+  end
+
+  @impl true
+  def handle_info({:new_message, message}, socket) do
+    push(socket, "new_message", serialize_message(message))
+    {:noreply, socket}
+  end
+
+  defp serialize_message(message) do
+    %{
+      id: to_string(message.id),
+      content: message.content,
+      sender_id: to_string(message.sender_id),
+      inserted_at: message.inserted_at
+    }
   end
 end

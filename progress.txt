@@ -110,8 +110,35 @@
 16. **Rate limiter affects large-batch tests**: ChannelServer rate-limits at 10 msg/s per user. Tests that try to send 200+ messages from a single user will hit `:error, :rate_limited` after 10. Bounded-queue tests should either use many distinct users or be removed in favour of testing the limit via direct ETS/queue inspection.
 
 ### Phase 2 steps remaining
-- Step 4: Phoenix Presence (online users, typing indicators with auto-clear)
-- Step 5: Scroll-based history pagination (`HistoryLoader`, JS hook)
-- Step 6: Update LiveView and mobile ChatChannel/DMChannel write paths to use Messaging context
-- Step 7: Oban setup (background jobs, CacheWarmer)
+- Steps 8-9: Versioned envelope contract, write rejection normalization
+- LiveView chat UI (from Phase 1 remaining work)
+
+---
+
+## Phase 2 CQRS — Steps 4–7: Presence, History, Oban, Write Path Migration (2026-02-22)
+
+### What was built
+- **`SlackexWeb.Presence`** (`lib/slackex_web/presence.ex`): Phoenix Presence module for tracking online users per channel. Uses `Phoenix.Presence` with `pubsub_server: Slackex.PubSub`. Added to application supervisor after PubSub.
+- **`Slackex.Search.HistoryLoader`** (`lib/slackex/search/history_loader.ex`): CQRS read side with cache cascade. `recent/2` checks ETS cache first, falls back to DB with backfill. `before/3` always reads from DB for older messages. Returns `{:ok, messages}` in chronological order. Target-aware tuples `{:channel, id}` and `{:dm, id}`.
+- **`Slackex.Workers.CacheWarmer`** (`lib/slackex/workers/cache_warmer.ex`): Oban worker (queue: default, max_attempts: 1). Runs hourly via Oban.Plugins.Cron. Finds channels with messages in the last hour via `Chat.list_active_channels/1`, ensures their ChannelServer is started (which rehydrates cache on init).
+- **`Chat.list_active_channels/1`** added to `lib/slackex/chat/chat.ex`: Queries channels with recent message activity using a subquery on the messages table.
+- **Oban integration**: Added `{:oban, "~> 2.18"}` dependency, migration (version 12), config with queues (default: 10, notifications: 20, embeddings: 5), Pruner plugin, and Cron plugin with hourly CacheWarmer.
+- **Write path migration** (Step 6): ChatChannel and DMChannel now route through `Messaging.send_message/3` and `Messaging.send_dm/3` instead of direct `Chat` context calls. Removed `broadcast!/3` from both channels — ChannelServer already broadcasts via PubSub, channels subscribe and push to client via `handle_info({:new_message, msg})`.
+
+### Test coverage
+- 183 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 26 new behavioral tests covering: Presence tracking, typing broadcast, HistoryLoader cache hit/miss/before pagination, CacheWarmer perform/active channels query, ChatChannel/DMChannel write path migration
+
+### Lessons learned
+
+17. **Duplicate broadcast trap when migrating write paths**: When migrating from `Chat.send_message` (direct DB write) to `Messaging.send_message` (ChannelServer), you must remove the channel's `broadcast!/3` call. The ChannelServer already broadcasts via PubSub — keeping both causes duplicate messages. Instead, subscribe the channel process to the PubSub topic on join and handle `{:new_message, msg}` to push to the client.
+
+18. **HistoryLoader returns different shapes than Chat context**: `Chat.list_messages/2` returns Ecto structs with preloaded `:sender`. `HistoryLoader.recent/2` returns cached maps (no `:sender`). For the initial channel join payload (which needs full serialization via MessageJSON.data/1), keep using `Chat.list_messages` directly. Use HistoryLoader for the CQRS read path where map shapes suffice.
+
+19. **Oban test config `testing: :inline`**: This makes all Oban jobs execute synchronously in tests. Without it, jobs are enqueued but never run, causing test assertions on side effects to fail.
+
+20. **struct_to_map for cache backfill**: When backfilling ETS cache from DB results, Ecto structs must be converted to maps via `Map.from_struct/1`. Direct ETS storage of structs works but is inconsistent with the map-based cache contract used by ChannelServer.
+
+### Phase 2 steps remaining
+- Steps 8-9: Versioned envelope contract (`v1` payload shape), write rejection normalization
 - LiveView chat UI (from Phase 1 remaining work)

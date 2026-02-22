@@ -33,3 +33,5 @@ config :phoenix_live_view,
 
 # Faster password hashing in tests
 config :bcrypt_elixir, log_rounds: 4
+
+config :slackex, Oban, testing: :inline

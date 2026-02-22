@@ -2,11 +2,16 @@ defmodule SlackexWeb.ChatChannel do
   @moduledoc """
   Phoenix Channel for real-time channel messaging.
   Clients join with a JWT-authenticated socket and send/receive messages.
+
+  Write path routes through `Slackex.Messaging` (ChannelServer → BatchWriter).
+  Incoming messages arrive via PubSub subscription to "channel:{id}" and are
+  pushed directly to the connected client.
   """
 
   use Phoenix.Channel
 
   alias Slackex.Chat
+  alias Slackex.Messaging
   alias SlackexWeb.API.MessageJSON
 
   @impl true
@@ -22,6 +27,7 @@ defmodule SlackexWeb.ChatChannel do
         messages = Chat.list_messages(channel_id, limit: 50)
         Chat.mark_as_read(user_id, channel_id)
         serialized = Enum.map(messages, &MessageJSON.data/1)
+        Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel_id}")
         {:ok, %{messages: serialized}, assign(socket, :channel_id, channel_id)}
     end
   end
@@ -31,13 +37,27 @@ defmodule SlackexWeb.ChatChannel do
     channel_id = socket.assigns.channel_id
     user_id = socket.assigns.current_user_id
 
-    case Chat.send_message(channel_id, user_id, content) do
-      {:ok, message} ->
-        broadcast!(socket, "new_message", MessageJSON.data(message))
+    case Messaging.send_message(channel_id, user_id, content) do
+      {:ok, _message} ->
         {:reply, :ok, socket}
 
       {:error, reason} ->
         {:reply, {:error, %{reason: to_string(reason)}}, socket}
     end
+  end
+
+  @impl true
+  def handle_info({:new_message, message}, socket) do
+    push(socket, "new_message", serialize_message(message))
+    {:noreply, socket}
+  end
+
+  defp serialize_message(message) do
+    %{
+      id: to_string(message.id),
+      content: message.content,
+      sender_id: to_string(message.sender_id),
+      inserted_at: message.inserted_at
+    }
   end
 end

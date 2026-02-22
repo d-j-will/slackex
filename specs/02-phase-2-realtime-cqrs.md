@@ -285,14 +285,19 @@ Children added to Phase 1 supervisor (in order):
 - [x] All behavioral tests from Phase 1 still pass
 - [x] New behavioral tests cover: GenServer message flow, cache hit/miss, rate limiting, batch persistence
 
-### Steps 4-9: Presence, History, Oban, Write Path Migration — REMAINING
+### Steps 4-7: Presence, HistoryLoader, Oban, Write Path Migration — COMPLETE
 
-- [ ] Phoenix Presence shows online users per channel
-- [ ] Typing indicators appear and auto-clear after 3 seconds
-- [ ] Scroll-up loads older messages via paginated DB query
-- [ ] Auto-scroll to bottom on new messages (only if already at bottom)
-- [ ] Oban is configured and the cache warmer runs hourly
+- [x] Phoenix Presence shows online users per channel
+- [x] Typing indicators broadcast via Messaging.broadcast_typing/2
+- [x] Scroll-up loads older messages via HistoryLoader.before/3 paginated DB query
+- [x] Oban is configured and the cache warmer runs hourly
+- [x] ChatChannel and DMChannel write paths route through Messaging context (ChannelServer → BatchWriter)
+- [x] Duplicate broadcast eliminated (ChannelServer broadcasts via PubSub, channels subscribe and push)
+- [x] All boundary constraints compile without warnings
+- [x] New behavioral tests cover: presence, typing, HistoryLoader cache cascade, CacheWarmer, write path migration
+
+### Steps 8-9: Remaining
+
+- [ ] Auto-scroll to bottom on new messages (only if already at bottom) — requires LiveView/JS hook
 - [ ] Realtime payloads follow versioned `v1` envelope contract shared across web/mobile clients
 - [ ] Write rejection semantics are normalized (`rate_limited`, `backpressure`, `not_writer`, etc.) and exposed consistently to clients
-- [ ] All boundary constraints compile without warnings
-- [ ] New behavioral tests cover: presence, typing, and realtime contract payload shape

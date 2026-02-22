@@ -68,23 +68,23 @@ defmodule SlackexWeb.ChatChannelTest do
       %{socket: socket}
     end
 
-    test "sending a message broadcasts to all subscribers in the channel", %{socket: socket} do
+    test "sending a message is pushed back to the sender", %{socket: socket} do
       ref = push(socket, "new_message", %{"content" => "Test message"})
       assert_reply ref, :ok
-      assert_broadcast "new_message", %{content: "Test message"}
+      assert_push "new_message", %{content: "Test message"}
     end
 
-    test "message payload includes sender info and content", %{socket: socket, user: user} do
+    test "message payload includes sender_id and content", %{socket: socket, user: user} do
       ref = push(socket, "new_message", %{"content" => "Hello"})
       assert_reply ref, :ok
-      assert_broadcast "new_message", %{content: "Hello", sender: sender}
-      assert sender.username == user.username
+      assert_push "new_message", %{content: "Hello", sender_id: sender_id}
+      assert sender_id == to_string(user.id)
     end
 
     test "message ID is serialized as string", %{socket: socket} do
       ref = push(socket, "new_message", %{"content" => "ID test"})
       assert_reply ref, :ok
-      assert_broadcast "new_message", %{id: id}
+      assert_push "new_message", %{id: id}
       assert is_binary(id)
     end
   end

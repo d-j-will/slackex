@@ -58,6 +58,9 @@ defmodule Slackex.MixProject do
       # Content safety
       {:html_sanitize_ex, "~> 1.4"},
 
+      # Background jobs
+      {:oban, "~> 2.18"},
+
       # Telemetry
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
