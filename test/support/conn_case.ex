@@ -27,12 +27,37 @@ defmodule SlackexWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import Phoenix.LiveViewTest
       import SlackexWeb.ConnCase
+      import Slackex.Factory
     end
   end
 
   setup tags do
     Slackex.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
+  end
+
+  @doc """
+  Logs the given `user` into the `conn`.
+
+  It returns an updated `conn` with the user's session token
+  set in the session.
+  """
+  def log_in_user(conn, user) do
+    token = Slackex.Accounts.generate_user_session_token(user)
+
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> Plug.Conn.put_session(:user_token, token)
+  end
+
+  @doc """
+  Creates a user via factory, logs them in, and returns
+  the updated conn and user.
+  """
+  def register_and_log_in_user(%{conn: conn}) do
+    user = Slackex.Factory.insert(:user)
+    %{conn: log_in_user(conn, user), user: user}
   end
 end

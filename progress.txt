@@ -171,6 +171,43 @@
 24. **Content validation belongs in the GenServer, not the schema**: ChannelServer bypasses Ecto changesets (builds maps directly for performance). This means Message schema's 1-4000 char validation never runs. Content validation must be duplicated in the GenServer's write path. The check must run before Snowflake ID generation to avoid wasting IDs on invalid messages.
 
 ### What's next
-- Phase 1 Step 7: LiveView chat UI (registration/login forms, real-time message list, channel sidebar)
-- Auto-scroll JS hook (requires LiveView)
-- Phase 2 is now COMPLETE (all backend acceptance criteria met)
+- Phase 3: Scalability (time-partitioned messages, Redis caching, connection pooling)
+- Phase 4: Search (full-text search, pgvector embeddings)
+- Boundary compile-time checks, Tidewave setup, git hooks
+
+---
+
+## Phase 1 Step 7 — LiveView Chat UI (2026-02-22)
+
+### What was built
+- **`SlackexWeb.UserAuth`** (`lib/slackex_web/user_auth.ex`): Full auth plug module following `phx.gen.auth` patterns. `fetch_current_user/2` plug loads user from session token. Three `on_mount` callbacks: `:mount_current_user` (assigns current_user), `:ensure_authenticated` (redirects to login if not authenticated), `:redirect_if_authenticated` (redirects to /chat if already logged in). Cookie-based remember-me support. `log_in_user/3` and `log_out_user/1` for session lifecycle.
+- **`SlackexWeb.UserSessionController`** (`lib/slackex_web/controllers/user_session_controller.ex`): POST /users/log-in (email+password auth, delegates to UserAuth.log_in_user), DELETE /users/log-out.
+- **`SlackexWeb.AuthLive.Register`** (`lib/slackex_web/live/auth_live/register.ex`): Registration LiveView with username/email/password form, real-time validation on change, redirect to login on success.
+- **`SlackexWeb.AuthLive.Login`** (`lib/slackex_web/live/auth_live/login.ex`): Login LiveView with form that POSTs to session controller (action={~p"/users/log-in"}, phx-update="ignore"). Login forms must POST to a controller (not handle_event) because session cookies require a full HTTP request/response cycle.
+- **`SlackexWeb.ChatLive.Index`** (`lib/slackex_web/live/chat_live/index.ex`): Main chat LiveView. Channel sidebar listing user's channels. Message stream with PubSub subscription for real-time updates. Send message form routing through `Messaging.send_message/3` (CQRS write path). Envelope-based message handling (`{:envelope, %{event: "message.new"}}`). Sender enrichment for PubSub messages (fetches user by sender_id). Auto-mark-as-read on channel selection. Welcome screen when no channel selected.
+- **App layout** (`lib/slackex_web/components/layouts/app.html.heex`): daisyUI navbar with Slackex branding, current_user display, login/register/logout links, flash_group.
+- **Auto-scroll JS hook** (`assets/js/hooks/message_list.js`): Scrolls to bottom on mount. On update, only auto-scrolls if user is already at bottom (100px threshold). Registered in app.js alongside colocated hooks.
+- **Router updates** (`lib/slackex_web/router.ex`): `fetch_current_user` plug in browser pipeline. Two live_sessions: `:redirect_if_authenticated` (register/login) and `:require_authenticated_user` (chat). Session controller routes for POST login and DELETE logout.
+
+### Test coverage
+- 211 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean, mix format clean
+- 17 new behavioral tests:
+  - Auth LiveView tests (10): registration form render, valid registration redirect, duplicate username error, weak password validation, login form render, login-to-register link, auth redirects (unauth→login, auth→chat×2, landing page redirect)
+  - Chat LiveView tests (7): channel sidebar display, channel header with description, message display, send message form, real-time PubSub message from another user (envelope broadcast), unauth redirect to login, welcome message when no channel selected
+
+### Lessons learned
+
+25. **Login forms must POST to a controller, not LiveView**: LiveView runs over WebSocket. Session cookies can only be set during an HTTP request/response cycle. Login forms use `action={~p"/users/log-in"}` with `phx-update="ignore"` to submit as a standard form POST to UserSessionController, which calls `Plug.Conn.put_session/3`. Registration can stay in LiveView (redirect to login page on success).
+
+26. **Layout template embedding conflict**: Phoenix's `embed_templates` macro embeds all `.heex` files matching the pattern. If you define both an inline function component `def app(assigns)` AND a template file `layouts/app.html.heex`, the inline function shadows the template. Use `embed_templates "layouts/*"` to embed all layout templates and remove inline definitions.
+
+27. **LiveView streams for efficient message lists**: Using `stream(:messages, messages)` in mount and `stream_insert(:messages, enriched_message)` in PubSub handlers gives Phoenix's diffing engine efficient DOM updates. Each message needs a unique DOM ID (`:dom_id` option or `id` field).
+
+28. **PubSub message enrichment**: ChannelServer broadcasts message maps without preloaded associations. The LiveView must enrich incoming PubSub messages by fetching the sender user: `Accounts.get_user!(message.sender_id)`. This is acceptable since PubSub messages arrive one at a time (not in bulk).
+
+29. **ConnCase test helpers for LiveView auth**: `log_in_user/2` generates a session token via `Accounts.generate_user_session_token/1` and puts it in the test session via `init_test_session/2` + `put_session(:user_token, token)`. This mirrors what UserAuth does in production without needing HTTP roundtrips.
+
+### What's next
+- Phase 3: Scalability (time-partitioned messages, Redis caching, connection pooling)
+- Phase 4: Search (full-text search, pgvector embeddings)
+- Boundary compile-time checks, Tidewave setup, git hooks

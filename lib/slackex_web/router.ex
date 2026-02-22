@@ -1,6 +1,8 @@
 defmodule SlackexWeb.Router do
   use SlackexWeb, :router
 
+  import SlackexWeb.UserAuth
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +10,7 @@ defmodule SlackexWeb.Router do
     plug :put_root_layout, html: {SlackexWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_user
   end
 
   pipeline :api do
@@ -18,6 +21,35 @@ defmodule SlackexWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  ## Authentication routes
+
+  scope "/", SlackexWeb do
+    pipe_through :browser
+
+    post "/users/log-in", UserSessionController, :create
+    delete "/users/log-out", UserSessionController, :delete
+  end
+
+  scope "/", SlackexWeb do
+    pipe_through :browser
+
+    live_session :redirect_if_authenticated,
+      on_mount: [{SlackexWeb.UserAuth, :redirect_if_authenticated}] do
+      live "/users/register", AuthLive.Register, :new
+      live "/users/log-in", AuthLive.Login, :new
+    end
+  end
+
+  scope "/", SlackexWeb do
+    pipe_through :browser
+
+    live_session :require_authenticated_user,
+      on_mount: [{SlackexWeb.UserAuth, :ensure_authenticated}] do
+      live "/chat", ChatLive.Index, :index
+      live "/chat/:slug", ChatLive.Index, :show
+    end
   end
 
   scope "/api", SlackexWeb.API do
