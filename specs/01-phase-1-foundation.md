@@ -427,5 +427,5 @@ See `05-ci-cd-devops.md` for the full Docker Compose configuration. Phase 1 requ
 - [x] Mix aliases for lint, typecheck, quality, ci
 - [ ] Boundary compile-time checks (deferred — `boundary` dep not yet added)
 - [x] Tidewave MCP server is accessible in dev for AI-assisted development
-- [ ] `mix setup` bootstraps the entire project from scratch
+- [x] `mix setup` bootstraps the entire project from scratch (deps, DB, assets, git hooks)
 - [x] Pre-commit git hook installed (format, compile, credo, assets.build, test)
