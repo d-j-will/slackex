@@ -12,6 +12,7 @@ defmodule Slackex.Messaging.ChannelServer do
 
   use GenServer
 
+  alias Ecto.Adapters.SQL
   alias Slackex.Cache.Local, as: LocalCache
   alias Slackex.Chat
   alias Slackex.Chat.Permissions
@@ -19,6 +20,7 @@ defmodule Slackex.Messaging.ChannelServer do
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.Messaging.Envelope
   alias Slackex.Pipeline.BatchWriter
+  alias Slackex.Repo
 
   require Logger
 
@@ -82,6 +84,15 @@ defmodule Slackex.Messaging.ChannelServer do
       |> Enum.take(@max_cached_messages)
       |> Enum.reduce(:queue.new(), fn msg, q -> :queue.in(msg, q) end)
 
+    table = if channel_type == :channel, do: "channels", else: "dm_conversations"
+
+    %{rows: [[writer_epoch]]} =
+      SQL.query!(
+        Repo,
+        "UPDATE #{table} SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch",
+        [channel_id]
+      )
+
     Process.send_after(self(), :batch_flush, @batch_interval)
 
     {:ok,
@@ -93,50 +104,56 @@ defmodule Slackex.Messaging.ChannelServer do
        pending_writes: [],
        in_flight: %{},
        rate_limiters: %{},
-       metadata: %{}
+       metadata: %{},
+       writer_epoch: writer_epoch,
+       stale: false
      }, @idle_timeout}
   end
 
   @impl true
   def handle_call({:send_message, sender_id, content}, _from, state) do
-    with :ok <- check_backpressure(state.pending_writes),
-         :ok <- validate_content(content),
-         :ok <- check_permission(state.channel_type, state.channel_id, sender_id),
-         {:ok, new_limiters} <- update_rate_limiter(state.rate_limiters, sender_id) do
-      id = Snowflake.generate()
-      sanitized = HtmlSanitizeEx.strip_tags(content)
-      ts_ms = Snowflake.extract_timestamp(id)
-      inserted_at = DateTime.from_unix!(ts_ms * 1_000, :microsecond)
-
-      message =
-        %{id: id, content: sanitized, sender_id: sender_id, inserted_at: inserted_at}
-        |> put_target_field(state.channel_type, state.channel_id)
-
-      LocalCache.put_message({state.channel_type, state.channel_id}, message)
-      new_queue = bounded_enqueue(state.messages, message, @max_cached_messages)
-      new_pending = [message | state.pending_writes]
-
-      envelope =
-        Envelope.wrap("message.new", {state.channel_type, state.channel_id}, message)
-
-      Phoenix.PubSub.broadcast(
-        Slackex.PubSub,
-        pubsub_topic(state.channel_type, state.channel_id),
-        {:envelope, envelope}
-      )
-
-      new_state = %{
-        state
-        | messages: new_queue,
-          message_count: state.message_count + 1,
-          pending_writes: new_pending,
-          rate_limiters: new_limiters
-      }
-
-      {:reply, {:ok, message}, new_state, @idle_timeout}
+    if state.stale do
+      {:reply, {:error, :not_writer}, state, @idle_timeout}
     else
-      {:error, reason} ->
-        {:reply, {:error, reason}, state, @idle_timeout}
+      with :ok <- check_backpressure(state.pending_writes),
+           :ok <- validate_content(content),
+           :ok <- check_permission(state.channel_type, state.channel_id, sender_id),
+           {:ok, new_limiters} <- update_rate_limiter(state.rate_limiters, sender_id) do
+        id = Snowflake.generate()
+        sanitized = HtmlSanitizeEx.strip_tags(content)
+        ts_ms = Snowflake.extract_timestamp(id)
+        inserted_at = DateTime.from_unix!(ts_ms * 1_000, :microsecond)
+
+        message =
+          %{id: id, content: sanitized, sender_id: sender_id, inserted_at: inserted_at}
+          |> put_target_field(state.channel_type, state.channel_id)
+
+        LocalCache.put_message({state.channel_type, state.channel_id}, message)
+        new_queue = bounded_enqueue(state.messages, message, @max_cached_messages)
+        new_pending = [message | state.pending_writes]
+
+        envelope =
+          Envelope.wrap("message.new", {state.channel_type, state.channel_id}, message)
+
+        Phoenix.PubSub.broadcast(
+          Slackex.PubSub,
+          pubsub_topic(state.channel_type, state.channel_id),
+          {:envelope, envelope}
+        )
+
+        new_state = %{
+          state
+          | messages: new_queue,
+            message_count: state.message_count + 1,
+            pending_writes: new_pending,
+            rate_limiters: new_limiters
+        }
+
+        {:reply, {:ok, message}, new_state, @idle_timeout}
+      else
+        {:error, reason} ->
+          {:reply, {:error, reason}, state, @idle_timeout}
+      end
     end
   end
 
@@ -157,7 +174,7 @@ defmodule Slackex.Messaging.ChannelServer do
       else
         ref = make_ref()
         batch = state.pending_writes
-        BatchWriter.async_insert_batch(batch, ref)
+        BatchWriter.async_insert_batch(batch, ref, epoch_opts(state))
 
         %{
           state
@@ -174,6 +191,24 @@ defmodule Slackex.Messaging.ChannelServer do
     {:noreply, %{state | in_flight: Map.delete(state.in_flight, ref)}, @idle_timeout}
   end
 
+  def handle_info({:batch_result, _ref, {:error, :epoch_stale}}, state) do
+    Logger.warning(
+      "ChannelServer #{state.channel_type}:#{state.channel_id} epoch stale — shutting down"
+    )
+
+    :telemetry.execute(
+      [:slackex, :channel_server, :epoch_stale_shutdown],
+      %{pending_count: length(state.pending_writes), in_flight_count: map_size(state.in_flight)},
+      %{
+        channel_id: state.channel_id,
+        channel_type: state.channel_type,
+        writer_epoch: state.writer_epoch
+      }
+    )
+
+    {:stop, :normal, %{state | pending_writes: [], in_flight: %{}, stale: true}}
+  end
+
   def handle_info({:batch_result, ref, {:error, reason}}, state) do
     case Map.pop(state.in_flight, ref) do
       {nil, _in_flight} ->
@@ -187,7 +222,7 @@ defmodule Slackex.Messaging.ChannelServer do
         )
 
         new_ref = make_ref()
-        BatchWriter.async_insert_batch(messages, new_ref)
+        BatchWriter.async_insert_batch(messages, new_ref, epoch_opts(state))
 
         updated_in_flight =
           Map.put(new_in_flight, new_ref, %{messages: messages, retry_count: count + 1})
@@ -213,7 +248,7 @@ defmodule Slackex.Messaging.ChannelServer do
 
   def handle_info(:timeout, state) do
     if state.pending_writes != [] do
-      case BatchWriter.insert_batch(state.pending_writes) do
+      case BatchWriter.insert_batch(state.pending_writes, epoch_opts(state)) do
         {:ok, _count} ->
           :ok
 
@@ -228,6 +263,10 @@ defmodule Slackex.Messaging.ChannelServer do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp epoch_opts(state) do
+    [epoch: state.writer_epoch, type: state.channel_type, id: state.channel_id]
+  end
 
   defp check_backpressure(pending_writes) do
     if length(pending_writes) >= @max_pending_writes do

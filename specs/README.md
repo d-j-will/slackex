@@ -15,7 +15,7 @@
 | [Testing Strategy](#testing-strategy) | Reference | — | [06-testing-strategy.md](06-testing-strategy.md) |
 | [Architecture Overview](#architecture-overview) | Reference | — | [00-overview.md](00-overview.md) |
 
-**Current test count: 220 (0 failures)**
+**Current test count: 230 (0 failures)**
 
 ---
 
@@ -65,7 +65,7 @@
 |------|-------------|--------|
 | 1 | libcluster — Node Discovery | **Done** |
 | 2.1 | Replace Registry with Horde.Registry | **Done** |
-| 2.2 | Writer Fencing (Split-Brain Safety) | Not started (migration ready) |
+| 2.2 | Writer Fencing (Split-Brain Safety) | **Done** |
 | 2.3 | Replace DynamicSupervisor with Horde.DynamicSupervisor | **Done** |
 | 2.4 | Update ChannelServer via tuples | **Done** |
 | 2.5 | Process Handoff on Node Down (terminate/2 + crash recovery) | Not started |
@@ -80,7 +80,7 @@
 
 ### Next recommended task
 
-**Step 2.2 — Writer Fencing** then **Step 2.5 — Crash Recovery**. These complete the Horde safety guarantees before moving to Redis (Step 3). The `writer_epoch` migration columns are already in place.
+**Step 2.5 — Crash Recovery** (terminate/2 flush + init/1 reconciliation). This completes the Horde safety guarantees before moving to Redis (Step 3).
 
 ---
 

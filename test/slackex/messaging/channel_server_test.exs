@@ -2,8 +2,10 @@ defmodule Slackex.Messaging.ChannelServerTest do
   # async: false — tests share the global ChannelRegistry and ChannelSupervisor
   use Slackex.DataCase, async: false
 
+  alias Ecto.Adapters.SQL
   alias Slackex.Messaging.ChannelServer
   alias Slackex.Messaging.ChannelSupervisor
+  alias Slackex.Repo
 
   # Start a fresh ChannelServer backed by a unique channel for each test.
   # The channel creator gets the "owner" role and can send messages.
@@ -117,6 +119,99 @@ defmodule Slackex.Messaging.ChannelServerTest do
       {:ok, m2} = ChannelServer.send_message(server, user.id, "second")
 
       assert m2.id > m1.id
+    end
+  end
+
+  describe "writer epoch fencing" do
+    test "acquires a positive writer_epoch on startup",
+         %{server: server} do
+      pid = GenServer.whereis(server)
+      state = :sys.get_state(pid)
+
+      assert is_integer(state.writer_epoch)
+      assert state.writer_epoch > 0
+    end
+
+    test "stale flag is false on startup", %{server: server} do
+      pid = GenServer.whereis(server)
+      state = :sys.get_state(pid)
+
+      assert state.stale == false
+    end
+
+    test "increments writer_epoch in the database on startup",
+         %{channel: channel} do
+      # Channel was already started once in setup, so epoch should be >= 1
+      %{rows: [[db_epoch]]} =
+        SQL.query!(
+          Repo,
+          "SELECT writer_epoch FROM channels WHERE id = $1",
+          [channel.id]
+        )
+
+      assert db_epoch >= 1
+    end
+
+    test "returns {:error, :not_writer} when stale flag is set",
+         %{user: user, server: server} do
+      pid = GenServer.whereis(server)
+
+      :sys.replace_state(pid, fn state ->
+        %{state | stale: true}
+      end)
+
+      assert {:error, :not_writer} = ChannelServer.send_message(server, user.id, "stale msg")
+    end
+
+    test "epoch_stale batch result causes graceful shutdown" do
+      # Use a dedicated channel to avoid polluting the shared setup server
+      user = insert(:user)
+
+      {:ok, ch} =
+        Slackex.Chat.create_channel(user.id, %{name: "stale-#{System.unique_integer()}"})
+
+      {:ok, pid} = ChannelSupervisor.ensure_started({:channel, ch.id})
+      ref = Process.monitor(pid)
+
+      # Simulate an epoch_stale batch result arriving from BatchWriter
+      send(pid, {:batch_result, make_ref(), {:error, :epoch_stale}})
+
+      # The process should terminate normally
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5000
+    end
+
+    test "epoch_stale emits telemetry event" do
+      # Use a dedicated channel to avoid polluting the shared setup server
+      user = insert(:user)
+
+      {:ok, ch} =
+        Slackex.Chat.create_channel(user.id, %{name: "tele-#{System.unique_integer()}"})
+
+      {:ok, pid} = ChannelSupervisor.ensure_started({:channel, ch.id})
+
+      test_pid = self()
+      tref = make_ref()
+
+      handler_id = "test-epoch-stale-#{System.unique_integer()}"
+
+      :telemetry.attach(
+        handler_id,
+        [:slackex, :channel_server, :epoch_stale_shutdown],
+        fn _event, measurements, metadata, _ ->
+          send(test_pid, {tref, measurements, metadata})
+        end,
+        nil
+      )
+
+      send(pid, {:batch_result, make_ref(), {:error, :epoch_stale}})
+
+      assert_receive {^tref, measurements, metadata}, 5000
+      assert is_integer(measurements.pending_count)
+      assert is_integer(measurements.in_flight_count)
+      assert is_integer(metadata.channel_id)
+      assert metadata.channel_type == :channel
+
+      :telemetry.detach(handler_id)
     end
   end
 

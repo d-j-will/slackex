@@ -14,39 +14,61 @@ defmodule Slackex.Pipeline.BatchWriter do
   alias Slackex.Repo
 
   @doc """
-  Inserts a batch of message maps into the database.
+  Inserts a batch of message maps into the database with epoch fencing.
 
-  Each map must have: `id`, `content`, `sender_id`, and either
+  `opts` must include:
+    - `:epoch` — the caller's expected writer epoch (integer)
+    - `:type`  — `:channel` or `:dm`
+    - `:id`    — the channel or DM conversation integer ID
+
+  The insert is wrapped in a transaction that row-locks the owning
+  channel/conversation and checks `writer_epoch`. If the database epoch
+  is greater than `caller_epoch`, the transaction is rolled back and
+  `{:error, :epoch_stale}` is returned.
+
+  Each message map must have: `id`, `content`, `sender_id`, and either
   `channel_id` or `dm_conversation_id`.
 
   Uses `on_conflict: :nothing` to silently skip duplicates.
-  Returns `{:ok, count}` where `count` is the number of rows inserted.
+  Returns `{:ok, count}` on success, `{:error, :epoch_stale}` if fenced,
+  `{:error, reason}` for other failures.
   """
-  @spec insert_batch([map()]) :: {:ok, non_neg_integer()} | {:error, term()}
-  def insert_batch(messages) do
-    entries = Enum.map(messages, &to_row/1)
+  @spec insert_batch([map()], keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def insert_batch(messages, opts) do
+    caller_epoch = Keyword.fetch!(opts, :epoch)
+    type = Keyword.fetch!(opts, :type)
+    id = Keyword.fetch!(opts, :id)
 
-    try do
-      {count, _} = Repo.insert_all("messages", entries, on_conflict: :nothing)
-      {:ok, count}
-    rescue
-      e -> {:error, e}
-    end
+    table = if type == :channel, do: "channels", else: "dm_conversations"
+
+    Repo.transaction(fn ->
+      case Repo.query!("SELECT writer_epoch FROM #{table} WHERE id = $1 FOR UPDATE", [id]) do
+        %{rows: [[db_epoch]]} when db_epoch > caller_epoch ->
+          Repo.rollback(:epoch_stale)
+
+        _ ->
+          entries = Enum.map(messages, &to_row/1)
+          {count, _} = Repo.insert_all("messages", entries, on_conflict: :nothing)
+          count
+      end
+    end)
   end
 
   @doc """
   Dispatches an async batch insert via `Slackex.WriteSupervisor`.
 
+  `opts` must include `:epoch`, `:type`, and `:id` — passed through to `insert_batch/2`.
+
   Sends `{:batch_result, caller_ref, :ok | {:error, reason}}` to the
   calling process when the batch completes.
   """
-  @spec async_insert_batch([map()], reference()) :: {:ok, pid()} | {:error, term()}
-  def async_insert_batch(messages, caller_ref) do
+  @spec async_insert_batch([map()], reference(), keyword()) :: {:ok, pid()} | {:error, term()}
+  def async_insert_batch(messages, caller_ref, opts) do
     caller = self()
 
     Task.Supervisor.start_child(Slackex.WriteSupervisor, fn ->
       result =
-        case insert_batch(messages) do
+        case insert_batch(messages, opts) do
           {:ok, _count} -> :ok
           error -> error
         end

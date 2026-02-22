@@ -251,7 +251,35 @@
 34. **Horde.DynamicSupervisor child_spec needs explicit members**: Unlike stdlib DynamicSupervisor which just needs `name:`, Horde requires `members: :auto` (or explicit member list) in the child spec. Without it, the supervisor starts but doesn't participate in the distributed cluster.
 
 ### What's next
-- Phase 3 Step 2.2: Writer fencing (epoch-aware BatchWriter)
 - Phase 3 Step 2.5: Process handoff and crash recovery
+- Phase 3 Step 3: Redis cross-node cache
+- Phase 3 Steps 4-8: Push notifications, partitioning, reconnection, K8s deployment
+
+---
+
+## Phase 3 Distribution — Step 2.2: Writer Fencing (2026-02-22)
+
+### What was built
+- **`Slackex.Pipeline.BatchWriter`** (`lib/slackex/pipeline/batch_writer.ex`): Replaced `insert_batch/1` with epoch-fenced `insert_batch/2(messages, opts)`. Required keyword opts: `epoch:` (caller's writer epoch), `type:` (`:channel` or `:dm`), `id:` (channel/DM integer ID). Insert is wrapped in `Repo.transaction` with `SELECT writer_epoch FROM {table} WHERE id = $1 FOR UPDATE` row lock. If `db_epoch > caller_epoch`, transaction rolls back with `{:error, :epoch_stale}`. Updated `async_insert_batch` to 3-arg signature `async_insert_batch(messages, caller_ref, opts)` passing epoch opts through. Old `/1` arities removed — all callers must provide epoch.
+- **`Slackex.Messaging.ChannelServer`** (`lib/slackex/messaging/channel_server.ex`): Acquires writer epoch atomically in `init/1` via `UPDATE {table} SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch`. Epoch stored in GenServer state. All three BatchWriter call sites (batch_flush, retry, idle timeout) updated to pass `epoch_opts(state)`. New `handle_info({:batch_result, _ref, {:error, :epoch_stale}}, state)` handler: emits `[:slackex, :channel_server, :epoch_stale_shutdown]` telemetry, drops all pending/in-flight writes, terminates with `{:stop, :normal, state}`. Stale guard in `send_message` returns `{:error, :not_writer}` when `state.stale == true`.
+
+### Test coverage
+- 230 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 10 new tests:
+  - BatchWriter (4 new, 9 updated): epoch-fenced insert succeeds when epoch matches, epoch stale returns error, transaction atomicity (0 messages on stale), async passes epoch through
+  - ChannelServer (6 new): writer_epoch acquired as positive integer on startup, stale flag false on startup, writer_epoch incremented in DB, :not_writer returned when stale flag set, epoch_stale causes graceful shutdown, epoch_stale emits telemetry event
+
+### Lessons learned
+
+35. **`FOR UPDATE` row lock inside Repo.transaction eliminates TOCTOU races**: The epoch check and batch insert must happen atomically. Without `FOR UPDATE`, a concurrent writer could increment the epoch between the SELECT and INSERT, allowing a stale writer to persist messages. The row lock serializes access — only one transaction can hold the lock at a time.
+
+36. **Epoch_stale tests must use dedicated channels**: Tests that trigger `{:stop, :normal, state}` on a ChannelServer cause Horde to attempt a restart. The restarted process tries to acquire an epoch (DB call) using the dying test's sandbox connection, which crashes. Fix: create a fresh channel per destructive test instead of using the shared setup channel. This isolates the blast radius of process termination.
+
+37. **Credo catches `Ecto.Adapters.SQL.query!` as a nested module call**: When using raw SQL via `Ecto.Adapters.SQL.query!/3`, Credo's alias-usage check flags it. Add `alias Ecto.Adapters.SQL` at the top of the module and use `SQL.query!/3` instead.
+
+38. **Writer epoch as a fencing token is a classic distributed systems pattern**: The epoch acts as a monotonic "fencing token" — each new writer gets a strictly higher epoch, and the database rejects writes from stale epochs. This makes the single-writer invariant verifiable rather than merely assumed. Unlike distributed locks (which can expire), the epoch persists in the database and is checked at write time.
+
+### What's next
+- Phase 3 Step 2.5: Process handoff and crash recovery (terminate/2 flush + init/1 reconciliation)
 - Phase 3 Step 3: Redis cross-node cache
 - Phase 3 Steps 4-8: Push notifications, partitioning, reconnection, K8s deployment
