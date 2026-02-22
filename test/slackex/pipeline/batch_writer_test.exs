@@ -162,6 +162,34 @@ defmodule Slackex.Pipeline.BatchWriterTest do
 
       assert count == 2
     end
+
+    test "returns {:error, :target_deleted} when channel no longer exists" do
+      user = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "deleted-#{System.unique_integer()}"})
+
+      messages = [channel_msg(user.id, channel.id)]
+
+      # Delete the channel row to simulate target deletion
+      Repo.query!("DELETE FROM subscriptions WHERE channel_id = $1", [channel.id])
+      Repo.query!("DELETE FROM channels WHERE id = $1", [channel.id])
+
+      assert {:error, :target_deleted} =
+               BatchWriter.insert_batch(messages, channel_opts(channel.id))
+    end
+
+    test "returns {:error, :target_deleted} when DM no longer exists" do
+      dm = insert(:dm_conversation)
+      user = dm.user_a
+
+      messages = [dm_msg(user.id, dm.id)]
+
+      Repo.query!("DELETE FROM dm_conversations WHERE id = $1", [dm.id])
+
+      assert {:error, :target_deleted} =
+               BatchWriter.insert_batch(messages, dm_opts(dm.id))
+    end
   end
 
   describe "async_insert_batch/3" do
@@ -214,6 +242,26 @@ defmodule Slackex.Pipeline.BatchWriterTest do
 
       assert_receive {:batch_result, ^ref1, :ok}, 2000
       assert_receive {:batch_result, ^ref2, :ok}, 2000
+    end
+
+    test "sends {:batch_result, ref, {:error, :target_deleted}} when target is gone" do
+      user = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{
+          name: "async-del-#{System.unique_integer()}"
+        })
+
+      messages = [channel_msg(user.id, channel.id)]
+      ref = make_ref()
+
+      # Delete the channel
+      Repo.query!("DELETE FROM subscriptions WHERE channel_id = $1", [channel.id])
+      Repo.query!("DELETE FROM channels WHERE id = $1", [channel.id])
+
+      BatchWriter.async_insert_batch(messages, ref, channel_opts(channel.id))
+
+      assert_receive {:batch_result, ^ref, {:error, :target_deleted}}, 2000
     end
 
     test "async variant passes epoch through: returns :ok when epoch matches" do

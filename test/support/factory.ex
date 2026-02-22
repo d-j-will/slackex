@@ -5,6 +5,7 @@ defmodule Slackex.Factory do
 
   alias Slackex.Accounts.User
   alias Slackex.Chat.{Channel, DMConversation, Message, ReadCursor, Subscription}
+  alias Slackex.Notifications.DeviceToken
 
   def user_factory do
     %User{
@@ -75,6 +76,14 @@ defmodule Slackex.Factory do
       user: build(:user),
       channel: build(:channel),
       last_read_message_id: 0
+    }
+  end
+
+  def device_token_factory do
+    %DeviceToken{
+      user: build(:user),
+      token: sequence(:device_token, &"token-#{&1}"),
+      platform: "fcm"
     }
   end
 

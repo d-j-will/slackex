@@ -42,6 +42,29 @@ defmodule SlackexWeb.API.BootstrapControllerTest do
       assert %{"error" => _} = json_response(conn, 401)
     end
 
+    test "revoked access token returns 401", %{user: user} do
+      token = Auth.generate_api_token(user)
+      Auth.revoke_token(token)
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer #{token}")
+        |> get(~p"/api/bootstrap")
+
+      assert %{"error" => "token_revoked"} = json_response(conn, 401)
+    end
+
+    test "refresh token returns 401", %{user: user} do
+      refresh_token = Auth.generate_refresh_token(user)
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer #{refresh_token}")
+        |> get(~p"/api/bootstrap")
+
+      assert %{"error" => "invalid_token_type"} = json_response(conn, 401)
+    end
+
     test "response includes correct user data", %{conn: conn, user: user} do
       conn = get(conn, ~p"/api/bootstrap")
       assert %{"user" => serialized_user} = json_response(conn, 200)

@@ -23,6 +23,17 @@ end
 config :slackex, :redis_url, System.get_env("REDIS_URL") || "redis://localhost:6379"
 
 if config_env() == :prod do
+  guardian_secret =
+    System.get_env("GUARDIAN_SECRET_KEY") ||
+      raise """
+      environment variable GUARDIAN_SECRET_KEY is missing.
+      You can generate one by calling: mix phx.gen.secret
+      """
+
+  config :slackex, Slackex.Accounts.Guardian,
+    issuer: "slackex",
+    secret_key: guardian_secret
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

@@ -142,15 +142,7 @@ defmodule Slackex.Chat do
       |> Repo.insert()
       |> case do
         {:ok, message} ->
-          message = Repo.preload(message, :sender)
-
-          Phoenix.PubSub.broadcast(
-            Slackex.PubSub,
-            "channel:#{channel_id}",
-            {:new_message, message}
-          )
-
-          {:ok, message}
+          {:ok, Repo.preload(message, :sender)}
 
         {:error, changeset} ->
           {:error, changeset}
@@ -263,9 +255,7 @@ defmodule Slackex.Chat do
       |> Repo.insert()
       |> case do
         {:ok, message} ->
-          message = Repo.preload(message, :sender)
-          Phoenix.PubSub.broadcast(Slackex.PubSub, "dm:#{dm_id}", {:new_message, message})
-          {:ok, message}
+          {:ok, Repo.preload(message, :sender)}
 
         {:error, changeset} ->
           {:error, changeset}

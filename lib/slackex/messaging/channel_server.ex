@@ -20,6 +20,7 @@ defmodule Slackex.Messaging.ChannelServer do
   alias Slackex.Infrastructure.RateLimiter
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.Messaging.Envelope
+  alias Slackex.Notifications.PushWorker
   alias Slackex.Pipeline.BatchWriter
   alias Slackex.Repo
 
@@ -115,6 +116,7 @@ defmodule Slackex.Messaging.ChannelServer do
        in_flight: %{},
        rate_limiters: %{},
        metadata: %{},
+       sender_cache: %{},
        writer_epoch: writer_epoch,
        stale: false
      }, @idle_timeout}
@@ -134,7 +136,7 @@ defmodule Slackex.Messaging.ChannelServer do
         ts_ms = Snowflake.extract_timestamp(id)
         inserted_at = DateTime.from_unix!(ts_ms * 1_000, :microsecond)
 
-        sender = Accounts.get_user!(sender_id)
+        {sender, new_sender_cache} = fetch_sender(state.sender_cache, sender_id)
 
         message =
           %{
@@ -159,12 +161,15 @@ defmodule Slackex.Messaging.ChannelServer do
           {:envelope, envelope}
         )
 
+        enqueue_push_notification(state.channel_type, state.channel_id, message, sender)
+
         new_state = %{
           state
           | messages: new_queue,
             message_count: state.message_count + 1,
             pending_writes: new_pending,
-            rate_limiters: new_limiters
+            rate_limiters: new_limiters,
+            sender_cache: new_sender_cache
         }
 
         {:reply, {:ok, message}, new_state, @idle_timeout}
@@ -207,6 +212,25 @@ defmodule Slackex.Messaging.ChannelServer do
 
   def handle_info({:batch_result, ref, :ok}, state) do
     {:noreply, %{state | in_flight: Map.delete(state.in_flight, ref)}, @idle_timeout}
+  end
+
+  def handle_info({:batch_result, ref, {:error, :target_deleted}}, state) do
+    Logger.warning(
+      "ChannelServer #{state.channel_type}:#{state.channel_id} target deleted — shutting down"
+    )
+
+    :telemetry.execute(
+      [:slackex, :channel_server, :target_deleted_shutdown],
+      %{pending_count: length(state.pending_writes), in_flight_count: map_size(state.in_flight)},
+      %{
+        channel_id: state.channel_id,
+        channel_type: state.channel_type,
+        writer_epoch: state.writer_epoch
+      }
+    )
+
+    {:stop, :normal,
+     %{state | pending_writes: [], in_flight: Map.delete(state.in_flight, ref), stale: true}}
   end
 
   def handle_info({:batch_result, _ref, {:error, :epoch_stale}}, state) do
@@ -377,6 +401,46 @@ defmodule Slackex.Messaging.ChannelServer do
   defp pubsub_topic(:channel, id), do: "channel:#{id}"
   defp pubsub_topic(:dm, id), do: "dm:#{id}"
 
+  defp enqueue_push_notification(:channel, channel_id, message, sender) do
+    args = %{
+      "type" => "new_message",
+      "channel_id" => channel_id,
+      "sender_id" => message.sender_id,
+      "content" => message.content,
+      "sender_username" => sender.username
+    }
+
+    args
+    |> PushWorker.new(schedule_in: 5)
+    |> Oban.insert()
+  rescue
+    e -> Logger.warning("Failed to enqueue push notification: #{inspect(e)}")
+  end
+
+  defp enqueue_push_notification(:dm, _dm_id, message, sender) do
+    # For DMs we need the recipient — skip if no dm_conversation_id
+    case Map.get(message, :dm_conversation_id) do
+      nil ->
+        :ok
+
+      _dm_id ->
+        # Recipient is determined by PushWorker from the DM record
+        args = %{
+          "type" => "new_dm",
+          "dm_conversation_id" => message.dm_conversation_id,
+          "sender_id" => message.sender_id,
+          "content" => message.content,
+          "sender_username" => sender.username
+        }
+
+        args
+        |> PushWorker.new()
+        |> Oban.insert()
+    end
+  rescue
+    e -> Logger.warning("Failed to enqueue DM push notification: #{inspect(e)}")
+  end
+
   defp load_from_db(:channel, channel_id) do
     channel_id
     |> Chat.list_messages(limit: @max_cached_messages)
@@ -422,6 +486,18 @@ defmodule Slackex.Messaging.ChannelServer do
   end
 
   defp serialize_sender(_), do: nil
+
+  defp fetch_sender(sender_cache, sender_id) do
+    case Map.get(sender_cache, sender_id) do
+      nil ->
+        sender = Accounts.get_user!(sender_id)
+        new_cache = Map.put(sender_cache, sender_id, sender)
+        {sender, new_cache}
+
+      cached_sender ->
+        {cached_sender, sender_cache}
+    end
+  end
 
   defp bounded_enqueue(queue, item, max) do
     new_queue = :queue.in(item, queue)

@@ -10,6 +10,7 @@ defmodule SlackexWeb.Plugs.ApiAuthPipeline do
 
   plug Guardian.Plug.VerifyHeader, scheme: "Bearer"
   plug Guardian.Plug.EnsureAuthenticated
+  plug SlackexWeb.Plugs.VerifyApiToken
   plug Guardian.Plug.LoadResource
 end
 

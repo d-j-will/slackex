@@ -13,6 +13,8 @@ defmodule Slackex.Pipeline.BatchWriter do
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.Repo
 
+  require Logger
+
   @doc """
   Inserts a batch of message maps into the database with epoch fencing.
 
@@ -46,10 +48,13 @@ defmodule Slackex.Pipeline.BatchWriter do
         %{rows: [[db_epoch]]} when db_epoch > caller_epoch ->
           Repo.rollback(:epoch_stale)
 
-        _ ->
+        %{rows: [[_db_epoch]]} ->
           entries = Enum.map(messages, &to_row/1)
           {count, _} = Repo.insert_all("messages", entries, on_conflict: :nothing)
           count
+
+        %{rows: []} ->
+          Repo.rollback(:target_deleted)
       end
     end)
   end
@@ -68,9 +73,15 @@ defmodule Slackex.Pipeline.BatchWriter do
 
     Task.Supervisor.start_child(Slackex.WriteSupervisor, fn ->
       result =
-        case insert_batch(messages, opts) do
-          {:ok, _count} -> :ok
-          error -> error
+        try do
+          case insert_batch(messages, opts) do
+            {:ok, _count} -> :ok
+            error -> error
+          end
+        rescue
+          e ->
+            Logger.error("BatchWriter async task crashed: #{Exception.message(e)}")
+            {:error, :write_failed}
         end
 
       send(caller, {:batch_result, caller_ref, result})
