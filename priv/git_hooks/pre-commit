@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -e
+
+echo "Running pre-commit checks..."
+
+echo "=> mix format --check-formatted"
+mix format --check-formatted
+
+echo "=> mix compile --warnings-as-errors"
+mix compile --warnings-as-errors
+
+echo "=> mix credo --strict"
+mix credo --strict
+
+echo "=> mix assets.build"
+mix assets.build
+
+echo "=> mix test"
+mix test
+
+echo "All pre-commit checks passed!"

@@ -207,6 +207,8 @@
 
 29. **ConnCase test helpers for LiveView auth**: `log_in_user/2` generates a session token via `Accounts.generate_user_session_token/1` and puts it in the test session via `init_test_session/2` + `put_session(:user_token, token)`. This mirrors what UserAuth does in production without needing HTTP roundtrips.
 
+30. **Phoenix 1.8 colocated hooks break esbuild if unused**: Phoenix 1.8 scaffolds `app.js` with `import {hooks as colocatedHooks} from "phoenix-colocated/slackex"`. If no colocated hooks exist, this module is never generated and esbuild fails silently in dev (no error in terminal). LiveSocket never connects, so LiveView forms fall back to standard HTTP POST to the current URL, producing confusing "no route found" errors. Fix: remove the import and the spread from the hooks object if not using colocated hooks. **Critical**: `mix test` does NOT catch this — LiveView tests bypass JavaScript entirely. Always run `mix assets.build` after LiveView/JS changes to verify the frontend compiles.
+
 ### What's next
 - Phase 3: Scalability (time-partitioned messages, Redis caching, connection pooling)
 - Phase 4: Search (full-text search, pgvector embeddings)
