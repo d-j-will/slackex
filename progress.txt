@@ -283,3 +283,66 @@
 - Phase 3 Step 2.5: Process handoff and crash recovery (terminate/2 flush + init/1 reconciliation)
 - Phase 3 Step 3: Redis cross-node cache
 - Phase 3 Steps 4-8: Push notifications, partitioning, reconnection, K8s deployment
+
+---
+
+## Code Review Fixes — Auth Gap, Queue Ordering, N+1 Sender Enrichment (2026-02-22)
+
+### What was fixed
+
+Three issues identified during code review, addressed in a single commit:
+
+1. **Auth gap in ChatLive.Index handle_params** (`lib/slackex_web/live/chat_live/index.ex`): `handle_params(%{"slug" => slug}, ...)` loaded any channel by slug without checking membership — private channel content was exposed to any logged-in user. Added `authorize_channel/2` private helper implementing layered policy: role holders use `Permissions.can?/2`, non-members can view public channels read-only (no message form), non-members are redirected from private channels with flash error. Message form gated by `:can_send` assign. `send_message` event handler also guards on `can_send`. Extracted `enter_channel/3` to keep nesting Credo-clean.
+
+2. **Queue ordering in ChannelServer DB rehydration** (`lib/slackex/messaging/channel_server.ex`): `load_from_db/2` called `Chat.list_messages` / `Chat.list_dm_messages` which use `order_by: [desc: m.id]` (newest-first). The cache path already returned oldest-first, but the DB path fed newest-first into the queue. Added `|> Enum.reverse()` to both `load_from_db/2` clauses so both paths return oldest-first, matching the queue's chronological contract.
+
+3. **N+1 sender queries in LiveView** (`lib/slackex/messaging/channel_server.ex`, `lib/slackex_web/live/chat_live/index.ex`): Every PubSub message triggered `Accounts.get_user!/1` in every connected LiveView — N subscribers = N identical DB queries. Moved sender lookup to ChannelServer write time (1 query per message). Added `serialize_sender/1` helper producing `%{id, username, display_name, avatar_url}` map. `message_to_map/1` preserves sender from preloaded Ecto structs on DB rehydration. LiveView `enrich_message/1` short-circuits when sender map is already present, keeping DB fallback for edge cases.
+
+### Test coverage
+- 239 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 9 new tests:
+  - Channel authorization (4): non-member redirected from private channel, non-member views public channel, non-member sees no message form on public channel, member sees message form
+  - Sender enrichment (3): send_message returns serialized sender, broadcast includes sender, DB-rehydrated messages include sender
+  - DB rehydration ordering (1): messages in ascending ID order after DB rehydration
+  - Pre-enriched PubSub (1): pre-enriched message renders sender name in LiveView
+
+### Lessons learned
+
+39. **Authentication vs authorization in LiveView**: `on_mount` handles authentication (is the user logged in?), but `handle_params` must handle authorization (can this user see this channel?). `handle_params` fires on every `live_patch` navigation, so authorization must be checked each time — not just on initial mount.
+
+40. **Write-time enrichment eliminates N+1 in PubSub fan-out**: When a single producer broadcasts to N subscribers, each subscriber performing a DB lookup creates O(N) queries for the same data. Moving the lookup to the producer (ChannelServer) reduces this to O(1). The serialized map (not the full User struct) keeps PubSub payloads lean and avoids leaking sensitive fields like `hashed_password`.
+
+41. **DB query ordering vs queue ordering**: SQL `ORDER BY id DESC LIMIT N` is the efficient way to get the N most recent rows, but the result set is newest-first. Any consumer expecting chronological order (oldest-first) must reverse. When two code paths (cache vs DB) feed the same queue, both must produce the same ordering.
+
+### What's next
+- Phase 3 Step 3: Redis cross-node cache
+- Phase 3 Steps 4-8: Push notifications, partitioning, reconnection, K8s deployment
+
+---
+
+## Phase 3 Distribution — Step 2.5: Crash Recovery (2026-02-22)
+
+### What was built
+- **`terminate/2` graceful flush** (`lib/slackex/messaging/channel_server.ex`): Added `Process.flag(:trap_exit, true)` in `init/1` and `terminate/2` callback that does a synchronous `BatchWriter.insert_batch` flush of `pending_writes`. Epoch check still applies — stale writers' flushes are safely rejected. The flush is wrapped in `try/rescue` to prevent crashes during termination (best-effort). Skipped when `state.stale == true` (already rejected).
+- **`init/1` crash recovery reconciliation** (`lib/slackex/messaging/channel_server.ex`): After cache load and epoch acquisition, `reconcile_cache/4` compares cache message IDs against the database. Messages found in cache but missing from DB are re-persisted via synchronous `BatchWriter.insert_batch` using the freshly acquired epoch. Only runs when messages came from cache (`:cache` source tag), skipped for DB-loaded messages (`:db` source). Emits `[:slackex, :channel_server, :crash_recovery]` telemetry with `%{recovered_count, channel_id}`.
+- **Source-tagged init flow**: Cache lookup now returns `{:cache, messages}` or `{:db, messages}` tagged tuples, enabling the reconciliation logic to distinguish between cached (potentially stale) and DB-loaded (already persisted) messages.
+
+### Test coverage
+- 246 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 7 new behavioral tests:
+  - terminate/2 graceful flush (3): pending_writes flushed to DB on shutdown, empty pending_writes doesn't crash, stale epoch flush safely rejected
+  - crash recovery (4): un-persisted messages recovered from cache on restart, crash_recovery telemetry emitted with recovered_count, reconciliation skipped when cache empty (DB source), server survives recovery and remains functional
+
+### Lessons learned
+
+42. **`terminate/2` requires `Process.flag(:trap_exit, true)`**: GenServer's `terminate/2` is only called during supervisor shutdown if the process traps exit signals. Without it, the supervisor sends `Process.exit(pid, :shutdown)` and the process dies immediately — `terminate/2` never runs. This is a classic OTP gotcha: the callback exists in the module but is silently skipped. Always add `Process.flag(:trap_exit, true)` in `init/1` when you need `terminate/2` for cleanup.
+
+43. **Defensive `terminate/2` must never crash**: Since `terminate/2` is a last-chance cleanup, any exception (e.g., DB connection gone, malformed data) would produce confusing GenServer terminating error logs. Wrap the entire flush in `try/rescue` and log the outcome. Best-effort means: try, log, never crash.
+
+44. **Source-tagging for conditional reconciliation**: When `init/1` loads messages from two paths (cache vs DB), the reconciliation logic needs to know which path was used. Tagging the result as `{:cache, messages}` vs `{:db, messages}` at the decision point cleanly separates the concern — pattern matching on the tag in `reconcile_cache/4` eliminates runtime conditionals and makes the skip-DB-path optimization zero-cost.
+
+45. **Cache-vs-DB reconciliation closes the durability gap**: Between batch flushes (every 2s), messages exist only in `pending_writes` and ETS cache. If the process crashes, `pending_writes` is lost but ETS survives (same node). On restart, comparing cache IDs against DB and re-persisting the difference recovers these messages. The freshly acquired epoch ensures the reconciliation insert is authorized. This pattern works for same-node crashes; cross-node crashes rely on Horde restart + the same reconciliation flow.
+
+### What's next
+- Phase 3 Step 3: Redis cross-node cache (pool, cascade, write-through)
+- Phase 3 Steps 3.5-8: Read replica, push notifications, partitioning, reconnection, K8s deployment

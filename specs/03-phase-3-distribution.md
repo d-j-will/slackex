@@ -358,9 +358,9 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 ## Phase 3 Acceptance Criteria
 
 - [x] ~~Horde distributes ChannelServer processes across cluster nodes~~ (Step 2.1/2.3/2.4 — Horde.Registry + Horde.DynamicSupervisor with `members: :auto`, `process_redistribution: :active`)
-- [ ] When a node goes down, affected channels restart on surviving nodes within 5 seconds
-- [ ] Channel processes flush pending writes before graceful termination (terminate/2 is best-effort)
-- [ ] ChannelServer init/1 reconciles cache vs DB to recover un-persisted messages after crash
+- [x] ~~When a node goes down, affected channels restart on surviving nodes within 5 seconds~~ (Step 2.5 — Horde auto-restart + init/1 rehydration)
+- [x] ~~Channel processes flush pending writes before graceful termination (terminate/2 is best-effort)~~ (Step 2.5 — terminate/2 with trap_exit + synchronous BatchWriter flush)
+- [x] ~~ChannelServer init/1 reconciles cache vs DB to recover un-persisted messages after crash~~ (Step 2.5 — reconcile_cache/4 compares cache IDs against DB, re-persists missing)
 - [x] ~~libcluster auto-discovers nodes (gossip in dev, K8s DNS in prod)~~ (Step 1 — Cluster.Supervisor + NodeListener + config per env)
 - [ ] Redis cache serves as cross-node shared cache
 - [ ] Cache cascade: ETS → Redis → PostgreSQL works correctly

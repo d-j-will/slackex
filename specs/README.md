@@ -15,7 +15,7 @@
 | [Testing Strategy](#testing-strategy) | Reference | — | [06-testing-strategy.md](06-testing-strategy.md) |
 | [Architecture Overview](#architecture-overview) | Reference | — | [00-overview.md](00-overview.md) |
 
-**Current test count: 230 (0 failures)**
+**Current test count: 246 (0 failures)**
 
 ---
 
@@ -68,7 +68,7 @@
 | 2.2 | Writer Fencing (Split-Brain Safety) | **Done** |
 | 2.3 | Replace DynamicSupervisor with Horde.DynamicSupervisor | **Done** |
 | 2.4 | Update ChannelServer via tuples | **Done** |
-| 2.5 | Process Handoff on Node Down (terminate/2 + crash recovery) | Not started |
+| 2.5 | Process Handoff on Node Down (terminate/2 + crash recovery) | **Done** |
 | 3 | Redis — Cross-Node Cache (pool, cascade, write-through) | Not started |
 | 3.5 | Read Replica Support (ReadRepo, lag detection) | Not started |
 | 4 | Push Notifications (PushWorker, Oban) | Not started |
@@ -80,7 +80,7 @@
 
 ### Next recommended task
 
-**Step 2.5 — Crash Recovery** (terminate/2 flush + init/1 reconciliation). This completes the Horde safety guarantees before moving to Redis (Step 3).
+**Step 3 — Redis Cross-Node Cache** (pool, cascade, write-through). This adds cross-node cache coherence before proceeding to push notifications.
 
 ---
 

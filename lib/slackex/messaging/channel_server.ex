@@ -71,13 +71,16 @@ defmodule Slackex.Messaging.ChannelServer do
 
   @impl true
   def init({channel_id, opts}) do
+    # Required for terminate/2 to run on supervisor shutdown (graceful flush)
+    Process.flag(:trap_exit, true)
+
     channel_type = Keyword.fetch!(opts, :channel_type)
     target = {channel_type, channel_id}
 
-    messages =
+    {source, messages} =
       case LocalCache.get_messages(target) do
-        {:ok, []} -> load_from_db(channel_type, channel_id)
-        {:ok, cached} -> cached
+        {:ok, []} -> {:db, load_from_db(channel_type, channel_id)}
+        {:ok, cached} -> {:cache, cached}
       end
 
     queue =
@@ -93,6 +96,12 @@ defmodule Slackex.Messaging.ChannelServer do
         "UPDATE #{table} SET writer_epoch = writer_epoch + 1 WHERE id = $1 RETURNING writer_epoch",
         [channel_id]
       )
+
+    reconcile_cache(source, messages, channel_id,
+      epoch: writer_epoch,
+      type: channel_type,
+      id: channel_id
+    )
 
     Process.send_after(self(), :batch_flush, @batch_interval)
 
@@ -269,6 +278,37 @@ defmodule Slackex.Messaging.ChannelServer do
     {:noreply, %{state | pending_writes: []}, :hibernate}
   end
 
+  @impl true
+  def terminate(_reason, state) do
+    if state.pending_writes != [] and not state.stale do
+      try do
+        case BatchWriter.insert_batch(state.pending_writes, epoch_opts(state)) do
+          {:ok, count} ->
+            Logger.info(
+              "ChannelServer #{state.channel_type}:#{state.channel_id} flushed #{count} messages on shutdown"
+            )
+
+          {:error, :epoch_stale} ->
+            Logger.warning(
+              "ChannelServer #{state.channel_type}:#{state.channel_id} flush rejected: epoch stale"
+            )
+
+          {:error, reason} ->
+            Logger.error(
+              "ChannelServer #{state.channel_type}:#{state.channel_id} flush failed: #{inspect(reason)}"
+            )
+        end
+      rescue
+        e ->
+          Logger.error(
+            "ChannelServer #{state.channel_type}:#{state.channel_id} flush crashed: #{Exception.message(e)}"
+          )
+      end
+    end
+
+    :ok
+  end
+
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
@@ -391,6 +431,47 @@ defmodule Slackex.Messaging.ChannelServer do
       trimmed
     else
       new_queue
+    end
+  end
+
+  defp reconcile_cache(:db, _messages, _channel_id, _opts), do: :ok
+
+  defp reconcile_cache(:cache, [], _channel_id, _opts), do: :ok
+
+  defp reconcile_cache(:cache, messages, channel_id, opts) do
+    cache_ids = Enum.map(messages, & &1.id)
+
+    %{rows: db_rows} =
+      SQL.query!(Repo, "SELECT id FROM messages WHERE id = ANY($1::bigint[])", [cache_ids])
+
+    db_ids = MapSet.new(db_rows, fn [id] -> id end)
+    missing = Enum.filter(messages, fn msg -> not MapSet.member?(db_ids, msg.id) end)
+
+    if missing == [] do
+      :ok
+    else
+      case BatchWriter.insert_batch(missing, opts) do
+        {:ok, _count} ->
+          Logger.info(
+            "ChannelServer crash_recovery: recovered #{length(missing)} messages for channel #{channel_id}"
+          )
+
+          :telemetry.execute(
+            [:slackex, :channel_server, :crash_recovery],
+            %{recovered_count: length(missing)},
+            %{channel_id: channel_id}
+          )
+
+        {:error, :epoch_stale} ->
+          Logger.warning(
+            "ChannelServer crash_recovery: epoch stale during recovery for channel #{channel_id} — skipping"
+          )
+
+        {:error, reason} ->
+          Logger.error(
+            "ChannelServer crash_recovery: insert failed for channel #{channel_id}: #{inspect(reason)}"
+          )
+      end
     end
   end
 end
