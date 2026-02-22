@@ -9,13 +9,13 @@
 |-------|--------|-------|------|
 | [Phase 1 — Foundation](#phase-1--foundation) | **COMPLETE** | 211 | [01-phase-1-foundation.md](01-phase-1-foundation.md) |
 | [Phase 2 — Real-time & CQRS](#phase-2--real-time--cqrs) | **COMPLETE** | +45 | [02-phase-2-realtime-cqrs.md](02-phase-2-realtime-cqrs.md) |
-| [Phase 3 — Distribution & Scale](#phase-3--distribution--scale) | **IN PROGRESS** | +9 | [03-phase-3-distribution.md](03-phase-3-distribution.md) |
+| [Phase 3 — Distribution & Scale](#phase-3--distribution--scale) | **IN PROGRESS** | +55 | [03-phase-3-distribution.md](03-phase-3-distribution.md) |
 | [Phase 4 — Intelligence & Search](#phase-4--intelligence--search) | Not started | — | [04-phase-4-intelligence.md](04-phase-4-intelligence.md) |
 | [CI/CD & DevOps](#cicd--devops) | Partial | — | [05-ci-cd-devops.md](05-ci-cd-devops.md) |
 | [Testing Strategy](#testing-strategy) | Reference | — | [06-testing-strategy.md](06-testing-strategy.md) |
 | [Architecture Overview](#architecture-overview) | Reference | — | [00-overview.md](00-overview.md) |
 
-**Current test count: 246 (0 failures)**
+**Current test count: 289 (0 failures)**
 
 ---
 
@@ -69,7 +69,7 @@
 | 2.3 | Replace DynamicSupervisor with Horde.DynamicSupervisor | **Done** |
 | 2.4 | Update ChannelServer via tuples | **Done** |
 | 2.5 | Process Handoff on Node Down (terminate/2 + crash recovery) | **Done** |
-| 3 | Redis — Cross-Node Cache (pool, cascade, write-through) | Not started |
+| 3 | Redis — Cross-Node Cache (pool, cascade, write-through) | **Done** |
 | 3.5 | Read Replica Support (ReadRepo, lag detection) | Not started |
 | 4 | Push Notifications (PushWorker, Oban) | Not started |
 | 4.5 | Device Tokens Table | Not started |
@@ -80,7 +80,7 @@
 
 ### Next recommended task
 
-**Step 3 — Redis Cross-Node Cache** (pool, cascade, write-through). This adds cross-node cache coherence before proceeding to push notifications.
+**Step 3.5 — Read Replica Support** (ReadRepo, lag detection, query routing). This adds read replica routing before proceeding to push notifications.
 
 ---
 

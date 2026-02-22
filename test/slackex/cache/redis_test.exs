@@ -60,10 +60,7 @@ defmodule Slackex.Cache.RedisTest do
       # which can silently timeout under load with the 100ms write budget.
       seed = for i <- 1..200, do: %{id: i, content: "msg #{i}"}
       Redis.cache_messages(target, seed)
-
       Redis.push_message(target, %{id: 201, content: "msg 201"})
-      # Allow the async 100ms-budget push to complete
-      Process.sleep(150)
 
       assert {:ok, messages} = Redis.get_messages(target)
       assert length(messages) == 200

@@ -362,13 +362,13 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 - [x] ~~Channel processes flush pending writes before graceful termination (terminate/2 is best-effort)~~ (Step 2.5 — terminate/2 with trap_exit + synchronous BatchWriter flush)
 - [x] ~~ChannelServer init/1 reconciles cache vs DB to recover un-persisted messages after crash~~ (Step 2.5 — reconcile_cache/4 compares cache IDs against DB, re-persists missing)
 - [x] ~~libcluster auto-discovers nodes (gossip in dev, K8s DNS in prod)~~ (Step 1 — Cluster.Supervisor + NodeListener + config per env)
-- [ ] Redis cache serves as cross-node shared cache
-- [ ] Cache cascade: ETS → Redis → PostgreSQL works correctly
+- [x] ~~Redis cache serves as cross-node shared cache~~ (Step 3 — Cache.Redis Supervisor with 10 Redix connections, push/get/cache/invalidate API)
+- [x] ~~Cache cascade: ETS → Redis → PostgreSQL works correctly~~ (Step 3 — Cache facade: ETS→Redis→miss read path, write-through put_message)
 - [ ] ReadRepo is configured and routes read-only queries to replica (or primary as fallback)
 - [ ] Device tokens table stores FCM/APNs tokens per user
 - [ ] Push notification Oban worker dispatches to FCM/APNs using stored device tokens
 - [ ] Notifications only sent to offline users (online status tracked in Redis)
-- [ ] Redis commands gracefully degrade when Redis is unavailable
+- [x] ~~Redis commands gracefully degrade when Redis is unavailable~~ (Step 3 — try/rescue wrapping, 100ms write timeout, telemetry on failure)
 - [ ] Messages table is partitioned by month
 - [ ] Partition maintenance worker creates future partitions
 - [ ] Reconnection catch-up delivers correct unread counts and missed messages
@@ -378,5 +378,5 @@ Shell script starts 3 nodes on ports 4000-4002 using `iex --sname slackexN -S mi
 - [ ] Kubernetes manifests deploy a 3-pod cluster with sticky WebSocket sessions
 - [ ] `docker build` produces a working production release image
 - [x] ~~Local multi-node dev cluster works via gossip strategy~~ (Step 1 — gossip config in dev.exs)
-- [x] ~~All behavioral tests from Phases 1-2 still pass~~ (220 tests, 0 failures after Horde migration)
+- [x] ~~All behavioral tests from Phases 1-2 still pass~~ (289 tests, 0 failures after Redis cache integration)
 - [ ] Distributed tests (using LocalCluster) verify Horde failover
