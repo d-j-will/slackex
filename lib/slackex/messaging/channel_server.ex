@@ -13,6 +13,7 @@ defmodule Slackex.Messaging.ChannelServer do
   use GenServer
 
   alias Ecto.Adapters.SQL
+  alias Slackex.Accounts
   alias Slackex.Cache.Local, as: LocalCache
   alias Slackex.Chat
   alias Slackex.Chat.Permissions
@@ -124,8 +125,16 @@ defmodule Slackex.Messaging.ChannelServer do
         ts_ms = Snowflake.extract_timestamp(id)
         inserted_at = DateTime.from_unix!(ts_ms * 1_000, :microsecond)
 
+        sender = Accounts.get_user!(sender_id)
+
         message =
-          %{id: id, content: sanitized, sender_id: sender_id, inserted_at: inserted_at}
+          %{
+            id: id,
+            content: sanitized,
+            sender_id: sender_id,
+            inserted_at: inserted_at,
+            sender: serialize_sender(sender)
+          }
           |> put_target_field(state.channel_type, state.channel_id)
 
         LocalCache.put_message({state.channel_type, state.channel_id}, message)
@@ -332,12 +341,14 @@ defmodule Slackex.Messaging.ChannelServer do
     channel_id
     |> Chat.list_messages(limit: @max_cached_messages)
     |> Enum.map(&message_to_map/1)
+    |> Enum.reverse()
   end
 
   defp load_from_db(:dm, dm_id) do
     dm_id
     |> Chat.list_dm_messages(limit: @max_cached_messages)
     |> Enum.map(&message_to_map/1)
+    |> Enum.reverse()
   end
 
   defp message_to_map(message) do
@@ -345,7 +356,8 @@ defmodule Slackex.Messaging.ChannelServer do
       id: message.id,
       content: message.content,
       sender_id: message.sender_id,
-      inserted_at: message.inserted_at
+      inserted_at: message.inserted_at,
+      sender: serialize_sender(message.sender)
     }
 
     cond do
@@ -359,6 +371,17 @@ defmodule Slackex.Messaging.ChannelServer do
         base
     end
   end
+
+  defp serialize_sender(%{id: id, username: username} = user) do
+    %{
+      id: id,
+      username: username,
+      display_name: Map.get(user, :display_name),
+      avatar_url: Map.get(user, :avatar_url)
+    }
+  end
+
+  defp serialize_sender(_), do: nil
 
   defp bounded_enqueue(queue, item, max) do
     new_queue = :queue.in(item, queue)

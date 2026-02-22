@@ -3,6 +3,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   alias Slackex.Accounts
   alias Slackex.Chat
+  alias Slackex.Chat.Permissions
   alias Slackex.Messaging
 
   @impl true
@@ -18,6 +19,7 @@ defmodule SlackexWeb.ChatLive.Index do
      socket
      |> assign(:channels, channels)
      |> assign(:active_channel, nil)
+     |> assign(:can_send, false)
      |> assign(:typing_users, MapSet.new())
      |> assign(:message_form, to_form(%{"content" => ""}, as: :message))
      |> stream(:messages, [])}
@@ -28,25 +30,16 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
     channel = Chat.get_channel_by_slug!(slug)
 
-    if connected?(socket) do
-      old_channel = socket.assigns.active_channel
-      if old_channel, do: Messaging.unsubscribe_channel(old_channel.id)
-      Messaging.subscribe_channel(channel.id)
+    case authorize_channel(user.id, channel) do
+      {:ok, can_send} ->
+        {:noreply, enter_channel(socket, channel, can_send)}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "You don't have access to that channel.")
+         |> redirect(to: ~p"/chat")}
     end
-
-    messages =
-      channel.id
-      |> Chat.list_messages(limit: 50)
-      |> Enum.reverse()
-
-    Chat.mark_as_read(user.id, channel.id)
-
-    {:noreply,
-     socket
-     |> assign(:active_channel, channel)
-     |> assign(:page_title, "##{channel.name}")
-     |> assign(:typing_users, MapSet.new())
-     |> stream(:messages, messages, reset: true)}
   end
 
   @impl true
@@ -68,10 +61,15 @@ defmodule SlackexWeb.ChatLive.Index do
     channel = socket.assigns.active_channel
     user = socket.assigns.current_user
 
-    if is_nil(channel) do
-      {:noreply, socket}
-    else
-      send_message_to_channel(channel, user, content, socket)
+    cond do
+      is_nil(channel) ->
+        {:noreply, socket}
+
+      not socket.assigns.can_send ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
+
+      true ->
+        send_message_to_channel(channel, user, content, socket)
     end
   end
 
@@ -137,6 +135,50 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp enter_channel(socket, channel, can_send) do
+    user = socket.assigns.current_user
+
+    if connected?(socket) do
+      old_channel = socket.assigns.active_channel
+      if old_channel, do: Messaging.unsubscribe_channel(old_channel.id)
+      Messaging.subscribe_channel(channel.id)
+    end
+
+    messages =
+      channel.id
+      |> Chat.list_messages(limit: 50)
+      |> Enum.reverse()
+
+    Chat.mark_as_read(user.id, channel.id)
+
+    socket
+    |> assign(:active_channel, channel)
+    |> assign(:can_send, can_send)
+    |> assign(:page_title, "##{channel.name}")
+    |> assign(:typing_users, MapSet.new())
+    |> stream(:messages, messages, reset: true)
+  end
+
+  defp authorize_channel(user_id, channel) do
+    role = Chat.get_role(user_id, channel.id)
+
+    cond do
+      # User has a role — check if they can send messages
+      role != nil ->
+        {:ok, Permissions.can?(role, :send_message)}
+
+      # No role + public channel — read-only access
+      not channel.is_private ->
+        {:ok, false}
+
+      # No role + private channel — denied
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  defp enrich_message(%{sender: %{username: _}} = message), do: message
 
   defp enrich_message(%{sender_id: sender_id} = message) when is_integer(sender_id) do
     sender = Accounts.get_user!(sender_id)
@@ -249,25 +291,31 @@ defmodule SlackexWeb.ChatLive.Index do
           </div>
 
           <%!-- Message input --%>
-          <div class="p-4 border-t border-base-300 bg-base-100">
-            <.form
-              for={@message_form}
-              id="message-form"
-              phx-submit="send_message"
-              class="flex gap-2"
-            >
-              <input
-                type="text"
-                name="message[content]"
-                value={@message_form[:content].value}
-                placeholder={"Message ##{@active_channel.name}"}
-                class="input input-bordered flex-1"
-                autocomplete="off"
-                phx-debounce="100"
-              />
-              <button type="submit" class="btn btn-primary">Send</button>
-            </.form>
-          </div>
+          <%= if @can_send do %>
+            <div class="p-4 border-t border-base-300 bg-base-100">
+              <.form
+                for={@message_form}
+                id="message-form"
+                phx-submit="send_message"
+                class="flex gap-2"
+              >
+                <input
+                  type="text"
+                  name="message[content]"
+                  value={@message_form[:content].value}
+                  placeholder={"Message ##{@active_channel.name}"}
+                  class="input input-bordered flex-1"
+                  autocomplete="off"
+                  phx-debounce="100"
+                />
+                <button type="submit" class="btn btn-primary">Send</button>
+              </.form>
+            </div>
+          <% else %>
+            <div class="p-4 border-t border-base-300 bg-base-100 text-center text-base-content/50">
+              Join this channel to send messages.
+            </div>
+          <% end %>
         <% else %>
           <%!-- No channel selected --%>
           <div class="flex-1 flex items-center justify-center text-base-content/50">

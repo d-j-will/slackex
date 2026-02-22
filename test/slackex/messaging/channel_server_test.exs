@@ -215,6 +215,95 @@ defmodule Slackex.Messaging.ChannelServerTest do
     end
   end
 
+  describe "sender enrichment" do
+    test "send_message returns message with serialized sender map",
+         %{user: user, server: server} do
+      {:ok, msg} = ChannelServer.send_message(server, user.id, "enriched")
+
+      assert %{id: _, username: _, display_name: _, avatar_url: _} = msg.sender
+      assert msg.sender.id == user.id
+      assert msg.sender.username == user.username
+    end
+
+    test "broadcast payload includes sender map",
+         %{user: user, channel: channel, server: server} do
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel.id}")
+      {:ok, _msg} = ChannelServer.send_message(server, user.id, "with sender")
+
+      assert_receive {:envelope, envelope}, 1000
+      assert %{id: _, username: _, display_name: _, avatar_url: _} = envelope.payload.sender
+      assert envelope.payload.sender.username == user.username
+    end
+
+    test "DB-rehydrated messages include sender from preload",
+         %{user: user, channel: channel} do
+      # Write messages directly to DB (bypassing ChannelServer)
+      {:ok, _} = Slackex.Chat.send_message(channel.id, user.id, "db msg 1")
+      {:ok, _} = Slackex.Chat.send_message(channel.id, user.id, "db msg 2")
+
+      # Clear ETS so rehydration hits DB
+      :ets.delete_all_objects(:slackex_message_cache)
+
+      # Stop the existing server and start a fresh one to trigger DB rehydration
+      old_pid = GenServer.whereis(ChannelServer.via_tuple(:channel, channel.id))
+
+      if old_pid && Process.alive?(old_pid),
+        do: Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, old_pid)
+
+      {:ok, new_pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
+      server = ChannelServer.via_tuple(:channel, channel.id)
+
+      messages = ChannelServer.get_recent_messages(server, 50)
+      assert length(messages) >= 2
+
+      for msg <- messages do
+        assert msg.sender != nil, "Expected sender to be present on rehydrated message"
+        assert msg.sender.username == user.username
+      end
+
+      # Cleanup
+      if Process.alive?(new_pid),
+        do: Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, new_pid)
+    end
+  end
+
+  describe "DB rehydration ordering" do
+    test "messages are in ascending ID order after DB rehydration",
+         %{user: user, channel: channel} do
+      # Write messages directly to DB
+      {:ok, m1} = Slackex.Chat.send_message(channel.id, user.id, "first")
+      {:ok, m2} = Slackex.Chat.send_message(channel.id, user.id, "second")
+      {:ok, m3} = Slackex.Chat.send_message(channel.id, user.id, "third")
+
+      # Clear ETS so rehydration hits DB
+      :ets.delete_all_objects(:slackex_message_cache)
+
+      # Restart ChannelServer to trigger DB rehydration
+      old_pid = GenServer.whereis(ChannelServer.via_tuple(:channel, channel.id))
+
+      if old_pid && Process.alive?(old_pid),
+        do: Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, old_pid)
+
+      {:ok, new_pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
+      server = ChannelServer.via_tuple(:channel, channel.id)
+
+      messages = ChannelServer.get_recent_messages(server, 50)
+      ids = Enum.map(messages, & &1.id)
+
+      # IDs should be strictly ascending (oldest first)
+      assert ids == Enum.sort(ids)
+
+      # The specific messages we inserted should be present in order
+      expected_ids = [m1.id, m2.id, m3.id]
+      actual_ids = Enum.filter(ids, &(&1 in expected_ids))
+      assert actual_ids == expected_ids
+
+      # Cleanup
+      if Process.alive?(new_pid),
+        do: Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, new_pid)
+    end
+  end
+
   describe "get_recent_messages/2" do
     test "returns empty list before any messages are sent", %{server: server} do
       assert [] = ChannelServer.get_recent_messages(server, 50)

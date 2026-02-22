@@ -29,6 +29,98 @@ defmodule SlackexWeb.ChatLiveTest do
     }
   end
 
+  describe "channel authorization" do
+    test "non-member is redirected from private channel with flash", %{conn: conn} do
+      # Create a private channel owned by someone else
+      owner = insert(:user)
+
+      {:ok, private_channel} =
+        Chat.create_channel(owner.id, %{
+          name: "secret-#{System.unique_integer([:positive])}",
+          is_private: true
+        })
+
+      # Alice (logged in via setup) is NOT a member of this private channel
+      assert {:error, {:redirect, %{flash: flash, to: "/chat"}}} =
+               live(conn, ~p"/chat/#{private_channel.slug}")
+
+      assert flash["error"] =~ "don't have access"
+    end
+
+    test "non-member can view public channel", %{conn: conn} do
+      # Create a public channel owned by someone else
+      owner = insert(:user)
+
+      {:ok, public_channel} =
+        Chat.create_channel(owner.id, %{
+          name: "open-#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{public_channel.slug}")
+
+      # Should see the channel header
+      assert html =~ public_channel.name
+    end
+
+    test "non-member viewing public channel sees no message form", %{conn: conn} do
+      owner = insert(:user)
+
+      {:ok, public_channel} =
+        Chat.create_channel(owner.id, %{
+          name: "readonly-#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{public_channel.slug}")
+
+      # Should NOT see the send button / form
+      refute html =~ "phx-submit=\"send_message\""
+      # Should see the join prompt
+      assert html =~ "Join this channel to send messages"
+    end
+
+    test "member sees channel content and message form", %{conn: conn, channel: channel} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Alice is the owner of this channel from setup — should see the form
+      assert html =~ "phx-submit=\"send_message\""
+      assert html =~ "Send"
+      refute html =~ "Join this channel to send messages"
+    end
+  end
+
+  describe "pre-enriched sender in PubSub" do
+    test "pre-enriched PubSub message renders sender name without DB query", %{
+      conn: conn,
+      bob: bob,
+      channel: channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Simulate a pre-enriched message (as ChannelServer now sends)
+      envelope =
+        Envelope.wrap("message.new", {:channel, channel.id}, %{
+          id: System.unique_integer([:positive]),
+          content: "Pre-enriched hello!",
+          sender_id: bob.id,
+          channel_id: channel.id,
+          inserted_at: DateTime.utc_now(),
+          sender: %{
+            id: bob.id,
+            username: bob.username,
+            display_name: bob.display_name,
+            avatar_url: nil
+          }
+        })
+
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "channel:#{channel.id}", {:envelope, envelope})
+
+      html = render(lv)
+
+      assert html =~ "Pre-enriched hello!"
+      assert html =~ bob.username
+    end
+  end
+
   describe "chat experience" do
     test "user sees their channels in sidebar", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
