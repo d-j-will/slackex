@@ -77,6 +77,7 @@ defmodule Slackex.MixProject do
        depth: 1},
 
       # Dev & Test
+      {:tidewave, "~> 0.5", only: :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_machina, "~> 2.8", only: :test},

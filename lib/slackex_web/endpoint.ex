@@ -30,6 +30,11 @@ defmodule SlackexWeb.Endpoint do
     gzip: not code_reloading?,
     only: SlackexWeb.static_paths()
 
+  # Tidewave MCP server for AI-assisted development (dev only)
+  if Code.ensure_loaded?(Tidewave) do
+    plug Tidewave
+  end
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do

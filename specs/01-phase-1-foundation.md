@@ -426,6 +426,6 @@ See `05-ci-cd-devops.md` for the full Docker Compose configuration. Phase 1 requ
 - [x] Docker Compose with pgvector Postgres and Redis
 - [x] Mix aliases for lint, typecheck, quality, ci
 - [ ] Boundary compile-time checks (deferred — `boundary` dep not yet added)
-- [ ] Tidewave MCP server is accessible in dev for AI-assisted development
+- [x] Tidewave MCP server is accessible in dev for AI-assisted development
 - [ ] `mix setup` bootstraps the entire project from scratch
 - [ ] Pre-commit/pre-push git hooks installed
