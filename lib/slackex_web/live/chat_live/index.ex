@@ -51,10 +51,16 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_params(_params, _uri, socket) do
+    if connected?(socket) do
+      prev_channel = socket.assigns.active_channel
+      if prev_channel, do: Messaging.unsubscribe_channel(prev_channel.id)
+    end
+
     {:noreply,
      socket
      |> assign(:active_channel, nil)
-     |> assign(:page_title, "Chat")}
+     |> assign(:page_title, "Chat")
+     |> stream(:messages, [], reset: true)}
   end
 
   @impl true

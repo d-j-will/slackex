@@ -115,5 +115,15 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ "message[content]"
       assert html =~ "Send"
     end
+
+    test "navigating away from a channel shows welcome screen", %{conn: conn, channel: channel} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      html = render_patch(lv, ~p"/chat")
+
+      assert html =~ "Welcome to Slackex"
+      assert html =~ "Select a channel"
+      refute html =~ "message[content]"
+    end
   end
 end
