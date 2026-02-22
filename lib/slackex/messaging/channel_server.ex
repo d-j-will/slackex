@@ -14,7 +14,7 @@ defmodule Slackex.Messaging.ChannelServer do
 
   alias Ecto.Adapters.SQL
   alias Slackex.Accounts
-  alias Slackex.Cache.Local, as: LocalCache
+  alias Slackex.Cache
   alias Slackex.Chat
   alias Slackex.Chat.Permissions
   alias Slackex.Infrastructure.RateLimiter
@@ -78,9 +78,9 @@ defmodule Slackex.Messaging.ChannelServer do
     target = {channel_type, channel_id}
 
     {source, messages} =
-      case LocalCache.get_messages(target) do
-        {:ok, []} -> {:db, load_from_db(channel_type, channel_id)}
-        {:ok, cached} -> {:cache, cached}
+      case Cache.get_messages(target) do
+        {:ok, [_ | _] = cached} -> {:cache, cached}
+        _ -> {:db, load_from_db(channel_type, channel_id)}
       end
 
     queue =
@@ -146,7 +146,7 @@ defmodule Slackex.Messaging.ChannelServer do
           }
           |> put_target_field(state.channel_type, state.channel_id)
 
-        LocalCache.put_message({state.channel_type, state.channel_id}, message)
+        Cache.put_message({state.channel_type, state.channel_id}, message)
         new_queue = bounded_enqueue(state.messages, message, @max_cached_messages)
         new_pending = [message | state.pending_writes]
 

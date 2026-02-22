@@ -20,6 +20,8 @@ if System.get_env("PHX_SERVER") do
   config :slackex, SlackexWeb.Endpoint, server: true
 end
 
+config :slackex, :redis_url, System.get_env("REDIS_URL") || "redis://localhost:6379"
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

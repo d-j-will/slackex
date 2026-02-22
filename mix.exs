@@ -65,6 +65,10 @@ defmodule Slackex.MixProject do
       {:horde, "~> 0.9"},
       {:libcluster, "~> 3.4"},
 
+      # Redis cache
+      {:redix, "~> 1.5"},
+      {:nimble_pool, "~> 1.1"},
+
       # Telemetry
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},

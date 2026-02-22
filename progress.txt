@@ -346,3 +346,37 @@ Three issues identified during code review, addressed in a single commit:
 ### What's next
 - Phase 3 Step 3: Redis cross-node cache (pool, cascade, write-through)
 - Phase 3 Steps 3.5-8: Read replica, push notifications, partitioning, reconnection, K8s deployment
+
+---
+
+## Phase 3 Distribution — Step 3: Redis Cross-Node Cache (2026-02-22)
+
+### What was built
+- **`Slackex.Cache.Redis`** (`lib/slackex/cache/redis.ex`): Supervisor managing a pool of 10 named Redix connections (`:redix_0` through `:redix_9`) for cross-node cache sharing. Random dispatch via `:rand.uniform/1`. All commands wrapped in `try/rescue` for graceful degradation — returns `{:miss, []}` or `:error` rather than raising when Redis is unavailable. Public API: `get_messages/1` (LRANGE 0 199), `push_message/2` (RPUSH + LTRIM + EXPIRE, 100ms timeout), `cache_messages/2` (pipeline DEL + RPUSH all + EXPIRE), `invalidate/1` (DEL), `set_read_cursor/3` (SET EX 86400), `get_read_cursor/2` (GET). Messages serialized as JSON strings in Redis lists (Jason.encode!/decode!). DateTime values encoded as ISO8601 strings, decoded back to DateTime via `DateTime.from_iso8601/1`. String keys atomized on decode for known fields only (`:id`, `:content`, `:sender_id`, `:inserted_at`, `:channel_id`, `:dm_conversation_id`, `:sender`). Telemetry event `[:slackex, :cache, :redis_write_timeout]` emitted on write timeout. Redis keys namespaced: `msgs:channel:{id}`, `msgs:dm:{id}`, `cursor:{uid}:{type}:{id}`.
+- **`Slackex.Cache`** (`lib/slackex/cache/cache.ex`): Plain module facade coordinating 3-tier cascade. `get_messages/1`: ETS hit → return; Redis hit → backfill ETS + return; both miss → `{:miss, []}`. `put_message/2`: write-through to ETS (synchronous) then Redis (best-effort, 100ms timeout). `invalidate/1`: clears both ETS and Redis. `cache_messages/2`: bulk backfills both layers.
+- **Application supervisor** (`lib/slackex/application.ex`): Added `Slackex.Cache.Redis` between `Cache.Local` and `ChannelRegistry`.
+- **`Slackex.Messaging.ChannelServer`** (`lib/slackex/messaging/channel_server.ex`): Switched from `Cache.Local` alias to `Cache` facade. `init/1` cache check and `send_message` write both use `Cache` (3-tier) instead of ETS-only.
+- **`Slackex.Search.HistoryLoader`** (`lib/slackex/search/history_loader.ex`): Switched from `Cache.Local` to `Cache` facade. DB miss backfill now uses `Cache.cache_messages/2` (bulk backfill both layers). Fixed `struct_to_map/1` to properly deep-convert Ecto structs: skips `__meta__`, drops `%Ecto.Association.NotLoaded{}` values, recurses into loaded associations, and short-circuits on Jason-native types (DateTime, NaiveDateTime, Date, Time) to avoid exposing internal tuple fields like `microsecond: {value, precision}`.
+- **docker-compose.yml**: Redis service (redis:7-alpine, port 6379) was already defined; started alongside Postgres for test/dev environments.
+
+### Test coverage
+- 277 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean, mix assets.build clean
+- 46 new behavioral tests:
+  - `Cache.Redis` (31 tests): push/get round-trip, DateTime ISO8601 round-trip, insertion order, trim to 200, channel/DM independence, bulk backfill, DEL on re-cache, invalidate, read cursor round-trip, multi-user/multi-type cursor isolation, graceful degradation shapes
+  - `Cache` facade (15 tests): ETS hit short-circuits Redis, Redis hit backfills ETS, full miss, write-through to both layers, successive writes visible in both, invalidate clears both, bulk backfill both layers, subsequent read hits ETS
+
+### Lessons learned
+
+46. **`Map.from_struct` exposes internal Elixir struct fields**: `DateTime`'s `microsecond` field is `{value, precision}` — a raw tuple. Recursing into a `DateTime` with `Map.from_struct` produces a map with `microsecond: {750000, 6}` that Jason cannot encode. Always guard recursive struct-to-map conversion against types that Jason already handles natively (DateTime, NaiveDateTime, Date, Time, Decimal).
+
+47. **Redis pool with random dispatch is simpler than nimble_pool for this use case**: A Supervisor with N named Redix connections + `:rand.uniform(N)` dispatch gives connectionpool-like load distribution without the complexity of a proper pool implementation. Suitable for Redis since connections are cheap and lightweight.
+
+48. **`try/rescue` → implicit try for Credo compliance**: Credo prefers implicit try syntax (rescue at function level) over explicit `try do...rescue...end` blocks. `defp f() do Redix.command(...) rescue e -> {:error, e} end` is idiomatic; explicit `try` is flagged by `Credo.Check.Readability.PreferImplicitTry`.
+
+49. **Credo nesting depth**: Pattern matching via extracted helper clauses eliminates deep nesting. Instead of `fn {k, v} -> if ... case ...`, extract `defp convert_kv/1` and `defp convert_value/2` to keep each clause at depth ≤ 2.
+
+50. **ETS remains authoritative for hot data**: Redis writes are best-effort (100ms timeout, fire-and-forget on failure). ETS is always written first and is the source of truth within a node. Redis serves as a warm cache for newly started nodes or nodes with cold ETS. This prevents Redis latency from affecting the message broadcast path.
+
+### What's next
+- Phase 3 Step 3.5: Read replica routing
+- Phase 3 Steps 4-8: Push notifications, partitioning, reconnection, K8s deployment

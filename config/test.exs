@@ -37,3 +37,5 @@ config :bcrypt_elixir, log_rounds: 4
 config :slackex, Oban, testing: :inline
 
 config :libcluster, topologies: []
+
+config :slackex, :redis_url, "redis://localhost:6379"

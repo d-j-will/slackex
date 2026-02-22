@@ -11,6 +11,8 @@ defmodule Slackex.Messaging.ChannelServerTest do
   # Start a fresh ChannelServer backed by a unique channel for each test.
   # The channel creator gets the "owner" role and can send messages.
   setup do
+    :ets.delete_all_objects(:slackex_message_cache)
+    Redix.command!(:redix_0, ["FLUSHDB"])
     user = insert(:user)
 
     {:ok, channel} =

@@ -17,6 +17,7 @@ defmodule Slackex.Application do
       SlackexWeb.Presence,
       Slackex.Infrastructure.Snowflake,
       Slackex.Cache.Local,
+      Slackex.Cache.Redis,
       Slackex.Messaging.ChannelRegistry,
       Slackex.Messaging.ChannelSupervisor,
       {Task.Supervisor, name: Slackex.WriteSupervisor},
