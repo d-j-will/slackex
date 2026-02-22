@@ -82,3 +82,36 @@
 - LiveView chat interface (Step 7): registration/login forms, real-time message list, channel sidebar
 - Boundary compile-time checks
 - Git hooks and bin/setup script
+
+---
+
+## Phase 2 CQRS Core — Steps 1–3 + Supervisor (2026-02-22)
+
+### What was built
+- **`Slackex.Cache.Local`** (`lib/slackex/cache/local.ex`): ETS-backed message cache GenServer. Public table (`:set`, `:public`, `:named_table`, `read_concurrency: true`, `write_concurrency: true`). LRU eviction via monotonic timestamps when channel count exceeds 1,000. Messages stored newest-first, returned chronologically. Direct ETS reads; GenServer mediates writes for atomicity.
+- **`Slackex.Pipeline.BatchWriter`** (`lib/slackex/pipeline/batch_writer.ex`): Batch DB insert module. `insert_batch/1` maps message maps to rows (deriving `inserted_at` from Snowflake ID via `DateTime.from_unix!(ms * 1000, :microsecond)`), runs `Repo.insert_all("messages", entries, on_conflict: :nothing)`. `async_insert_batch/2` dispatches via `Task.Supervisor.start_child(Slackex.WriteSupervisor, ...)` and sends `{:batch_result, ref, :ok | {:error, reason}}` to caller.
+- **`Slackex.Messaging.ChannelServer`** (`lib/slackex/messaging/channel_server.ex`): GenServer per active channel/DM. Bounded 200-message in-memory queue, 2-second async batch flush via BatchWriter, per-user per-channel rate limiting (10 msg/s token bucket), PubSub broadcast on send, 30-minute idle hibernation, batch retry with telemetry on max-retries-exceeded.
+- **`Slackex.Messaging.ChannelSupervisor`** (`lib/slackex/messaging/channel_supervisor.ex`): DynamicSupervisor for ChannelServer processes. `ensure_started/2` looks up via Registry, starts child if not found, handles `{:error, {:already_started, pid}}` race.
+- **`Slackex.Messaging`** (`lib/slackex/messaging/messaging.ex`): Context facade. `send_message/4`, `send_dm/4` (with participant validation), `get_recent_messages/2` (ChannelServer → DB fallback), PubSub subscribe/unsubscribe helpers, `broadcast_typing/2`, `channel_count/0`.
+- **Application supervisor updated** (`lib/slackex/application.ex`): Added `Slackex.Cache.Local`, `{Registry, keys: :unique, name: Slackex.Messaging.ChannelRegistry}`, `Slackex.Messaging.ChannelSupervisor`, `{Task.Supervisor, name: Slackex.WriteSupervisor}`.
+
+### Test coverage
+- 157 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 52 new behavioral tests covering: ETS cache put/get/invalidate/stats/LRU, batch insert/async, ChannelServer message flow/rate limiting/PubSub, Messaging context send/DM/subscribe/typing/channel_count/ensure_started
+
+### Lessons learned
+
+13. **ETS named tables are owned by the creating process**: When `Cache.Local` is added to the application supervisor, `start_supervised!(Local)` in tests raises `{:already_started, pid}`. Fix: use `:ets.delete_all_objects(:slackex_message_cache)` in test `setup` to clear state between tests rather than restarting the GenServer.
+
+14. **Task.Supervisor start_supervised! conflict**: Once `{Task.Supervisor, name: Slackex.WriteSupervisor}` is in the app supervisor, test setups that call `start_supervised!({Task.Supervisor, name: Slackex.WriteSupervisor})` fail with `:already_started`. Remove the per-test `start_supervised!` and rely on the running supervisor.
+
+15. **DynamicSupervisor child cleanup in tests**: Calling `GenServer.stop(pid, :normal)` on a `:permanent` DynamicSupervisor child causes a restart. Use `DynamicSupervisor.terminate_child(ChannelSupervisor, pid)` instead — this removes the child from the supervisor without triggering a restart.
+
+16. **Rate limiter affects large-batch tests**: ChannelServer rate-limits at 10 msg/s per user. Tests that try to send 200+ messages from a single user will hit `:error, :rate_limited` after 10. Bounded-queue tests should either use many distinct users or be removed in favour of testing the limit via direct ETS/queue inspection.
+
+### Phase 2 steps remaining
+- Step 4: Phoenix Presence (online users, typing indicators with auto-clear)
+- Step 5: Scroll-based history pagination (`HistoryLoader`, JS hook)
+- Step 6: Update LiveView and mobile ChatChannel/DMChannel write paths to use Messaging context
+- Step 7: Oban setup (background jobs, CacheWarmer)
+- LiveView chat UI (from Phase 1 remaining work)

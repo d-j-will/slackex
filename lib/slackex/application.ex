@@ -13,6 +13,10 @@ defmodule Slackex.Application do
       {DNSCluster, query: Application.get_env(:slackex, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Slackex.PubSub},
       Slackex.Infrastructure.Snowflake,
+      Slackex.Cache.Local,
+      {Registry, keys: :unique, name: Slackex.Messaging.ChannelRegistry},
+      Slackex.Messaging.ChannelSupervisor,
+      {Task.Supervisor, name: Slackex.WriteSupervisor},
       # Start to serve requests, typically the last entry
       SlackexWeb.Endpoint
     ]

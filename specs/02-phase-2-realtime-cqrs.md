@@ -270,23 +270,29 @@ Children added to Phase 1 supervisor (in order):
 
 ## Phase 2 Acceptance Criteria
 
-- [ ] ChannelServer GenServer starts on first message to a channel
-- [ ] Messages are broadcast immediately via PubSub (< 10ms latency)
-- [ ] Messages are persisted asynchronously via Task.Supervisor batch writes
-- [ ] In-memory message queue is bounded at 200 messages per channel
-- [ ] ChannelServer hibernates after 30 minutes of inactivity
-- [ ] ETS cache serves recent messages without hitting PostgreSQL
-- [ ] Cache miss falls through to PostgreSQL transparently
+### Steps 1-3: CQRS Foundation (ChannelServer + BatchWriter + Cache) — COMPLETE
+
+- [x] ChannelServer GenServer starts on first message to a channel
+- [x] Messages are broadcast immediately via PubSub (< 10ms latency)
+- [x] Messages are persisted asynchronously via Task.Supervisor batch writes
+- [x] In-memory message queue is bounded at 200 messages per channel
+- [x] ChannelServer hibernates after 30 minutes of inactivity
+- [x] ETS cache serves recent messages without hitting PostgreSQL
+- [x] Cache miss falls through to PostgreSQL transparently
+- [x] Batch writes group pending messages per flush interval (2s)
+- [x] Rate limiting prevents >10 messages/second per user per channel
+- [x] DM sender is validated as a participant (not just any authenticated user)
+- [x] All behavioral tests from Phase 1 still pass
+- [x] New behavioral tests cover: GenServer message flow, cache hit/miss, rate limiting, batch persistence
+
+### Steps 4-9: Presence, History, Oban, Write Path Migration — REMAINING
+
 - [ ] Phoenix Presence shows online users per channel
 - [ ] Typing indicators appear and auto-clear after 3 seconds
 - [ ] Scroll-up loads older messages via paginated DB query
 - [ ] Auto-scroll to bottom on new messages (only if already at bottom)
 - [ ] Oban is configured and the cache warmer runs hourly
-- [ ] Batch writes group pending messages per flush interval (2s)
-- [ ] Rate limiting prevents >10 messages/second per user per channel
-- [ ] DM sender is validated as a participant (not just any authenticated user)
 - [ ] Realtime payloads follow versioned `v1` envelope contract shared across web/mobile clients
 - [ ] Write rejection semantics are normalized (`rate_limited`, `backpressure`, `not_writer`, etc.) and exposed consistently to clients
 - [ ] All boundary constraints compile without warnings
-- [ ] All behavioral tests from Phase 1 still pass
-- [ ] New behavioral tests cover: GenServer message flow, cache hit/miss, presence, typing, and realtime contract payload shape
+- [ ] New behavioral tests cover: presence, typing, and realtime contract payload shape
