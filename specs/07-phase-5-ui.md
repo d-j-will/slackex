@@ -1,4 +1,4 @@
-# Phase 5 — Full-Feature UI & App Experience
+# Phase 5 — Full-Featured UI & App Experience
 
 ## Goal
 
@@ -20,6 +20,12 @@ No new Elixir dependencies. Frontend-only additions:
 | Library | Version | Purpose |
 |---------|---------|---------|
 | emoji-mart (JS) | ~> 5.6 | Emoji picker component for reactions (npm) |
+
+## Navigation Contract
+
+- Use patch navigation inside LiveView: `<.link patch={...}>` in templates and `push_patch/2` in LiveView callbacks.
+- Route references in this document are absolute (`/chat/...`).
+- Use the term "patch navigation" consistently throughout implementation notes and PRs.
 
 ---
 
@@ -198,10 +204,10 @@ The `"load_more"` event is handled by `Index` — it calls `Chat.list_messages/2
 ### 1.6 App Layout Adjustment
 
 Modify `lib/slackex_web/components/layouts/app.html.heex`:
-- Chat routes (`/chat/**`): full-height edge-to-edge layout, no padding, sticky header with just logo and user menu
-- Non-chat routes: standard padded layout
+- Chat routes (`/chat/**`): full-height edge-to-edge layout, no global navbar, no outer page padding
+- Non-chat routes: keep the standard app shell and padded layout
 
-Use `@conn` or socket assigns to detect chat context and conditionally render layout.
+Use LiveView-aware assigns to detect chat context (for example, `assigns[:live_module]`, `@live_action`, or an explicitly assigned `@current_path`). Avoid relying on `@conn` in LiveView-only rendering paths.
 
 ### 1.7 Refactor Index LiveView
 
@@ -250,6 +256,10 @@ Add DM route to the authenticated live session in `router.ex`:
 live "/chat/dm/:dm_id", ChatLive.Index, :dm
 ```
 
+**Route ordering contract (required):**
+- Define literal routes before slug routes: `/chat/channels/new`, `/chat/channels/browse`, `/chat/dm/new`, `/chat/profile/edit` must be declared before `/chat/:slug`.
+- Keep `/chat/dm/:dm_id` explicit and declared before `/chat/:slug` so `dm` is never captured as a channel slug.
+
 ### 2.2 DM Loading in Mount
 
 In `Index.mount/3`, load the current user's DM conversations:
@@ -258,7 +268,9 @@ In `Index.mount/3`, load the current user's DM conversations:
 dm_conversations = Chat.list_user_dm_conversations(user.id)
 # Returns: [%{id, other_user: %User{}, last_message_at, ...}]
 
-|> assign(:dm_conversations, dm_conversations)
+socket =
+  socket
+  |> assign(:dm_conversations, dm_conversations)
 ```
 
 Pass `@dm_conversations` to `SidebarComponent`. Display below channels with the other user's avatar and name.
@@ -306,7 +318,7 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
 end
 ```
 
-Modal opens via `live_patch` to `/chat/dm/new` (add route: `live "/chat/dm/new", ChatLive.Index, :new_dm`). The parent `Index` renders the modal conditionally when `@live_action == :new_dm`.
+Modal opens via patch navigation to `/chat/dm/new` (add route: `live "/chat/dm/new", ChatLive.Index, :new_dm`). The parent `Index` renders the modal conditionally when `@live_action == :new_dm`.
 
 ### 2.5 User Search Backend
 
@@ -1145,7 +1157,7 @@ In `Index`, when `@live_action == :thread`:
 - Load parent message
 - Render `ThreadPanelComponent` alongside message list
 
-"N replies" link on messages with `reply_count > 0` navigates via `live_patch` to the thread route.
+"N replies" link on messages with `reply_count > 0` navigates via patch navigation to the thread route.
 
 ### Files Changed
 
@@ -1246,12 +1258,17 @@ end
 def update_member_role(channel_id, actor_user_id, target_user_id, new_role)
     when new_role in ~w(admin member viewer) do
   actor_role = get_role(actor_user_id, channel_id)
+  target_role = get_role(target_user_id, channel_id)
 
   cond do
     not Permissions.can?(actor_role, :manage_channel) ->
       {:error, :unauthorized}
     actor_user_id == target_user_id ->
       {:error, :cannot_change_own_role}
+    is_nil(target_role) ->
+      {:error, :not_a_member}
+    target_role == "owner" ->
+      {:error, :cannot_modify_owner}
     true ->
       from(s in Subscription,
         where: s.channel_id == ^channel_id and s.user_id == ^target_user_id
@@ -1259,7 +1276,7 @@ def update_member_role(channel_id, actor_user_id, target_user_id, new_role)
       |> Repo.update_all(set: [role: new_role])
       |> case do
         {1, _} -> :ok
-        {0, _} -> {:error, :not_a_member}
+        {0, _} -> {:error, :update_failed}
       end
   end
 end
@@ -1267,12 +1284,17 @@ end
 @doc "Removes a member from a channel. Requires manage_channel permission."
 def kick_member(channel_id, actor_user_id, target_user_id) do
   actor_role = get_role(actor_user_id, channel_id)
+  target_role = get_role(target_user_id, channel_id)
 
   cond do
     not Permissions.can?(actor_role, :manage_channel) ->
       {:error, :unauthorized}
     actor_user_id == target_user_id ->
       {:error, :cannot_kick_self}
+    is_nil(target_role) ->
+      {:error, :not_a_member}
+    target_role == "owner" ->
+      {:error, :cannot_kick_owner}
     true ->
       from(s in Subscription,
         where: s.channel_id == ^channel_id and s.user_id == ^target_user_id
@@ -1354,7 +1376,7 @@ Create `lib/slackex_web/live/chat_live/channel_members_modal.ex`:
 
 - Lists all channel members with avatar, name, role badge (owner/admin/member/viewer)
 - Admin+ users see role dropdown (promote/demote) and kick button per member
-- Owner cannot be kicked or demoted
+- Owner cannot be kicked or demoted (enforced in backend, not only hidden in UI)
 - Search/filter members by name
 
 Route: `live "/chat/:slug/members", ChatLive.Index, :members`
@@ -1394,7 +1416,7 @@ Add to channel header:
 - [ ] Channel header shows member count and pin count
 - [ ] Members modal lists all channel members with role badges
 - [ ] Admin+ can promote, demote, and kick members
-- [ ] Owner cannot be kicked or demoted
+- [ ] Owner cannot be kicked or demoted (backend returns `:cannot_modify_owner` / `:cannot_kick_owner`)
 - [ ] Pin action appears on message hover for admin+ users
 - [ ] Pinned messages modal lists all pins with message previews
 - [ ] Admin+ can unpin messages
@@ -1561,7 +1583,13 @@ end
 @doc "Redeems an invite code. Adds the user to the channel if the invite is valid."
 def redeem_invite(code, user_id) do
   Repo.transaction(fn ->
-    invite = Repo.get_by(InviteLink, code: code) || Repo.rollback(:not_found)
+    invite =
+      from(i in InviteLink,
+        where: i.code == ^code,
+        lock: "FOR UPDATE"
+      )
+      |> Repo.one()
+      || Repo.rollback(:not_found)
 
     cond do
       invite.expires_at && DateTime.compare(DateTime.utc_now(), invite.expires_at) == :gt ->
@@ -1574,16 +1602,34 @@ def redeem_invite(code, user_id) do
         Repo.rollback(:already_member)
 
       true ->
-        # Join the channel
-        join_channel(user_id, invite.channel_id)
+        # Invite redemption must be valid for private channels as well.
+        %Subscription{}
+        |> Subscription.changeset(%{
+          user_id: user_id,
+          channel_id: invite.channel_id,
+          role: "member"
+        })
+        |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :channel_id])
+        |> case do
+          {:ok, _subscription} ->
+            case from(i in InviteLink,
+                   where: i.id == ^invite.id,
+                   where: is_nil(i.max_uses) or i.use_count < i.max_uses
+                 )
+                 |> Repo.update_all(inc: [use_count: 1]) do
+              {1, _} -> invite
+              {0, _} -> Repo.rollback(:max_uses_reached)
+            end
 
-        # Increment use count
-        from(i in InviteLink, where: i.id == ^invite.id)
-        |> Repo.update_all(inc: [use_count: 1])
-
-        invite
+          {:error, _changeset} ->
+            Repo.rollback(:join_failed)
+        end
     end
   end)
+  |> case do
+    {:ok, invite} -> {:ok, invite}
+    {:error, reason} -> {:error, reason}
+  end
 end
 
 @doc "Lists invite links for a channel."
@@ -1829,7 +1875,7 @@ The existing `assets/js/theme.js` handles theme persistence. Connect it to the s
 </button>
 ```
 
-### 10.5 Quick Switcher (Ctrl+K)
+### 10.5 Quick Switcher (Ctrl+K / Cmd+K)
 
 Add a `QuickSwitcher` JS hook that listens for `Ctrl+K` / `Cmd+K`:
 
@@ -1847,7 +1893,7 @@ document.addEventListener("keydown", (e) => {
 });
 ```
 
-The quick switcher is a modal with a search input that fuzzy-matches channel names and DM conversation names. Selecting an item navigates via `live_patch`.
+The quick switcher is a modal with a search input that fuzzy-matches channel names and DM conversation names. Selecting an item navigates via patch navigation.
 
 ### 10.6 Visual Polish
 
@@ -1908,9 +1954,9 @@ Final pass across all components:
 
 ## Key Architecture Decisions
 
-1. **Single LiveView with components** — `ChatLive.Index` stays the top-level LiveView. Sidebar, thread panel, and modals are LiveComponents. Message bubbles, avatars, etc. are function components. This preserves PubSub subscriptions and socket state across `live_patch` navigation.
+1. **Single LiveView with components** — `ChatLive.Index` stays the top-level LiveView. Sidebar, thread panel, and modals are LiveComponents. Message bubbles, avatars, etc. are function components. This preserves PubSub subscriptions and socket state across patch navigation.
 
-2. **Modal routing via live_action** — Modals are triggered by `live_patch` URL changes (e.g., `/chat/channels/new`). The modal component renders conditionally based on `@live_action`. This gives modals shareable URLs and browser back-button support.
+2. **Modal routing via live_action** — Modals are triggered by patch URL changes (e.g., `/chat/channels/new`). The modal component renders conditionally based on `@live_action`. This gives modals shareable URLs and browser back-button support.
 
 3. **Thread panel as side panel, not modal** — Thread view is a sliding right panel (400px on desktop, full width on mobile) alongside the main message list. Both message list and thread panel can be visible simultaneously, matching Slack's UX pattern.
 
@@ -1918,7 +1964,7 @@ Final pass across all components:
 
 5. **Soft delete for messages** — `deleted_at` timestamp rather than hard delete. Preserves thread integrity (replies reference parent by ID), message ordering, and reaction data. UI shows "[This message was deleted]" placeholder.
 
-6. **Invite links with atomic redemption** — `redeem_invite/2` uses `Repo.transaction` to atomically check validity, join the channel, and increment use count. Prevents race conditions with concurrent redemptions.
+6. **Invite links with row-level locking + conditional increment** — `redeem_invite/2` locks the invite row (`FOR UPDATE`), validates limits, inserts membership, and conditionally increments `use_count` in-transaction. This is the contract that prevents over-redemption under concurrency.
 
 7. **Bulk unread counts** — Single lateral-join query for all channel unread counts instead of N per-channel queries. Critical for sidebar performance with many channels.
 
@@ -1930,6 +1976,33 @@ After each step:
 3. `mix test` — all existing + new tests pass
 4. `mix assets.build` — JS/CSS compiles cleanly
 5. Manual smoke test: start server (`mix phx.server`), register/login, exercise the new feature
+
+### Required Automated Test Matrix
+
+Every implemented step must include tests that prove behavior, not only render checks.
+
+1. Routing + navigation tests:
+- Router ordering protects literal routes from `:slug` capture (`/chat/dm/new`, `/chat/channels/new`, `/chat/profile/edit`).
+- Deep links for `/chat/:slug`, `/chat/:slug/thread/:message_id`, `/chat/dm/:dm_id` load the correct LiveView state.
+- Modal and thread close actions use patch navigation and preserve back-button behavior.
+
+2. Authorization and role invariants:
+- `update_member_role/4` and `kick_member/3` reject owner-target mutations.
+- Unauthorized actors cannot manage members/pins/invites.
+- UI visibility checks are paired with backend assertion tests (server-side enforcement).
+
+3. Invite redemption concurrency:
+- Concurrent redeem attempts on limited invites never exceed `max_uses`.
+- Expired, exhausted, and not-found invite codes return stable error atoms.
+- Invite redemption can add users to private channels.
+
+4. DM block enforcement:
+- Sending DM to a blocker returns `:blocked`.
+- Unblock restores DM send capability.
+
+5. LiveView interaction tests:
+- Use `Phoenix.LiveViewTest` element-based assertions against stable IDs for forms, modals, thread panel, unread badges, and compose controls.
+- Verify stream behavior for message append/prepend and pagination events (`load_more`).
 
 End-to-end after all steps:
 - Register two users, create a public channel, second user discovers and joins via browse

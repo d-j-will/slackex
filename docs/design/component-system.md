@@ -8,8 +8,8 @@
 
 ## Design Principles
 
-1. **Semantic over decorative.** Every visual element serves a functional purpose. No shadows, gradients, or colors as ornamentation.
-2. **Tokens over raw values.** All colors, radii, and spacing reference daisyUI CSS custom properties. No hardcoded hex/rgb values in templates.
+1. **Semantic over decorative.** Every visual element serves a functional purpose. No decorative gradients or ornamental color usage; reserve shadows for overlays (modals/popovers) only.
+2. **Tokens over raw values.** All colors, radii, and spacing reference semantic tokens/utilities. No hardcoded hex/rgb values in templates.
 3. **State is the design.** Each interactive element has exactly four states defined: default, hover, active/selected, disabled. Loading is a variant of active.
 4. **Consistency at the component boundary.** Shared anatomy means shared mental model — modals all look the same, sidebar items all behave the same.
 
@@ -19,7 +19,7 @@
 
 ### Spacing Scale
 
-Slackex uses Tailwind's default spacing scale. The following sizes are **canonical** for the chat UI — use these and avoid arbitrary values:
+Slackex uses Tailwind's default spacing scale. The following sizes are **canonical** for the chat UI — use these and avoid arbitrary values unless explicitly listed as approved exceptions.
 
 | Token | Value | Use |
 |-------|-------|-----|
@@ -36,6 +36,12 @@ Slackex uses Tailwind's default spacing scale. The following sizes are **canonic
 | `14` | 56px | Channel header height, sidebar workspace header height |
 | `16` | 64px | Sidebar user footer height |
 | `64` | 256px | Sidebar width (desktop) |
+
+Approved arbitrary-value exceptions for this phase:
+- `w-[400px]` (thread panel desktop width)
+- `h-[52px]` (dense chat header rows)
+- `text-[10px]`, `text-[11px]` (metadata + compact labels)
+- `max-h-[90vh]`, `max-h-[85vh]`, `max-h-[200px]`, `max-h-[120px]` (modal/compose constraints)
 
 ### Border Radius
 
@@ -155,14 +161,14 @@ lg:   w-12 h-12 (48px) — profile popover, edit profile modal
 
 **Initials fallback:** Take first character of `display_name || username`, uppercase. Background color derived from a hash of the user ID (cycle through 6 preset muted colors to ensure visual distinction without relying on random assignment).
 
-**Preset initials colors (using daisyUI semantic where possible):**
+**Preset initials colors (semantic tokens only):**
 ```
-Index 0: bg-blue-500/20 text-blue-600
-Index 1: bg-green-500/20 text-green-600
-Index 2: bg-amber-500/20 text-amber-600
-Index 3: bg-rose-500/20 text-rose-600
-Index 4: bg-violet-500/20 text-violet-600
-Index 5: bg-teal-500/20 text-teal-600
+Index 0: bg-primary/20 text-primary
+Index 1: bg-secondary/20 text-secondary
+Index 2: bg-accent/20 text-accent
+Index 3: bg-info/20 text-info
+Index 4: bg-success/20 text-success
+Index 5: bg-warning/20 text-warning
 ```
 
 These opacity-based colors work in both light and dark mode without theme-specific overrides.

@@ -45,21 +45,23 @@ Every route in the application, with its `live_action` value and the component(s
 
 **Route ordering note:** The router must declare `/chat/channels/new`, `/chat/channels/browse`, `/chat/dm/new`, and `/chat/profile/edit` before `/chat/:slug` to prevent the slug pattern from capturing those literal path segments. Similarly, `/chat/dm/:dm_id` must be distinct from `/chat/:slug`.
 
-**Quick switcher** is not URL-routed — it is a modal toggled by `Ctrl+K`/`Cmd+K` that lives entirely in client-side state.
+**Quick switcher** is not URL-routed — it is a modal toggled by `Ctrl+K / Cmd+K` that lives in UI state within the current LiveView.
 
 ---
 
 ### 1.2 Navigation Mechanisms
 
-#### live_patch (same LiveView, no remount)
+#### patch navigation (same LiveView, no remount)
 Used for all in-chat navigation. The single `ChatLive.Index` LiveView persists across these transitions, preserving socket state, PubSub subscriptions, and unread counts.
 
+**Implementation contract:** Use `<.link patch={...}>` in HEEx and `push_patch/2` in LiveView callbacks. Avoid deprecated helper APIs.
+
 ```
-/chat  →  /chat/:slug          live_patch  (enter channel)
-/chat/:slug  →  /chat/:slug/thread/:message_id   live_patch  (open thread)
-/chat/:slug  →  /chat/:slug/members              live_patch  (open modal)
-/chat/:slug  →  /chat/channels/new               live_patch  (open modal)
-/chat/:slug  →  /chat/dm/:dm_id                  live_patch  (switch to DM)
+/chat  →  /chat/:slug          patch  (enter channel)
+/chat/:slug  →  /chat/:slug/thread/:message_id   patch  (open thread)
+/chat/:slug  →  /chat/:slug/members              patch  (open modal)
+/chat/:slug  →  /chat/channels/new               patch  (open modal)
+/chat/:slug  →  /chat/dm/:dm_id                  patch  (switch to DM)
 ```
 
 #### redirect (full page transition)
@@ -72,13 +74,13 @@ Used only when crossing authentication boundaries or leaving the LiveView entire
 ```
 
 #### Sidebar navigation
-Clicking a channel or DM item in the sidebar calls `live_patch` to the appropriate URL. This is the primary navigation mechanism for switching contexts.
+Clicking a channel or DM item in the sidebar calls patch navigation to the appropriate URL. This is the primary navigation mechanism for switching contexts.
 
 #### In-context navigation
-- Clicking a message's reply count badge → `live_patch` to `/:slug/thread/:message_id`
-- Clicking member count in channel header → `live_patch` to `/:slug/members`
-- Clicking pin count in channel header → `live_patch` to `/:slug/pins`
-- Clicking "Generate Invite" in members modal → `live_patch` to `/:slug/invites`
+- Clicking a message's reply count badge → patch to `/chat/:slug/thread/:message_id`
+- Clicking member count in channel header → patch to `/chat/:slug/members`
+- Clicking pin count in channel header → patch to `/chat/:slug/pins`
+- Clicking "Generate Invite" in members modal → patch to `/chat/:slug/invites`
 
 ---
 
@@ -103,19 +105,19 @@ Users always need to know: which channel, which conversation, and which panel ar
 
 ### 1.4 Back Button Behavior
 
-Because all in-chat navigation uses `live_patch`, the browser back button traverses URL history without remounting the LiveView. The behavior for each transition:
+Because all in-chat navigation uses patch transitions, the browser back button traverses URL history without remounting the LiveView. The behavior for each transition:
 
 | User presses Back from... | Arrives at... | Effect |
 |---|---|---|
-| Thread panel open (`/:slug/thread/:id`) | `/:slug` | Thread panel closes, message list expands |
-| Modal open (`/:slug/members`, `/channels/new`, etc.) | Previous URL | Modal unmounts, underlying view restored |
-| Channel view (`/:slug`) | `/chat` or prior URL | Welcome state or previous channel |
+| Thread panel open (`/chat/:slug/thread/:id`) | `/chat/:slug` | Thread panel closes, message list expands |
+| Modal open (`/chat/:slug/members`, `/chat/channels/new`, etc.) | Previous URL | Modal unmounts, underlying view restored |
+| Channel view (`/chat/:slug`) | `/chat` or prior URL | Welcome state or previous channel |
 | DM view (`/chat/dm/:dm_id`) | Previous URL | Prior channel or welcome state |
 | `/invite/:code` error state | Previous page | Outside the app (browser handles) |
 
 **Principle:** Back always closes the "deepest" layer first (modal → thread → channel → welcome). This matches standard browser expectations.
 
-**In-app close buttons** (on modals, thread panel) also call `live_patch` back to the previous URL, keeping browser history consistent with native back button behavior.
+**In-app close buttons** (on modals, thread panel) also patch back to the previous URL, keeping browser history consistent with native back button behavior.
 
 ---
 
@@ -166,7 +168,7 @@ All routes are deep-linkable and shareable:
 │  • Profile popover (click any avatar/username)                  │
 │  • Message hover actions (edit, delete, react, reply, pin)      │
 │  • Emoji picker (triggered from message hover action)           │
-│  • Quick switcher (Ctrl+K)                                      │
+│  • Quick switcher (Ctrl+K / Cmd+K)                              │
 │  • Mobile sidebar (hamburger button)                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -258,7 +260,7 @@ THREAD PANEL (400px on desktop, full-width on mobile)
 │
 ├── PANEL HEADER (sticky)
 │   ├── "Thread"
-│   └── [✕ Close] button → live_patch back to /:slug
+│   └── [✕ Close] button → patch back to /chat/:slug
 │
 ├── PARENT MESSAGE (pinned at top, read-only, visually distinct)
 │   ├── [avatar] Username  timestamp
@@ -288,12 +290,12 @@ MODAL OVERLAY (full-screen backdrop, z-index above everything)
 └── MODAL DIALOG (centered, max-width varies by content)
     ├── MODAL HEADER
     │   ├── Title (e.g., "Create Channel")
-    │   └── [✕ Close] button → live_patch back
+    │   └── [✕ Close] button → patch back
     ├── MODAL BODY (scrollable if tall)
     │   └── [content specific to each modal]
     └── MODAL FOOTER
         ├── [Primary Action] button (e.g., "Create Channel")
-        └── [Cancel] button → live_patch back
+        └── [Cancel] button → patch back
 ```
 
 **Modal content structures:**
@@ -442,7 +444,7 @@ Every distinct configuration the UI can be in, with its URL and what's visible:
 
 **Visible:** Sidebar slides in over content. Backdrop covers main content.
 **Interaction:** Tap backdrop or tap a sidebar item → sidebar closes.
-**Note:** This is a client-side state only; no URL change. The `sidebar_open` assign controls rendering.
+**Note:** This is UI state only; there is no URL change. The `sidebar_open` assign controls rendering.
 
 ---
 
@@ -542,14 +544,14 @@ Step 2  /chat (State 0: Welcome)
         User sees: "Welcome to Slackex" empty state
         Sees sidebar: no channels yet (only channels they're in)
         Clicks [Browse Channels]
-        → live_patch to /chat/channels/browse
+        → patch to /chat/channels/browse
 
 Step 3  /chat/channels/browse (State 3: Modal)
         User sees: list of public channels with names, descriptions, member counts
         Finds "# general" — clicks [Join]
         → Chat.join_channel called
         → send(self(), {:channel_joined, channel})
-        → live_patch to /chat/general
+        → patch to /chat/general
 
 Step 4  /chat/general (State 1: Channel selected)
         Sidebar now shows "# general" highlighted
@@ -573,7 +575,7 @@ Step 4  /chat/general (State 1: Channel selected)
 Step 1  User is in any channel view
         Sees "Direct Messages" section in sidebar
         Clicks [+] next to "Direct Messages"
-        → live_patch to /chat/dm/new
+        → patch to /chat/dm/new
 
 Step 2  /chat/dm/new (State 3: Modal — New DM)
         Modal opens: "New Message"
@@ -586,7 +588,7 @@ Step 3  User clicks a result row (e.g., "Alice Smith")
         → handle_event "select_user" fires
         → send(self(), {:start_dm, alice_id})
         → Chat.find_or_create_dm(current_user_id, alice_id)
-        → live_patch to /chat/dm/:dm_id
+        → patch to /chat/dm/:dm_id
 
 Step 4  /chat/dm/:dm_id (State 4: DM conversation)
         Header shows: [avatar] Alice Smith [● Online]
@@ -647,7 +649,7 @@ Step 5  Reaction bar updates for all clients
 Step 1  User is in channel view (State 1)
         User hovers a message → sees "↩ Reply" action button
         User clicks [↩ Reply]
-        → live_patch to /chat/:slug/thread/:message_id
+        → patch to /chat/:slug/thread/:message_id
 
 Step 2  /chat/:slug/thread/:message_id (State 2: Split view)
         Thread panel slides in from the right (200ms transition)
@@ -672,7 +674,7 @@ Step 4  Main message list:
         Reply sent ✓
 
 Step 5  User clicks [✕ Close] or presses Escape
-        → live_patch back to /chat/:slug
+        → patch back to /chat/:slug
         Thread panel slides out (200ms transition)
         Message list expands back to full width
 ```
@@ -688,7 +690,7 @@ Step 5  User clicks [✕ Close] or presses Escape
 ```
 Step 1  CREATE CHANNEL
         User clicks [+] next to "Channels" in sidebar
-        → live_patch to /chat/channels/new
+        → patch to /chat/channels/new
         CreateChannelModal opens
         User types name: "team-updates"
           → auto-formatted to lowercase-hyphenated
@@ -699,15 +701,15 @@ Step 1  CREATE CHANNEL
         → Chat.create_channel(current_user, params)
         → send(self(), {:channel_created, channel})
         → Sidebar updates: "# team-updates" added
-        → live_patch to /chat/team-updates
+        → patch to /chat/team-updates
 
 Step 2  INVITE MEMBERS VIA LINK
         In /chat/team-updates, user clicks [👥 N members]
-        → live_patch to /chat/team-updates/members
+        → patch to /chat/team-updates/members
         Channel Members modal opens
         User sees themselves listed as owner
         User clicks or navigates to [Invite Links] / [Generate Invite]
-        → live_patch to /chat/team-updates/invites
+        → patch to /chat/team-updates/invites
         InviteLink modal opens
         Sets: Max uses = None, Expires = 7 days
         Clicks [Generate Link]
@@ -831,8 +833,8 @@ Step 3  CATCH-UP COMPLETE
 |---|---|---|
 | `Ctrl+K` / `Cmd+K` | Anywhere in chat | Open quick switcher |
 | `Escape` | Quick switcher open | Close quick switcher |
-| `Escape` | Modal open | Close modal, live_patch back |
-| `Escape` | Thread panel open | Close thread panel, live_patch back |
+| `Escape` | Modal open | Close modal, patch back |
+| `Escape` | Thread panel open | Close thread panel, patch back |
 | `Escape` | Message edit mode | Cancel edit, restore original content |
 | `Escape` | Profile popover open | Close popover |
 | `Escape` | Emoji picker open | Close emoji picker |

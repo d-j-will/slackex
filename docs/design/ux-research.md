@@ -38,7 +38,7 @@ Slack's thread panel compression (vs overlay) works because it maintains spatial
 
 ```heex
 <%# app.html.heex — chat routes get no header %>
-<%= if chat_route?(@conn) do %>
+<%= if assigns[:live_module] == SlackexWeb.ChatLive.Index do %>
   {@inner_content}
 <% else %>
   <header class="navbar ...">...</header>
@@ -48,6 +48,8 @@ Slack's thread panel compression (vs overlay) works because it maintains spatial
   </main>
 <% end %>
 ```
+
+Use route/live-action assigns that are available in LiveView layouts (`assigns[:live_module]`, `@live_action`, or an explicitly assigned `@current_path`). Do not rely on `@conn` for LiveView-only rendering paths.
 
 **Three-region layout for Phase 5:**
 
@@ -837,7 +839,7 @@ All modals in Phase 5 (NewDm, CreateChannel, BrowseChannels, EditProfile, Channe
 
 ---
 
-## 9. Quick Switcher (Ctrl+K)
+## 9. Quick Switcher (Ctrl+K / Cmd+K)
 
 Modeled after Linear's command palette:
 

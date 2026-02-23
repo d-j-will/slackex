@@ -106,12 +106,9 @@ font-family: "Geist", "DM Sans", ui-sans-serif, system-ui, sans-serif;
 font-family: "Geist Mono", "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 ```
 
-> **Implementation note:** Load from Google Fonts or Fontsource. Add to `root.html.heex`:
-> ```html
-> <link rel="preconnect" href="https://fonts.googleapis.com">
-> <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-> ```
-> Or self-host via `@fontsource/dm-sans` npm package for zero external requests.
+> **Implementation note:** Prefer bundled/self-hosted fonts only.
+> Use system stack by default, or self-host via `@fontsource/*` / local `@font-face` imported through `assets/css/app.css`.
+> Do not require external `<link>` font imports in `root.html.heex` for core UI rendering.
 >
 > **Fallback strategy:** The system font stack (`ui-sans-serif, system-ui, -apple-system`) is acceptable and visually coherent — DM Sans is an enhancement, not a requirement for correct rendering.
 
