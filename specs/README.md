@@ -16,7 +16,7 @@
 | [Testing Strategy](#testing-strategy) | Reference | — | [06-testing-strategy.md](06-testing-strategy.md) |
 | [Architecture Overview](#architecture-overview) | Reference | — | [00-overview.md](00-overview.md) |
 
-**Current test count: 396 (0 failures)**
+**Current test count: 408 (0 failures)**
 
 ---
 

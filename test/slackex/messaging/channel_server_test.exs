@@ -9,6 +9,26 @@ defmodule Slackex.Messaging.ChannelServerTest do
   alias Slackex.Messaging.ChannelSupervisor
   alias Slackex.Repo
 
+  # Safely clear pending_writes and terminate a ChannelServer that may have
+  # already died (e.g., due to :target_deleted during batch flush). Also
+  # cleans up any Horde-restarted instance so ensure_started gets a fresh one.
+  defp safe_clear_and_terminate(pid, type_key) do
+    try do
+      :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
+      Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+    catch
+      :exit, _ -> :ok
+    end
+
+    case Horde.Registry.lookup(ChannelRegistry, type_key) do
+      [{restarted_pid, _}] ->
+        Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, restarted_pid)
+
+      _ ->
+        :ok
+    end
+  end
+
   # Start a fresh ChannelServer backed by a unique channel for each test.
   # The channel creator gets the "owner" role and can send messages.
   setup do
@@ -423,8 +443,7 @@ defmodule Slackex.Messaging.ChannelServerTest do
       assert m1.id in cached_ids
 
       # Terminate the ChannelServer (without flushing — clear pending first)
-      :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
-      Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+      safe_clear_and_terminate(pid, {:channel, ch.id})
 
       # Restart — init/1 should reconcile cache vs DB and re-persist
       {:ok, new_pid} = ChannelSupervisor.ensure_started({:channel, ch.id})
@@ -466,10 +485,7 @@ defmodule Slackex.Messaging.ChannelServerTest do
       SQL.query!(Repo, "DELETE FROM messages WHERE channel_id = $1", [ch.id])
 
       # Clear pending_writes and terminate (guard against Horde restart race)
-      if Process.alive?(pid) do
-        :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
-        Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
-      end
+      safe_clear_and_terminate(pid, {:channel, ch.id})
 
       # Attach telemetry handler before restart
       test_pid = self()
@@ -560,21 +576,7 @@ defmodule Slackex.Messaging.ChannelServerTest do
       SQL.query!(Repo, "DELETE FROM messages WHERE channel_id = $1", [ch.id])
 
       # Clear pending_writes and terminate (process may have died during flush)
-      try do
-        :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
-        Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
-      catch
-        :exit, _ -> :ok
-      end
-
-      # Also terminate any Horde-restarted instance so ensure_started gets a fresh one
-      case Horde.Registry.lookup(ChannelRegistry, {:channel, ch.id}) do
-        [{restarted_pid, _}] ->
-          Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, restarted_pid)
-
-        _ ->
-          :ok
-      end
+      safe_clear_and_terminate(pid, {:channel, ch.id})
 
       # Bump the DB epoch very high so the recovery insert gets :epoch_stale
       # The new server will acquire epoch N+1, but the DB will be at N+100,

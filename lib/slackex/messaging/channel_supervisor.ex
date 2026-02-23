@@ -56,12 +56,22 @@ defmodule Slackex.Messaging.ChannelSupervisor do
 
       [] ->
         child_spec = {ChannelServer, {id, channel_opts}}
-
-        case Horde.DynamicSupervisor.start_child(__MODULE__, child_spec) do
-          {:ok, pid} -> {:ok, pid}
-          {:error, {:already_started, pid}} -> {:ok, pid}
-          error -> error
-        end
+        start_child_with_retry(child_spec)
     end
+  end
+
+  defp start_child_with_retry(child_spec, retries \\ 1) do
+    case Horde.DynamicSupervisor.start_child(__MODULE__, child_spec) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      error -> error
+    end
+  catch
+    :exit, {:noproc, _} when retries > 0 ->
+      Process.sleep(100)
+      start_child_with_retry(child_spec, retries - 1)
+
+    :exit, {:noproc, _} ->
+      {:error, :supervisor_not_available}
   end
 end
