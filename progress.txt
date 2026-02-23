@@ -415,3 +415,42 @@ Three issues identified during code review, addressed in a single commit:
 ### What's next
 - Phase 3 Step 4: Push notifications (mobile)
 - Phase 3 Steps 5-8: Partitioning, reconnection, health endpoints, K8s deployment
+
+---
+
+## Phase 3 Distribution — Step 6: Reconnection & Catch-Up (2026-02-23)
+
+### What was built
+- **`Slackex.Notifications.CatchupServer`** (`lib/slackex/notifications/catchup_server.ex`): Pure function module that builds catch-up payloads for reconnecting users. For each subscribed channel: resolves read cursor (Redis → DB → 0), computes unread count, fetches missed messages (up to 100). Returns `%{channels: [%{channel_id, channel_name, channel_slug, unread_count, recent_messages}], timestamp}`. Messages serialized with string IDs (JS safety) and included sender data. No GenServer needed — composes existing Chat context queries and `Cache.Redis` cursor lookups.
+- **`Chat.list_messages/2` `:after` option** (`lib/slackex/chat/chat.ex`): Extended existing `list_messages/2` to support `:after` pagination (Snowflake ID lower bound, exclusive, results in ascending order). This enables fetching messages chronologically after a read cursor. The `:before` option (descending) remains unchanged. Uses `cond` to select the ordering branch cleanly.
+
+### Test coverage
+- 369 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean
+- 12 new behavioral tests:
+  - Empty channels for user with no subscriptions
+  - Subscribed channel with zero unread (no messages)
+  - Unread count for messages after read cursor
+  - Missed messages in chronological order after cursor
+  - Message field serialization (string IDs, sender data, timestamps)
+  - Multiple channels ordered by name
+  - Redis read cursor fast path
+  - DB cursor fallback when Redis misses
+  - 100-message cap on missed messages
+  - Channel isolation (only subscribed channels included)
+  - Zero cursor (never read) returns recent messages
+  - Timestamp included in result
+
+### Lessons learned
+
+55. **`:after` pagination needs ascending order**: When fetching "messages after cursor X", SQL `WHERE id > X ORDER BY id ASC LIMIT N` gives the N oldest unread messages in chronological order. Using `DESC` would give the N *newest* unread messages, skipping middle ones — wrong for catch-up. The existing `:before` option correctly uses `DESC` (scrolling up through history), so `list_messages/2` now branches ordering based on which option is provided.
+
+56. **CatchupServer is a pure function module, not a GenServer**: The spec names it "CatchupServer" suggesting a process, but there's no state to manage — each `build_catchup/1` call is a fresh computation composing existing infrastructure (Chat context, Redis cache). Making it a plain module avoids unnecessary process overhead and simplifies testing (no start/stop lifecycle). GenServers should only exist when you need state or message-based coordination.
+
+57. **Redis cursor as a fast path with DB fallback**: Read cursors are written to both Redis (24h TTL) and the DB (permanent). For catch-up, checking Redis first (~0.5ms) avoids a DB round-trip in the common case. The DB fallback handles cold Redis (restart, eviction). This is the same cascade pattern used by the message cache (ETS → Redis → DB) but for scalar values rather than lists.
+
+58. **Review team findings drive defensive hardening**: The 9-item review from the previous session (atomic refresh rotation, online tracker wiring, device token API, push deferral, PushWorker graceful discard, safe topic parsing, auth controller fallbacks, contract test CI) covered real gaps that would have caused production issues. External review → structured fix passes are highly effective for hardening.
+
+### What's next
+- Phase 3 Step 5: Message table partitioning (monthly range partitions, maintenance worker)
+- Phase 3 Step 7: Update application supervisor (remaining Phase 3 additions)
+- Phase 3 Step 8: Kubernetes deployment (Dockerfile, manifests, health/readiness endpoints)

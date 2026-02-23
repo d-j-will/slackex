@@ -15,7 +15,7 @@
 | [Testing Strategy](#testing-strategy) | Reference | — | [06-testing-strategy.md](06-testing-strategy.md) |
 | [Architecture Overview](#architecture-overview) | Reference | — | [00-overview.md](00-overview.md) |
 
-**Current test count: 289 (0 failures)**
+**Current test count: 369 (0 failures)**
 
 ---
 
@@ -70,17 +70,17 @@
 | 2.4 | Update ChannelServer via tuples | **Done** |
 | 2.5 | Process Handoff on Node Down (terminate/2 + crash recovery) | **Done** |
 | 3 | Redis — Cross-Node Cache (pool, cascade, write-through) | **Done** |
-| 3.5 | Read Replica Support (ReadRepo, lag detection) | Not started |
-| 4 | Push Notifications (PushWorker, Oban) | Not started |
-| 4.5 | Device Tokens Table | Not started |
+| 3.5 | Read Replica Support (ReadRepo, lag detection) | **Done** |
+| 4 | Push Notifications (PushWorker, Oban) | **Done** |
+| 4.5 | Device Tokens Table | **Done** |
 | 5 | Message Table Partitioning | Not started |
-| 6 | Reconnection & Catch-Up (CatchupServer) | Not started |
+| 6 | Reconnection & Catch-Up (CatchupServer) | **Done** |
 | 7 | Update Application Supervisor (Phase 3) | Partial (Horde + libcluster added) |
 | 8 | Kubernetes Deployment (Dockerfile, manifests, health endpoints) | Not started |
 
 ### Next recommended task
 
-**Step 3.5 — Read Replica Support** (ReadRepo, lag detection, query routing). This adds read replica routing before proceeding to push notifications.
+**Step 5 — Message Table Partitioning** (range partition by `inserted_at`, monthly partitions, maintenance worker). This is a DB infrastructure step requiring a maintenance window migration.
 
 ---
 

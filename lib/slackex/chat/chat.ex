@@ -153,26 +153,39 @@ defmodule Slackex.Chat do
   end
 
   @doc """
-  Lists messages for a channel, paginated by Snowflake ID descending.
-  Supports :limit and :before options.
+  Lists messages for a channel, paginated by Snowflake ID.
+
+  Options:
+    - `:limit` — max messages to return (default 50)
+    - `:before` — Snowflake ID upper bound (exclusive), results in desc order
+    - `:after` — Snowflake ID lower bound (exclusive), results in asc order
   """
   def list_messages(channel_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
     before_id = Keyword.get(opts, :before)
-    repo = ReadRepo.repo_for_age(before_id || :recent)
+    after_id = Keyword.get(opts, :after)
+    repo = ReadRepo.repo_for_age(before_id || after_id || :recent)
 
-    query =
+    base =
       from m in Message,
         where: m.channel_id == ^channel_id,
-        order_by: [desc: m.id],
         limit: ^limit,
         preload: [:sender]
 
     query =
-      if before_id do
-        where(query, [m], m.id < ^before_id)
-      else
-        query
+      cond do
+        after_id ->
+          base
+          |> where([m], m.id > ^after_id)
+          |> order_by([m], asc: m.id)
+
+        before_id ->
+          base
+          |> where([m], m.id < ^before_id)
+          |> order_by([m], desc: m.id)
+
+        true ->
+          order_by(base, [m], desc: m.id)
       end
 
     repo.all(query)

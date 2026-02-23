@@ -464,9 +464,11 @@ defmodule Slackex.Messaging.ChannelServerTest do
       # Delete from DB to simulate lost writes
       SQL.query!(Repo, "DELETE FROM messages WHERE channel_id = $1", [ch.id])
 
-      # Clear pending_writes and terminate
-      :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
-      Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+      # Clear pending_writes and terminate (guard against Horde restart race)
+      if Process.alive?(pid) do
+        :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
+        Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+      end
 
       # Attach telemetry handler before restart
       test_pid = self()
