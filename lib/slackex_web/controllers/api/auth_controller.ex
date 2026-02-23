@@ -29,6 +29,12 @@ defmodule SlackexWeb.API.AuthController do
     end
   end
 
+  def login(conn, _params) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "missing_params", message: "email and password are required"})
+  end
+
   def refresh(conn, %{"refresh_token" => refresh_token}) do
     case Auth.refresh_api_token(refresh_token) do
       {:ok, %{access_token: access_token, refresh_token: new_refresh_token}} ->
@@ -51,5 +57,11 @@ defmodule SlackexWeb.API.AuthController do
         |> put_status(:unauthorized)
         |> json(%{error: "invalid_token"})
     end
+  end
+
+  def refresh(conn, _params) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "missing_params", message: "refresh_token is required"})
   end
 end

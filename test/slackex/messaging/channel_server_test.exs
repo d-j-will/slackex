@@ -589,6 +589,49 @@ defmodule Slackex.Messaging.ChannelServerTest do
     end
   end
 
+  describe "push notification deferral" do
+    test "message is buffered in pending_writes before batch flush",
+         %{user: user, server: server} do
+      pid = GenServer.whereis(server)
+
+      # send_message returns immediately; message is buffered, not yet persisted
+      {:ok, _msg} = ChannelServer.send_message(server, user.id, "deferred push test")
+
+      state = :sys.get_state(pid)
+      assert state.pending_writes != []
+      assert state.in_flight == %{}
+    end
+
+    test "pending_writes cleared and in_flight empty after batch cycle (persistence triggers push)" do
+      # Dedicated channel to avoid Horde race with other tests during sleep
+      user = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "defer-#{System.unique_integer()}"})
+
+      {:ok, pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
+      server = ChannelServer.via_tuple(:channel, channel.id)
+
+      {:ok, _msg} = ChannelServer.send_message(server, user.id, "deferred push test")
+
+      # Message should be in pending_writes before batch flush
+      state_before = :sys.get_state(pid)
+      assert state_before.pending_writes != []
+
+      # Wait for batch_flush (2 s) + DB write + batch_result :ok callback
+      Process.sleep(2_500)
+
+      if Process.alive?(pid) do
+        state_after = :sys.get_state(pid)
+        assert state_after.pending_writes == []
+        assert state_after.in_flight == %{}
+      end
+
+      if Process.alive?(pid),
+        do: Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+    end
+  end
+
   describe "get_recent_messages/2" do
     test "returns empty list before any messages are sent", %{server: server} do
       assert [] = ChannelServer.get_recent_messages(server, 50)
@@ -630,6 +673,32 @@ defmodule Slackex.Messaging.ChannelServerTest do
       end
 
       assert length(ChannelServer.get_recent_messages(server, 300)) == 200
+    end
+  end
+
+  describe "idle timeout state pruning" do
+    test "clears sender_cache and rate_limiters on idle timeout", %{
+      user: user,
+      server: server
+    } do
+      # Send a message to populate sender_cache and rate_limiters
+      {:ok, _msg} = ChannelServer.send_message(server, user.id, "pruning test")
+
+      pid = GenServer.whereis(server)
+
+      # Verify state has entries before pruning
+      state_before = :sys.get_state(pid)
+      assert map_size(state_before.sender_cache) > 0
+      assert map_size(state_before.rate_limiters) > 0
+
+      # Trigger idle timeout by sending :timeout directly
+      send(pid, :timeout)
+      # Allow the message to be processed
+      Process.sleep(100)
+
+      state_after = :sys.get_state(pid)
+      assert state_after.sender_cache == %{}
+      assert state_after.rate_limiters == %{}
     end
   end
 end

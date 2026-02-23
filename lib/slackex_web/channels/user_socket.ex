@@ -7,6 +7,7 @@ defmodule SlackexWeb.UserSocket do
   use Phoenix.Socket
 
   alias Slackex.Accounts.Auth
+  alias Slackex.Notifications.OnlineTracker
 
   channel "chat:*", SlackexWeb.ChatChannel
   channel "dm:*", SlackexWeb.DMChannel
@@ -14,8 +15,12 @@ defmodule SlackexWeb.UserSocket do
   @impl true
   def connect(%{"token" => token}, socket, _connect_info) do
     case Auth.verify_api_token(token) do
-      {:ok, user_id} -> {:ok, assign(socket, :current_user_id, user_id)}
-      {:error, _reason} -> :error
+      {:ok, user_id} ->
+        OnlineTracker.mark_online(user_id)
+        {:ok, assign(socket, :current_user_id, user_id)}
+
+      {:error, _reason} ->
+        :error
     end
   end
 

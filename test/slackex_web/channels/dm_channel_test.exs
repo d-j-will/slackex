@@ -21,6 +21,16 @@ defmodule SlackexWeb.DMChannelTest do
       assert is_list(messages)
     end
 
+    test "malformed topic ID returns invalid_topic error", %{socket: socket} do
+      assert {:error, %{reason: "invalid_topic"}} =
+               subscribe_and_join(socket, "dm:abc", %{})
+    end
+
+    test "empty topic ID returns invalid_topic error", %{socket: socket} do
+      assert {:error, %{reason: "invalid_topic"}} =
+               subscribe_and_join(socket, "dm:", %{})
+    end
+
     test "non-participant cannot join", %{dm: dm} do
       charlie = insert(:user)
       charlie_token = Auth.generate_api_token(charlie)

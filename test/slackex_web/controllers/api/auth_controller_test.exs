@@ -41,10 +41,11 @@ defmodule SlackexWeb.API.AuthControllerTest do
       assert %{"error" => "invalid_credentials"} = json_response(conn, 401)
     end
 
-    test "missing params raises action clause error", %{conn: conn} do
-      assert_raise Phoenix.ActionClauseError, fn ->
-        post(conn, ~p"/api/auth/login", %{})
-      end
+    test "missing params returns 400 with error message", %{conn: conn} do
+      conn = post(conn, ~p"/api/auth/login", %{})
+
+      assert %{"error" => "missing_params", "message" => "email and password are required"} =
+               json_response(conn, 400)
     end
   end
 
@@ -68,6 +69,13 @@ defmodule SlackexWeb.API.AuthControllerTest do
         post(conn, ~p"/api/auth/refresh", %{refresh_token: "garbage.invalid.token"})
 
       assert %{"error" => _} = json_response(conn, 401)
+    end
+
+    test "missing params returns 400 with error message", %{conn: conn} do
+      conn = post(conn, ~p"/api/auth/refresh", %{})
+
+      assert %{"error" => "missing_params", "message" => "refresh_token is required"} =
+               json_response(conn, 400)
     end
   end
 end

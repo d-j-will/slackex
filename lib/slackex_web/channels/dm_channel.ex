@@ -16,7 +16,16 @@ defmodule SlackexWeb.DMChannel do
 
   @impl true
   def join("dm:" <> dm_id_str, _params, socket) do
-    dm_id = String.to_integer(dm_id_str)
+    case Integer.parse(dm_id_str) do
+      {dm_id, ""} ->
+        join_dm(dm_id, socket)
+
+      _ ->
+        {:error, %{reason: "invalid_topic"}}
+    end
+  end
+
+  defp join_dm(dm_id, socket) do
     user_id = socket.assigns.current_user_id
 
     case Chat.get_dm(dm_id) do

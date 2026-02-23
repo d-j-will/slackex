@@ -144,7 +144,8 @@ defmodule Slackex.Messaging.ChannelServer do
             content: sanitized,
             sender_id: sender_id,
             inserted_at: inserted_at,
-            sender: serialize_sender(sender)
+            sender: serialize_sender(sender),
+            sender_username: sender.username
           }
           |> put_target_field(state.channel_type, state.channel_id)
 
@@ -160,8 +161,6 @@ defmodule Slackex.Messaging.ChannelServer do
           pubsub_topic(state.channel_type, state.channel_id),
           {:envelope, envelope}
         )
-
-        enqueue_push_notification(state.channel_type, state.channel_id, message, sender)
 
         new_state = %{
           state
@@ -211,7 +210,15 @@ defmodule Slackex.Messaging.ChannelServer do
   end
 
   def handle_info({:batch_result, ref, :ok}, state) do
-    {:noreply, %{state | in_flight: Map.delete(state.in_flight, ref)}, @idle_timeout}
+    {entry, new_in_flight} = Map.pop(state.in_flight, ref)
+
+    if entry do
+      Enum.each(entry.messages, fn msg ->
+        enqueue_push_notification(state.channel_type, state.channel_id, msg)
+      end)
+    end
+
+    {:noreply, %{state | in_flight: new_in_flight}, @idle_timeout}
   end
 
   def handle_info({:batch_result, ref, {:error, :target_deleted}}, state) do
@@ -299,7 +306,7 @@ defmodule Slackex.Messaging.ChannelServer do
       end
     end
 
-    {:noreply, %{state | pending_writes: []}, :hibernate}
+    {:noreply, %{state | pending_writes: [], sender_cache: %{}, rate_limiters: %{}}, :hibernate}
   end
 
   @impl true
@@ -401,13 +408,13 @@ defmodule Slackex.Messaging.ChannelServer do
   defp pubsub_topic(:channel, id), do: "channel:#{id}"
   defp pubsub_topic(:dm, id), do: "dm:#{id}"
 
-  defp enqueue_push_notification(:channel, channel_id, message, sender) do
+  defp enqueue_push_notification(:channel, channel_id, message) do
     args = %{
       "type" => "new_message",
       "channel_id" => channel_id,
       "sender_id" => message.sender_id,
       "content" => message.content,
-      "sender_username" => sender.username
+      "sender_username" => message.sender_username
     }
 
     args
@@ -417,7 +424,7 @@ defmodule Slackex.Messaging.ChannelServer do
     e -> Logger.warning("Failed to enqueue push notification: #{inspect(e)}")
   end
 
-  defp enqueue_push_notification(:dm, _dm_id, message, sender) do
+  defp enqueue_push_notification(:dm, _dm_id, message) do
     # For DMs we need the recipient — skip if no dm_conversation_id
     case Map.get(message, :dm_conversation_id) do
       nil ->
@@ -430,7 +437,7 @@ defmodule Slackex.Messaging.ChannelServer do
           "dm_conversation_id" => message.dm_conversation_id,
           "sender_id" => message.sender_id,
           "content" => message.content,
-          "sender_username" => sender.username
+          "sender_username" => message.sender_username
         }
 
         args

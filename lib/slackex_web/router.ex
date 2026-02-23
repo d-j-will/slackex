@@ -65,6 +65,8 @@ defmodule SlackexWeb.Router do
     pipe_through [:api, SlackexWeb.Plugs.ApiAuthPipeline]
 
     get "/bootstrap", BootstrapController, :index
+    post "/device-tokens", DeviceTokenController, :create
+    delete "/device-tokens", DeviceTokenController, :delete
   end
 
   if Application.compile_env(:slackex, :dev_routes) do

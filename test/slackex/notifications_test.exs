@@ -340,6 +340,38 @@ defmodule Slackex.NotificationsTest do
   end
 
   # ---------------------------------------------------------------------------
+  # PushWorker — deleted target graceful discard
+  # ---------------------------------------------------------------------------
+
+  describe "PushWorker deleted target" do
+    test "returns :ok without crashing when channel has been deleted" do
+      assert :ok ==
+               PushWorker.perform(%Oban.Job{
+                 args: %{
+                   "type" => "new_message",
+                   "channel_id" => 999_999_999,
+                   "sender_id" => 1,
+                   "content" => "Hello",
+                   "sender_username" => "ghost"
+                 }
+               })
+    end
+
+    test "returns :ok without crashing when DM conversation has been deleted" do
+      assert :ok ==
+               PushWorker.perform(%Oban.Job{
+                 args: %{
+                   "type" => "new_dm",
+                   "dm_conversation_id" => 999_999_999,
+                   "sender_id" => 1,
+                   "content" => "Hey",
+                   "sender_username" => "ghost"
+                 }
+               })
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
 

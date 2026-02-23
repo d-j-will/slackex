@@ -31,22 +31,27 @@ defmodule Slackex.Notifications.PushWorker do
       "sender_username" => username
     } = args
 
-    channel = Repo.get!(Channel, channel_id)
+    case Repo.get(Channel, channel_id) do
+      nil ->
+        Logger.info("PushWorker: channel #{channel_id} deleted, discarding job")
+        :ok
 
-    offline_subscriber_ids =
-      channel_id
-      |> subscriber_ids_excluding(sender_id)
-      |> Enum.reject(&OnlineTracker.online?/1)
+      channel ->
+        offline_subscriber_ids =
+          channel_id
+          |> subscriber_ids_excluding(sender_id)
+          |> Enum.reject(&OnlineTracker.online?/1)
 
-    tokens = device_tokens_for_users(offline_subscriber_ids)
+        tokens = device_tokens_for_users(offline_subscriber_ids)
 
-    if tokens != [] do
-      title = "##{channel.name}"
-      body = truncate_body("#{username}: #{content}", 100)
-      Enum.each(tokens, &dispatch_push(&1, title, body))
+        if tokens != [] do
+          title = "##{channel.name}"
+          body = truncate_body("#{username}: #{content}", 100)
+          Enum.each(tokens, &dispatch_push(&1, title, body))
+        end
+
+        :ok
     end
-
-    :ok
   end
 
   def perform(%Oban.Job{args: %{"type" => "new_dm"} = args}) do
@@ -57,16 +62,22 @@ defmodule Slackex.Notifications.PushWorker do
       "sender_username" => username
     } = args
 
-    dm = Repo.get!(DMConversation, dm_id)
-    recipient_id = if dm.user_a_id == sender_id, do: dm.user_b_id, else: dm.user_a_id
+    case Repo.get(DMConversation, dm_id) do
+      nil ->
+        Logger.info("PushWorker: DM #{dm_id} deleted, discarding job")
+        :ok
 
-    if OnlineTracker.online?(recipient_id) do
-      :ok
-    else
-      tokens = device_tokens_for_users([recipient_id])
-      body = truncate_body(content, 100)
-      Enum.each(tokens, &dispatch_push(&1, username, body))
-      :ok
+      dm ->
+        recipient_id = if dm.user_a_id == sender_id, do: dm.user_b_id, else: dm.user_a_id
+
+        if OnlineTracker.online?(recipient_id) do
+          :ok
+        else
+          tokens = device_tokens_for_users([recipient_id])
+          body = truncate_body(content, 100)
+          Enum.each(tokens, &dispatch_push(&1, username, body))
+          :ok
+        end
     end
   end
 

@@ -3,6 +3,7 @@ defmodule SlackexWeb.ChatChannelTest do
 
   alias Slackex.Accounts.Auth
   alias Slackex.Chat
+  alias Slackex.Notifications.OnlineTracker
 
   setup do
     user = insert(:user)
@@ -27,6 +28,13 @@ defmodule SlackexWeb.ChatChannelTest do
     test "missing token rejects connection" do
       assert :error = connect(SlackexWeb.UserSocket, %{})
     end
+
+    test "marks user online in Redis on connect", %{user: user} do
+      Redix.command!(:redix_0, ["DEL", "online:#{user.id}"])
+      token = Auth.generate_api_token(user)
+      {:ok, _socket} = connect(SlackexWeb.UserSocket, %{"token" => token})
+      assert OnlineTracker.online?(user.id)
+    end
   end
 
   describe "ChatChannel join" do
@@ -41,6 +49,16 @@ defmodule SlackexWeb.ChatChannelTest do
 
       assert {:ok, reply, _socket} = subscribe_and_join(socket, "chat:#{channel.id}", %{})
       assert [%{content: "Hello World"} | _] = reply.messages
+    end
+
+    test "malformed topic ID returns invalid_topic error", %{socket: socket} do
+      assert {:error, %{reason: "invalid_topic"}} =
+               subscribe_and_join(socket, "chat:abc", %{})
+    end
+
+    test "empty topic ID returns invalid_topic error", %{socket: socket} do
+      assert {:error, %{reason: "invalid_topic"}} =
+               subscribe_and_join(socket, "chat:", %{})
     end
 
     test "non-subscriber cannot join channel", %{socket: socket} do

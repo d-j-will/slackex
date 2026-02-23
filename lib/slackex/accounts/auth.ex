@@ -141,16 +141,23 @@ defmodule Slackex.Accounts.Auth do
   defp handle_refresh_rotation(%UserToken{revoked_at: nil, user: user}, hashed_jti) do
     now = DateTime.utc_now()
 
-    Repo.update_all(
-      from(t in UserToken,
-        where: t.token == ^hashed_jti and t.context == "api_refresh"
-      ),
-      set: [revoked_at: now]
-    )
+    Repo.transaction(fn ->
+      {count, _} =
+        Repo.update_all(
+          from(t in UserToken,
+            where: t.token == ^hashed_jti and t.context == "api_refresh" and is_nil(t.revoked_at)
+          ),
+          set: [revoked_at: now]
+        )
 
-    new_access_token = generate_api_token(user)
-    new_refresh_token = generate_refresh_token(user)
-    {:ok, %{access_token: new_access_token, refresh_token: new_refresh_token}}
+      if count == 0 do
+        Repo.rollback(:token_recently_rotated)
+      else
+        new_access_token = generate_api_token(user)
+        new_refresh_token = generate_refresh_token(user)
+        %{access_token: new_access_token, refresh_token: new_refresh_token}
+      end
+    end)
   end
 
   defp revoke_all_tokens_for_user(user) do

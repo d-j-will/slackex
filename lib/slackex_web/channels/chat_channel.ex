@@ -16,19 +16,24 @@ defmodule SlackexWeb.ChatChannel do
 
   @impl true
   def join("chat:" <> channel_id_str, _params, socket) do
-    channel_id = String.to_integer(channel_id_str)
-    user_id = socket.assigns.current_user_id
+    case Integer.parse(channel_id_str) do
+      {channel_id, ""} ->
+        user_id = socket.assigns.current_user_id
 
-    case Chat.get_role(user_id, channel_id) do
-      nil ->
-        {:error, %{reason: "unauthorized"}}
+        case Chat.get_role(user_id, channel_id) do
+          nil ->
+            {:error, %{reason: "unauthorized"}}
 
-      _role ->
-        messages = Chat.list_messages(channel_id, limit: 50)
-        Chat.mark_as_read(user_id, channel_id)
-        serialized = Enum.map(messages, &MessageJSON.data/1)
-        Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel_id}")
-        {:ok, %{messages: serialized}, assign(socket, :channel_id, channel_id)}
+          _role ->
+            messages = Chat.list_messages(channel_id, limit: 50)
+            Chat.mark_as_read(user_id, channel_id)
+            serialized = Enum.map(messages, &MessageJSON.data/1)
+            Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel_id}")
+            {:ok, %{messages: serialized}, assign(socket, :channel_id, channel_id)}
+        end
+
+      _ ->
+        {:error, %{reason: "invalid_topic"}}
     end
   end
 

@@ -5,6 +5,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Chat
   alias Slackex.Chat.Permissions
   alias Slackex.Messaging
+  alias Slackex.Notifications.OnlineTracker
 
   @impl true
   def mount(_params, _session, socket) do
@@ -13,6 +14,8 @@ defmodule SlackexWeb.ChatLive.Index do
 
     if connected?(socket) do
       Messaging.subscribe_user(user.id)
+      OnlineTracker.mark_online(user.id)
+      Process.send_after(self(), :online_heartbeat, 60_000)
     end
 
     {:ok,
@@ -128,8 +131,24 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_info(:online_heartbeat, socket) do
+    OnlineTracker.refresh(socket.assigns.current_user.id)
+    Process.send_after(self(), :online_heartbeat, 60_000)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
+  end
+
+  @impl true
+  def terminate(_reason, socket) do
+    if socket.assigns[:current_user] do
+      OnlineTracker.mark_offline(socket.assigns.current_user.id)
+    end
+
+    :ok
   end
 
   # ---------------------------------------------------------------------------

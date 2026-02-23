@@ -110,6 +110,7 @@ defmodule Slackex.MixProject do
       "lint.fix": ["format"],
       typecheck: ["dialyzer"],
       quality: ["lint", "typecheck", "test"],
+      "test.contract": ["test --only contract"],
       ci: [
         "deps.get",
         "compile --warnings-as-errors",
@@ -118,7 +119,8 @@ defmodule Slackex.MixProject do
         "dialyzer",
         "ecto.create --quiet",
         "ecto.migrate --quiet",
-        "test"
+        "test",
+        "test.contract"
       ]
     ]
   end
