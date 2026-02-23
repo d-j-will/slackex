@@ -11,6 +11,7 @@
 | [Phase 2 — Real-time & CQRS](#phase-2--real-time--cqrs) | **COMPLETE** | +45 | [02-phase-2-realtime-cqrs.md](02-phase-2-realtime-cqrs.md) |
 | [Phase 3 — Distribution & Scale](#phase-3--distribution--scale) | **IN PROGRESS** | +55 | [03-phase-3-distribution.md](03-phase-3-distribution.md) |
 | [Phase 4 — Intelligence & Search](#phase-4--intelligence--search) | Not started | — | [04-phase-4-intelligence.md](04-phase-4-intelligence.md) |
+| [Phase 5 — Full-Feature UI](#phase-5--full-feature-ui) | Not started | — | [07-phase-5-ui.md](07-phase-5-ui.md) |
 | [CI/CD & DevOps](#cicd--devops) | Partial | — | [05-ci-cd-devops.md](05-ci-cd-devops.md) |
 | [Testing Strategy](#testing-strategy) | Reference | — | [06-testing-strategy.md](06-testing-strategy.md) |
 | [Architecture Overview](#architecture-overview) | Reference | — | [00-overview.md](00-overview.md) |
@@ -100,6 +101,25 @@
 | 8 | RAG-Ready Query Interface | Not started |
 | 9 | Update Application Supervisor | Not started |
 | 10 | Configuration | Not started |
+
+---
+
+## Phase 5 — Full-Feature UI
+
+**Status: NOT STARTED** | Spec: [07-phase-5-ui.md](07-phase-5-ui.md) | Prereq: Phase 2 complete, Phase 3 Step 6 complete
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 1 | Layout Refactor & Responsive Shell | Not started |
+| 2 | DM Conversations in UI | Not started |
+| 3 | Channel Browsing, Creation & Join/Leave | Not started |
+| 4 | User Profiles & Online Status | Not started |
+| 5 | Message Editing & Deletion | Not started |
+| 6 | Reactions | Not started |
+| 7 | Threads/Replies | Not started |
+| 8 | Channel Members & Pinned Messages | Not started |
+| 9 | Invite Links & User Blocks | Not started |
+| 10 | Unread Counts, Catchup & Polish | Not started |
 
 ---
 
