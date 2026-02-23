@@ -45,8 +45,9 @@ defmodule SlackexWeb.Router do
   scope "/", SlackexWeb do
     pipe_through :browser
 
-    live_session :require_authenticated_user,
-      on_mount: [{SlackexWeb.UserAuth, :ensure_authenticated}] do
+    live_session :chat,
+      on_mount: [{SlackexWeb.UserAuth, :ensure_authenticated}],
+      layout: {SlackexWeb.Layouts, :chat} do
       live "/chat", ChatLive.Index, :index
       live "/chat/:slug", ChatLive.Index, :show
     end

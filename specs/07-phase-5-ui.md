@@ -233,14 +233,14 @@ Refactor `lib/slackex_web/live/chat_live/index.ex`:
 
 ### Acceptance Criteria
 
-- [ ] Sidebar renders as a LiveComponent with channels listed
-- [ ] Mobile: sidebar collapses off-screen, hamburger toggles it, backdrop dismisses it
-- [ ] Desktop: sidebar is always visible at 256px width
-- [ ] Compose: Enter sends, Shift+Enter adds newline, textarea auto-resizes
-- [ ] Typing indicator fires debounced events
-- [ ] Infinite scroll loads older messages when scrolling to top
-- [ ] Auto-scroll to bottom on new messages (only if already at bottom)
-- [ ] All existing functionality preserved (send message, receive real-time messages, typing indicators)
+- [x] Sidebar renders as a LiveComponent with channels listed
+- [x] Mobile: sidebar collapses off-screen, hamburger toggles it, backdrop dismisses it
+- [x] Desktop: sidebar is always visible at 256px width
+- [x] Compose: Enter sends, Shift+Enter adds newline, textarea auto-resizes
+- [x] Typing indicator fires debounced events
+- [x] Infinite scroll loads older messages when scrolling to top
+- [x] Auto-scroll to bottom on new messages (only if already at bottom)
+- [x] All existing functionality preserved (send message, receive real-time messages, typing indicators)
 
 ---
 

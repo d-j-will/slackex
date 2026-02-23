@@ -4,6 +4,7 @@ defmodule Slackex.Messaging.ChannelServerTest do
 
   alias Ecto.Adapters.SQL
   alias Slackex.Cache.Local, as: LocalCache
+  alias Slackex.Messaging.ChannelRegistry
   alias Slackex.Messaging.ChannelServer
   alias Slackex.Messaging.ChannelSupervisor
   alias Slackex.Repo
@@ -558,9 +559,22 @@ defmodule Slackex.Messaging.ChannelServerTest do
       Process.sleep(2500)
       SQL.query!(Repo, "DELETE FROM messages WHERE channel_id = $1", [ch.id])
 
-      # Clear pending_writes and terminate
-      :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
-      Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+      # Clear pending_writes and terminate (process may have died during flush)
+      try do
+        :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
+        Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+      catch
+        :exit, _ -> :ok
+      end
+
+      # Also terminate any Horde-restarted instance so ensure_started gets a fresh one
+      case Horde.Registry.lookup(ChannelRegistry, {:channel, ch.id}) do
+        [{restarted_pid, _}] ->
+          Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, restarted_pid)
+
+        _ ->
+          :ok
+      end
 
       # Bump the DB epoch very high so the recovery insert gets :epoch_stale
       # The new server will acquire epoch N+1, but the DB will be at N+100,

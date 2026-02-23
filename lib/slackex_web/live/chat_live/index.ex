@@ -5,7 +5,11 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Chat
   alias Slackex.Chat.Permissions
   alias Slackex.Messaging
+  alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
+  alias SlackexWeb.ChatLive.SidebarComponent
+
+  import SlackexWeb.ChatComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -25,8 +29,15 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:can_send, false)
      |> assign(:typing_users, MapSet.new())
      |> assign(:message_form, to_form(%{"content" => ""}, as: :message))
+     |> assign(:sidebar_open, true)
+     |> assign(:oldest_message_id, nil)
+     |> assign(:has_more_messages, false)
      |> stream(:messages, [])}
   end
+
+  # ---------------------------------------------------------------------------
+  # Handle params
+  # ---------------------------------------------------------------------------
 
   @impl true
   def handle_params(%{"slug" => slug}, _uri, socket) do
@@ -56,8 +67,14 @@ defmodule SlackexWeb.ChatLive.Index do
      socket
      |> assign(:active_channel, nil)
      |> assign(:page_title, "Chat")
+     |> assign(:oldest_message_id, nil)
+     |> assign(:has_more_messages, false)
      |> stream(:messages, [], reset: true)}
   end
+
+  # ---------------------------------------------------------------------------
+  # Events
+  # ---------------------------------------------------------------------------
 
   @impl true
   def handle_event("send_message", %{"message" => %{"content" => content}}, socket) do
@@ -76,30 +93,51 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
-  defp send_message_to_channel(channel, user, content, socket) do
-    case Messaging.send_message(channel.id, user.id, content) do
-      {:ok, _message} ->
-        {:noreply, assign(socket, :message_form, to_form(%{"content" => ""}, as: :message))}
+  def handle_event("typing", _params, socket) do
+    channel = socket.assigns.active_channel
+    user = socket.assigns.current_user
 
-      {:error, :rate_limited} ->
-        {:noreply,
-         put_flash(socket, :error, "You're sending messages too fast. Please slow down.")}
+    if channel && socket.assigns.can_send do
+      envelope =
+        Envelope.wrap("typing", {:channel, channel.id}, %{
+          user_id: user.id,
+          username: user.username
+        })
 
-      {:error, :backpressure} ->
-        {:noreply, put_flash(socket, :error, "Server is busy. Please try again in a moment.")}
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "channel:#{channel.id}",
+        {:envelope, envelope}
+      )
+    end
 
-      {:error, :invalid_content} ->
-        {:noreply,
-         put_flash(socket, :error, "Message content is invalid (must be 1-4000 characters).")}
+    {:noreply, socket}
+  end
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to send message.")}
+  def handle_event("load_more", _params, socket) do
+    channel = socket.assigns.active_channel
+    oldest_id = socket.assigns.oldest_message_id
+
+    if channel && oldest_id && socket.assigns.has_more_messages do
+      channel.id
+      |> Chat.list_messages(before: oldest_id, limit: 50)
+      |> Enum.reverse()
+      |> prepend_older_messages(socket)
+    else
+      {:noreply, socket}
     end
   end
 
+  def handle_event("toggle_sidebar", _params, socket) do
+    {:noreply, assign(socket, :sidebar_open, !socket.assigns.sidebar_open)}
+  end
+
+  # ---------------------------------------------------------------------------
+  # PubSub / Info handlers
+  # ---------------------------------------------------------------------------
+
   @impl true
   def handle_info({:envelope, %{event: "message.new", payload: message}}, socket) do
-    # Enrich the message map with sender info for display
     message = enrich_message(message)
 
     socket =
@@ -114,7 +152,6 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_info({:envelope, %{event: "typing", payload: payload}}, socket) do
     user = socket.assigns.current_user
 
-    # Don't show own typing indicator
     if payload.user_id != user.id do
       typing_users = MapSet.put(socket.assigns.typing_users, payload.username)
       Process.send_after(self(), {:clear_typing, payload.username}, 3_000)
@@ -138,6 +175,13 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_info({:sidebar_action, _action}, socket) do
+    # Placeholder — sidebar actions (create channel, browse, new DM)
+    # will be wired in Phase 5 Steps 2-3.
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
   end
@@ -155,6 +199,25 @@ defmodule SlackexWeb.ChatLive.Index do
   # Private helpers
   # ---------------------------------------------------------------------------
 
+  defp prepend_older_messages([], socket) do
+    {:noreply, assign(socket, :has_more_messages, false)}
+  end
+
+  defp prepend_older_messages(messages, socket) do
+    new_oldest = List.first(messages).id
+
+    socket =
+      messages
+      |> Enum.reverse()
+      |> Enum.reduce(socket, fn msg, acc ->
+        stream_insert(acc, :messages, msg, at: 0)
+      end)
+      |> assign(:oldest_message_id, new_oldest)
+      |> assign(:has_more_messages, length(messages) >= 50)
+
+    {:noreply, socket}
+  end
+
   defp enter_channel(socket, channel, can_send) do
     user = socket.assigns.current_user
 
@@ -169,6 +232,12 @@ defmodule SlackexWeb.ChatLive.Index do
       |> Chat.list_messages(limit: 50)
       |> Enum.reverse()
 
+    oldest_id =
+      case messages do
+        [first | _] -> first.id
+        [] -> nil
+      end
+
     Chat.mark_as_read(user.id, channel.id)
 
     socket
@@ -176,22 +245,43 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:can_send, can_send)
     |> assign(:page_title, "##{channel.name}")
     |> assign(:typing_users, MapSet.new())
+    |> assign(:sidebar_open, true)
+    |> assign(:oldest_message_id, oldest_id)
+    |> assign(:has_more_messages, length(messages) >= 50)
     |> stream(:messages, messages, reset: true)
+  end
+
+  defp send_message_to_channel(channel, user, content, socket) do
+    case Messaging.send_message(channel.id, user.id, content) do
+      {:ok, _message} ->
+        {:noreply, assign(socket, :message_form, to_form(%{"content" => ""}, as: :message))}
+
+      {:error, :rate_limited} ->
+        {:noreply,
+         put_flash(socket, :error, "You're sending messages too fast. Please slow down.")}
+
+      {:error, :backpressure} ->
+        {:noreply, put_flash(socket, :error, "Server is busy. Please try again in a moment.")}
+
+      {:error, :invalid_content} ->
+        {:noreply,
+         put_flash(socket, :error, "Message content is invalid (must be 1-4000 characters).")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to send message.")}
+    end
   end
 
   defp authorize_channel(user_id, channel) do
     role = Chat.get_role(user_id, channel.id)
 
     cond do
-      # User has a role — check if they can send messages
       role != nil ->
         {:ok, Permissions.can?(role, :send_message)}
 
-      # No role + public channel — read-only access
       not channel.is_private ->
         {:ok, false}
 
-      # No role + private channel — denied
       true ->
         {:error, :unauthorized}
     end
@@ -209,7 +299,6 @@ defmodule SlackexWeb.ChatLive.Index do
   defp maybe_mark_as_read(socket, message) do
     channel = socket.assigns.active_channel
     user = socket.assigns.current_user
-
     channel_id = Map.get(message, :channel_id)
 
     if channel && channel_id == channel.id do
@@ -219,27 +308,6 @@ defmodule SlackexWeb.ChatLive.Index do
     socket
   end
 
-  defp message_sender_name(%{sender: %{username: username}}), do: username
-  defp message_sender_name(%{sender: %{display_name: name}}) when not is_nil(name), do: name
-  defp message_sender_name(_), do: "unknown"
-
-  defp format_time(%{inserted_at: inserted_at}) when not is_nil(inserted_at) do
-    Calendar.strftime(inserted_at, "%H:%M")
-  end
-
-  defp format_time(_), do: ""
-
-  defp typing_text(typing_users) do
-    names = MapSet.to_list(typing_users)
-
-    case names do
-      [] -> nil
-      [name] -> "#{name} is typing..."
-      [a, b] -> "#{a} and #{b} are typing..."
-      _ -> "Several people are typing..."
-    end
-  end
-
   # ---------------------------------------------------------------------------
   # Template
   # ---------------------------------------------------------------------------
@@ -247,43 +315,55 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex h-[calc(100vh-80px)]">
+    <div class="flex h-full">
+      <%!-- Mobile backdrop --%>
+      <div
+        :if={@sidebar_open}
+        class="md:hidden fixed inset-0 z-30 bg-black/50"
+        phx-click="toggle_sidebar"
+      />
+
       <%!-- Sidebar --%>
-      <aside class="w-64 bg-base-200 border-r border-base-300 flex flex-col">
-        <div class="p-4 border-b border-base-300">
-          <h2 class="font-bold text-lg">Channels</h2>
-        </div>
-        <nav class="flex-1 overflow-y-auto p-2">
-          <%= if @channels == [] do %>
-            <p class="text-sm text-base-content/50 p-2">No channels yet.</p>
-          <% else %>
-            <ul class="menu menu-sm">
-              <li :for={channel <- @channels}>
-                <.link
-                  patch={~p"/chat/#{channel.slug}"}
-                  class={[
-                    "rounded-lg",
-                    @active_channel && @active_channel.id == channel.id && "active"
-                  ]}
-                >
-                  <span class="text-base-content/70">#</span>
-                  {channel.name}
-                </.link>
-              </li>
-            </ul>
-          <% end %>
-        </nav>
-      </aside>
+      <div class={[
+        "w-72 md:w-64 border-r border-base-300 flex-shrink-0",
+        "fixed inset-y-0 left-0 z-40 transform transition-transform duration-200",
+        "md:static md:translate-x-0",
+        !@sidebar_open && "-translate-x-full"
+      ]}>
+        <.live_component
+          module={SidebarComponent}
+          id="sidebar"
+          channels={@channels}
+          active_channel={@active_channel}
+          current_user={@current_user}
+        />
+      </div>
 
       <%!-- Main chat area --%>
-      <div class="flex-1 flex flex-col">
+      <div class="flex-1 flex flex-col min-w-0">
         <%= if @active_channel do %>
           <%!-- Channel header --%>
-          <div class="p-4 border-b border-base-300 bg-base-100">
-            <h2 class="font-bold text-lg">#{@active_channel.name}</h2>
-            <p :if={@active_channel.description} class="text-sm text-base-content/60">
-              {@active_channel.description}
-            </p>
+          <div class="px-4 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
+            <button
+              class="md:hidden btn btn-ghost btn-sm btn-square"
+              phx-click="toggle_sidebar"
+              aria-label="Toggle sidebar"
+            >
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            </button>
+            <div class="flex-1 min-w-0">
+              <h2 class="font-bold text-lg truncate">#{@active_channel.name}</h2>
+              <p :if={@active_channel.description} class="text-xs text-base-content/60 truncate">
+                {@active_channel.description}
+              </p>
+            </div>
           </div>
 
           <%!-- Message list --%>
@@ -291,57 +371,65 @@ defmodule SlackexWeb.ChatLive.Index do
             id="message-list"
             phx-hook="MessageList"
             phx-update="stream"
-            class="flex-1 overflow-y-auto p-4 space-y-1"
+            class="flex-1 overflow-y-auto px-2 py-4"
           >
-            <div :for={{dom_id, message} <- @streams.messages} id={dom_id} class="chat chat-start">
-              <div class="chat-header text-sm">
-                {message_sender_name(message)}
-                <time class="text-xs opacity-50 ml-1">{format_time(message)}</time>
-              </div>
-              <div class="chat-bubble chat-bubble-neutral">
-                {Map.get(message, :content, "")}
-              </div>
+            <div :for={{dom_id, message} <- @streams.messages} id={dom_id}>
+              <.message_bubble message={message} current_user_id={@current_user.id} />
             </div>
           </div>
 
           <%!-- Typing indicator --%>
-          <div :if={typing_text(@typing_users)} class="px-4 py-1 text-xs text-base-content/50 italic">
-            {typing_text(@typing_users)}
-          </div>
+          <.typing_indicator users={MapSet.to_list(@typing_users)} />
 
-          <%!-- Message input --%>
+          <%!-- Compose area --%>
           <%= if @can_send do %>
-            <div class="p-4 border-t border-base-300 bg-base-100">
+            <div class="p-3 border-t border-base-300 bg-base-100">
               <.form
                 for={@message_form}
                 id="message-form"
                 phx-submit="send_message"
-                class="flex gap-2"
+                phx-hook="Compose"
+                class="flex gap-2 items-end"
               >
-                <input
-                  type="text"
+                <textarea
                   name="message[content]"
-                  value={@message_form[:content].value}
                   placeholder={"Message ##{@active_channel.name}"}
-                  class="input input-bordered flex-1"
+                  class="textarea textarea-bordered flex-1 min-h-[2.5rem] max-h-[200px] resize-none leading-normal py-2"
+                  rows="1"
                   autocomplete="off"
                   phx-debounce="100"
-                />
-                <button type="submit" class="btn btn-primary">Send</button>
+                >{@message_form[:content].value}</textarea>
+                <button type="submit" class="btn btn-primary btn-sm">Send</button>
               </.form>
             </div>
           <% else %>
-            <div class="p-4 border-t border-base-300 bg-base-100 text-center text-base-content/50">
+            <div class="p-3 border-t border-base-300 bg-base-100 text-center text-sm text-base-content/50">
               Join this channel to send messages.
             </div>
           <% end %>
         <% else %>
           <%!-- No channel selected --%>
-          <div class="flex-1 flex items-center justify-center text-base-content/50">
-            <div class="text-center">
-              <h2 class="text-2xl font-bold mb-2">Welcome to Slackex</h2>
-              <p>Select a channel from the sidebar to start chatting.</p>
+          <div class="flex-1 flex flex-col">
+            <div class="px-4 py-3 border-b border-base-300 bg-base-100 md:hidden">
+              <button
+                class="btn btn-ghost btn-sm btn-square"
+                phx-click="toggle_sidebar"
+                aria-label="Toggle sidebar"
+              >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </button>
             </div>
+            <.empty_state
+              title="Welcome to Slackex"
+              subtitle="Select a channel from the sidebar to start chatting."
+            />
           </div>
         <% end %>
       </div>

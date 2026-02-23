@@ -454,3 +454,38 @@ Three issues identified during code review, addressed in a single commit:
 - Phase 3 Step 5: Message table partitioning (monthly range partitions, maintenance worker)
 - Phase 3 Step 7: Update application supervisor (remaining Phase 3 additions)
 - Phase 3 Step 8: Kubernetes deployment (Dockerfile, manifests, health/readiness endpoints)
+
+---
+
+## Phase 5 UI — Step 1: Layout Refactor & Responsive Shell (2026-02-23)
+
+### What was built
+- **`SlackexWeb.ChatComponents`** (`lib/slackex_web/components/chat_components.ex`): Reusable function components — `avatar/1` (initials-based with online indicator, sizes sm/md/lg), `channel_list_item/1`, `dm_list_item/1`, `message_bubble/1` (sender avatar + name + timestamp + content), `typing_indicator/1`, `empty_state/1`, `unread_badge/1`. Uses `Phoenix.VerifiedRoutes` for route-aware links.
+- **`SlackexWeb.ChatLive.SidebarComponent`** (`lib/slackex_web/live/chat_live/sidebar_component.ex`): LiveComponent for channel navigation. Collapsible channels section, workspace header, user footer with avatar + log out link. Receives `@channels`, `@active_channel`, `@current_user` from parent. Internal state: `@channels_expanded`, `@dms_expanded`.
+- **`chat.html.heex`** (`lib/slackex_web/components/layouts/chat.html.heex`): Minimal full-height layout for chat routes — no navbar, no padding. `<main class="h-screen">` with flash group and inner_content. Auto-discovered by `embed_templates "layouts/*"`.
+- **Compose hook** (`assets/js/hooks/compose.js`): Enter sends (dispatches form submit), Shift+Enter for newline, auto-resize textarea up to 200px, typing debounce with 2-second cooldown.
+- **Enhanced MessageList hook** (`assets/js/hooks/message_list.js`): Added infinite scroll — fires `pushEvent("load_more")` when scrollTop < 100, `pending` flag prevents duplicate requests.
+- **Router** (`lib/slackex_web/router.ex`): New `live_session :chat` with `layout: {SlackexWeb.Layouts, :chat}` for full-height edge-to-edge layout.
+- **Index LiveView refactor** (`lib/slackex_web/live/chat_live/index.ex`): Extracted inline sidebar/message rendering to components. Added `sidebar_open`, `oldest_message_id`, `has_more_messages` assigns. New events: `toggle_sidebar`, `load_more`, `typing`. Uses SidebarComponent + ChatComponents. Textarea replaces input for compose. Cursor-based pagination with `prepend_older_messages/2`.
+- **Layout test** (`test/slackex_web/live/chat_live/layout_test.exs`): 27 behavioral tests across 8 describe blocks covering sidebar, responsive layout, compose area, typing, infinite scroll, message bubbles, empty state, and preserved functionality.
+
+### Test coverage
+- 396 tests (0 failures), mix credo --strict (0 issues), mix compile --warnings-as-errors clean, mix assets.build clean
+- 27 new behavioral tests in layout_test.exs
+
+### Lessons learned
+
+59. **Standalone function components need `use Phoenix.VerifiedRoutes`**: `use Phoenix.Component` does not include verified routes. Components using `~p` sigils need explicit `use Phoenix.VerifiedRoutes, endpoint: SlackexWeb.Endpoint, router: SlackexWeb.Router, statics: SlackexWeb.static_paths()`. Without it, `sigil_p/2 undefined` at compile time.
+
+60. **Separate live_session for layout variants**: Instead of conditional rendering in a single layout (checking `@live_module` or `@live_action`), create a separate `chat.html.heex` template and use `live_session :chat, layout: {SlackexWeb.Layouts, :chat}` in the router. Phoenix auto-discovers the template via `embed_templates "layouts/*"`. This is cleaner — no runtime conditionals, proper separation of concerns.
+
+61. **DM routes that don't exist yet break `~p` sigils**: `~p"/chat/dm/#{id}"` causes a compile warning (promoted to error with `--warnings-as-errors`) when no matching route is defined. Fix: compute the path dynamically as a string (`"/chat/dm/#{id}"`) and use `patch={@dm_path}` instead of `~p`. This allows forward-referencing routes that will exist in a future step.
+
+62. **Credo nesting depth extraction pattern**: When `handle_event` contains nested conditionals (if → Enum.reduce → stream_insert), Credo flags depth > 2. Extract the inner logic into a multi-clause private function (`prepend_older_messages/2` with `([], socket)` and `(messages, socket)` clauses). Pattern matching on the empty list replaces the conditional.
+
+63. **LiveComponent IDs render differently in DOM**: Testing for `id="sidebar"` in rendered HTML fails because Phoenix LiveView injects component IDs with a different format. Test for structural CSS classes (e.g., `bg-base-200`) or data attributes instead of relying on exact ID matching.
+
+### What's next
+- Phase 5 Step 2: DM conversations in UI (expose DM backend, user search for new DMs)
+- Phase 3 Step 5: Message table partitioning (monthly range partitions)
+- Address review team findings (9 items from security/architecture review)
