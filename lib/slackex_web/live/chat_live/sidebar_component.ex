@@ -50,27 +50,36 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
       <nav class="flex-1 overflow-y-auto p-2 space-y-4">
         <%!-- Channels section --%>
         <div>
-          <button
-            phx-click="toggle_section"
-            phx-value-section="channels"
-            phx-target={@myself}
-            class="flex items-center justify-between w-full px-2 py-1 text-xs font-semibold uppercase tracking-wider text-base-content/60 hover:text-base-content"
-          >
-            <span>Channels</span>
-            <svg
-              class={["w-3 h-3 transition-transform", !@channels_expanded && "-rotate-90"]}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <div class="flex items-center justify-between px-2 py-1">
+            <button
+              phx-click="toggle_section"
+              phx-value-section="channels"
+              phx-target={@myself}
+              class="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-base-content/60 hover:text-base-content"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </button>
+              <span>Channels</span>
+              <svg
+                class={["w-3 h-3 transition-transform", !@channels_expanded && "-rotate-90"]}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
+            <.link
+              patch={~p"/chat/channels/new"}
+              class="btn btn-ghost btn-xs btn-circle text-base-content/60 hover:text-base-content"
+              aria-label="Create channel"
+            >
+              +
+            </.link>
+          </div>
 
           <ul :if={@channels_expanded} class="mt-1 space-y-0.5">
             <.channel_list_item

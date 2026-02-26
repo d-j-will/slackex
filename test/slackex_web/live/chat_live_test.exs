@@ -578,6 +578,61 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "create channel: sidebar button and post-creation flow" do
+    test "sidebar shows + button in channels section linking to /chat/channels/new", %{
+      conn: conn
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ ~s|/chat/channels/new|
+      # The button should be in the channels section header area
+      assert html =~ "+" || html =~ "plus"
+    end
+
+    test "after channel creation, sidebar includes the new channel", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      lv
+      |> element("#create-channel-form")
+      |> render_submit(%{
+        "channel" => %{"name" => "sidebar-check", "description" => "Checking sidebar"}
+      })
+
+      html = render(lv)
+      assert html =~ "sidebar-check"
+    end
+
+    test "after channel creation, user navigates to the new channel view", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      lv
+      |> element("#create-channel-form")
+      |> render_submit(%{
+        "channel" => %{"name" => "nav-test-chan", "description" => "Navigation test"}
+      })
+
+      html = render(lv)
+      # Should be viewing the channel (header shows channel name)
+      assert html =~ "#nav-test-chan"
+      # Modal should be closed
+      refute html =~ "create-channel-modal"
+    end
+
+    test "created channel shows current user as owner", %{conn: conn, alice: alice} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      lv
+      |> element("#create-channel-form")
+      |> render_submit(%{
+        "channel" => %{"name" => "owner-check", "description" => "Owner test"}
+      })
+
+      # Verify alice is the owner via Chat.get_role
+      channel = Chat.get_channel_by_slug!("owner-check")
+      assert Chat.get_role(alice.id, channel.id) == "owner"
+    end
+  end
+
   describe "browse channels modal" do
     setup %{alice: alice, conn: conn} do
       # Create public channels that alice has NOT joined
