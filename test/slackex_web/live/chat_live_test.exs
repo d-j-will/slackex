@@ -29,6 +29,11 @@ defmodule SlackexWeb.ChatLiveTest do
     }
   end
 
+  defp create_dm_between(user_a, user_b) do
+    {a, b} = if user_a.id < user_b.id, do: {user_a, user_b}, else: {user_b, user_a}
+    insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
+  end
+
   describe "DM route resolution" do
     test "/chat/dm/new resolves with :new_dm action and shows New Message title", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat/dm/new")
@@ -36,8 +41,7 @@ defmodule SlackexWeb.ChatLiveTest do
     end
 
     test "/chat/dm/:dm_id resolves with :dm action", %{conn: conn, alice: alice, bob: bob} do
-      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
-      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
+      dm = create_dm_between(alice, bob)
 
       assert {:ok, _lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
     end
@@ -54,10 +58,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
   describe "DM conversations" do
     setup %{alice: alice, bob: bob} do
-      # Create a DM between alice and bob, respecting user_a_id < user_b_id invariant
-      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
-      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
-      %{dm: dm}
+      %{dm: create_dm_between(alice, bob)}
     end
 
     test "mount assigns dm_conversations without error", %{conn: conn, dm: _dm} do
@@ -106,9 +107,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
   describe "DM flow: sidebar update, sending, and real-time receipt" do
     setup %{alice: alice, bob: bob} do
-      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
-      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
-      %{dm: dm}
+      %{dm: create_dm_between(alice, bob)}
     end
 
     test "start_dm updates sidebar dm_conversations before navigating", %{conn: conn} do
@@ -181,9 +180,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
   describe "DM typing indicator and load-more" do
     setup %{alice: alice, bob: bob} do
-      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
-      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
-      %{dm: dm}
+      %{dm: create_dm_between(alice, bob)}
     end
 
     test "typing event broadcasts on dm topic when in DM view", %{
@@ -290,9 +287,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
   describe "sidebar DM list rendering" do
     setup %{alice: alice, bob: bob} do
-      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
-      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
-      %{dm: dm}
+      %{dm: create_dm_between(alice, bob)}
     end
 
     test "sidebar renders Direct Messages header", %{conn: conn} do

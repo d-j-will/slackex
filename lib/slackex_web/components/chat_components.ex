@@ -185,6 +185,101 @@ defmodule SlackexWeb.ChatComponents do
   defp typing_text([a, b]), do: "#{a} and #{b} are typing..."
   defp typing_text(_), do: "Several people are typing..."
 
+  # ────────────────────────── Sidebar Toggle ───────────────────────────────
+
+  @doc "Renders a hamburger menu button for toggling the sidebar on mobile."
+  attr :class, :string, default: nil
+
+  def sidebar_toggle(assigns) do
+    ~H"""
+    <button
+      class={["md:hidden btn btn-ghost btn-sm btn-square", @class]}
+      phx-click="toggle_sidebar"
+      aria-label="Toggle sidebar"
+    >
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M4 6h16M4 12h16M4 18h16"
+        />
+      </svg>
+    </button>
+    """
+  end
+
+  # ────────────────────────── Conversation Header ────────────────────────
+
+  @doc "Renders the header bar for a channel or DM conversation."
+  attr :title, :string, required: true
+  attr :subtitle, :string, default: nil
+
+  def conversation_header(assigns) do
+    ~H"""
+    <div class="px-4 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
+      <.sidebar_toggle />
+      <div class="flex-1 min-w-0">
+        <h2 class="font-bold text-lg truncate">{@title}</h2>
+        <p :if={@subtitle} class="text-xs text-base-content/60 truncate">
+          {@subtitle}
+        </p>
+      </div>
+    </div>
+    """
+  end
+
+  # ────────────────────────── Message Stream ─────────────────────────────
+
+  @doc "Renders the scrollable message list with stream updates."
+  attr :streams, :any, required: true
+  attr :current_user_id, :integer, required: true
+
+  def message_stream(assigns) do
+    ~H"""
+    <div
+      id="message-list"
+      phx-hook="MessageList"
+      phx-update="stream"
+      class="flex-1 overflow-y-auto px-2 py-4"
+    >
+      <div :for={{dom_id, message} <- @streams.messages} id={dom_id}>
+        <.message_bubble message={message} current_user_id={@current_user_id} />
+      </div>
+    </div>
+    """
+  end
+
+  # ────────────────────────── Compose Area ───────────────────────────────
+
+  @doc "Renders the message compose form with textarea and send button."
+  attr :message_form, :any, required: true
+  attr :placeholder, :string, required: true
+
+  def compose_area(assigns) do
+    ~H"""
+    <div class="p-3 border-t border-base-300 bg-base-100">
+      <.form
+        for={@message_form}
+        id="message-form"
+        phx-submit="send_message"
+        phx-hook="Compose"
+        class="flex gap-2 items-end"
+      >
+        <textarea
+          name="message[content]"
+          placeholder={@placeholder}
+          class="textarea textarea-bordered flex-1 min-h-[2.5rem] max-h-[200px] resize-none leading-normal py-2"
+          rows="1"
+          autocomplete="off"
+          phx-debounce="100"
+        >{@message_form[:content].value}</textarea>
+        <button type="submit" class="btn btn-primary btn-sm">Send</button>
+      </.form>
+    </div>
+    """
+  end
+
   # ────────────────────────── Empty State ──────────────────────────────────
 
   @doc "Renders a centered empty-state placeholder."
