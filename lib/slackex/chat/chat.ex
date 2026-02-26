@@ -51,10 +51,29 @@ defmodule Slackex.Chat do
     - `:exclude_member` — user ID whose channels should be excluded from results
   """
   def list_public_channels(opts \\ []) do
-    from(c in Channel, where: not c.is_private, order_by: c.name)
-    |> maybe_exclude_member(Keyword.get(opts, :exclude_member))
+    exclude_user_id = Keyword.get(opts, :exclude_member)
+
+    member_counts =
+      from(s in Subscription,
+        group_by: s.channel_id,
+        select: %{channel_id: s.channel_id, count: count()}
+      )
+
+    query =
+      from(c in Channel,
+        where: not c.is_private,
+        left_join: mc in subquery(member_counts),
+        on: mc.channel_id == c.id,
+        order_by: c.name,
+        select: {c, coalesce(mc.count, 0)}
+      )
+
+    query
+    |> maybe_exclude_member(exclude_user_id)
     |> ReadRepo.read_repo().all()
-    |> Enum.map(&with_member_count/1)
+    |> Enum.map(fn {channel, member_count} ->
+      Map.put(channel, :member_count, member_count)
+    end)
   end
 
   defp maybe_exclude_member(query, nil), do: query
@@ -65,10 +84,6 @@ defmodule Slackex.Chat do
       on: s.channel_id == c.id and s.user_id == ^user_id,
       where: is_nil(s.user_id)
     )
-  end
-
-  defp with_member_count(channel) do
-    Map.put(channel, :member_count, count_members(channel.id))
   end
 
   @doc "Lists channels with message activity since the given datetime."

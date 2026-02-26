@@ -542,7 +542,7 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ "new-test-channel"
     end
 
-    test "validation errors display when name is blank", %{conn: conn} do
+    test "validation errors display when name is blank and channel is not created", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
 
       html =
@@ -551,6 +551,11 @@ defmodule SlackexWeb.ChatLiveTest do
         |> render_change(%{"channel" => %{"name" => ""}})
 
       assert html =~ "can&#39;t be blank"
+
+      # Verify no channel was created in the DB with an empty name
+      assert_raise Ecto.NoResultsError, fn ->
+        Chat.get_channel_by_slug!("")
+      end
     end
 
     test "validation errors display when name is too short", %{conn: conn} do
@@ -690,6 +695,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
     test "clicking Join adds user to channel and sends {:channel_joined, channel}", %{
       conn: conn,
+      alice: alice,
       dev_channel: dev_channel
     } do
       {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
@@ -700,6 +706,9 @@ defmodule SlackexWeb.ChatLiveTest do
         "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{dev_channel.id}\"]"
       )
       |> render_click()
+
+      # Verify subscription was actually created in the database
+      assert Chat.get_role(alice.id, dev_channel.id) != nil
 
       # After join, the channel should no longer appear in the browse list
       # (because user is now a member) and the parent should have received
@@ -729,6 +738,18 @@ defmodule SlackexWeb.ChatLiveTest do
         lv
         |> element("#browse-channels-search")
         |> render_change(%{"search_query" => "dev"})
+
+      assert html =~ "dev-talk"
+      refute html =~ "design-hub"
+    end
+
+    test "search filter is case-insensitive", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      html =
+        lv
+        |> element("#browse-channels-search")
+        |> render_change(%{"search_query" => "DEV"})
 
       assert html =~ "dev-talk"
       refute html =~ "design-hub"
@@ -931,8 +952,9 @@ defmodule SlackexWeb.ChatLiveTest do
       # Should navigate to /chat (welcome screen)
       html = render(lv)
       assert html =~ "Welcome to Slackex"
-      # Channel should no longer be in sidebar
-      refute html =~ public_channel.name
+      # Channel should no longer be in the sidebar channels list
+      sidebar_html = lv |> element("aside") |> render()
+      refute sidebar_html =~ public_channel.name
     end
 
     # AC5: Channel owner does not see Leave Channel button
