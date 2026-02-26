@@ -146,6 +146,31 @@ defmodule Slackex.MessagingTest do
     end
   end
 
+  describe "subscribe_dm/1 and unsubscribe_dm/1" do
+    test "subscriber receives messages after subscribe_dm" do
+      dm = insert(:dm_conversation)
+      on_exit(fn -> stop_server({:dm, dm.id}) end)
+
+      Messaging.subscribe_dm(dm.id)
+      {:ok, msg} = Messaging.send_dm(dm.id, dm.user_a.id, "dm hello")
+
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.event == "message.new"
+      assert envelope.payload == msg
+    end
+
+    test "unsubscribed process no longer receives DM messages" do
+      dm = insert(:dm_conversation)
+      on_exit(fn -> stop_server({:dm, dm.id}) end)
+
+      Messaging.subscribe_dm(dm.id)
+      Messaging.unsubscribe_dm(dm.id)
+      Messaging.send_dm(dm.id, dm.user_a.id, "invisible dm")
+
+      refute_receive {:envelope, _}, 200
+    end
+  end
+
   describe "broadcast_typing/2" do
     test "delivers {:envelope, envelope} with typing event to channel subscribers" do
       user = insert(:user)

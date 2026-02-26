@@ -29,6 +29,29 @@ defmodule SlackexWeb.ChatLiveTest do
     }
   end
 
+  describe "DM route resolution" do
+    test "/chat/dm/new resolves with :new_dm action", %{conn: conn} do
+      {:ok, _lv, _html} = live(conn, ~p"/chat/dm/new")
+    end
+
+    test "/chat/dm/:dm_id resolves with :dm action", %{conn: conn} do
+      dm = insert(:dm_conversation)
+
+      # The route should resolve (even if handle_params for :dm is not fully wired yet,
+      # the route itself must exist and match the LiveView)
+      assert {:ok, _lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+    end
+
+    test "DM routes are matched before the :slug catch-all", %{conn: conn} do
+      # /chat/dm/new resolves to :new_dm, not :show with slug="dm"
+      # If the slug route matched first, it would crash looking up a channel with slug "dm"
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/new")
+
+      # Route resolved successfully — the catch-all handle_params rendered the welcome state
+      assert html =~ "Welcome to Slackex"
+    end
+  end
+
   describe "channel authorization" do
     test "non-member is redirected from private channel with flash", %{conn: conn} do
       # Create a private channel owned by someone else

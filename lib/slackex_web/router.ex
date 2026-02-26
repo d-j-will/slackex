@@ -49,6 +49,8 @@ defmodule SlackexWeb.Router do
       on_mount: [{SlackexWeb.UserAuth, :ensure_authenticated}],
       layout: {SlackexWeb.Layouts, :chat} do
       live "/chat", ChatLive.Index, :index
+      live "/chat/dm/new", ChatLive.Index, :new_dm
+      live "/chat/dm/:dm_id", ChatLive.Index, :dm
       live "/chat/:slug", ChatLive.Index, :show
     end
   end

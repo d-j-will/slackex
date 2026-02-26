@@ -26,6 +26,7 @@ defmodule SlackexWeb.ChatLive.Index do
      socket
      |> assign(:channels, channels)
      |> assign(:active_channel, nil)
+     |> assign(:active_dm, nil)
      |> assign(:can_send, false)
      |> assign(:typing_users, MapSet.new())
      |> assign(:message_form, to_form(%{"content" => ""}, as: :message))
@@ -58,14 +59,9 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_params(_params, _uri, socket) do
-    if connected?(socket) do
-      prev_channel = socket.assigns.active_channel
-      if prev_channel, do: Messaging.unsubscribe_channel(prev_channel.id)
-    end
-
     {:noreply,
      socket
-     |> assign(:active_channel, nil)
+     |> leave_conversation()
      |> assign(:page_title, "Chat")
      |> assign(:oldest_message_id, nil)
      |> assign(:has_more_messages, false)
@@ -218,12 +214,30 @@ defmodule SlackexWeb.ChatLive.Index do
     {:noreply, socket}
   end
 
+  defp leave_conversation(socket) do
+    if connected?(socket) do
+      case socket.assigns do
+        %{active_channel: %{id: id}} when not is_nil(id) ->
+          Messaging.unsubscribe_channel(id)
+
+        %{active_dm: %{id: id}} when not is_nil(id) ->
+          Messaging.unsubscribe_dm(id)
+
+        _ ->
+          :ok
+      end
+    end
+
+    socket
+    |> assign(:active_channel, nil)
+    |> assign(:active_dm, nil)
+  end
+
   defp enter_channel(socket, channel, can_send) do
     user = socket.assigns.current_user
+    socket = leave_conversation(socket)
 
     if connected?(socket) do
-      old_channel = socket.assigns.active_channel
-      if old_channel, do: Messaging.unsubscribe_channel(old_channel.id)
       Messaging.subscribe_channel(channel.id)
     end
 

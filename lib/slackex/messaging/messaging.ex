@@ -82,6 +82,12 @@ defmodule Slackex.Messaging do
     Phoenix.PubSub.subscribe(@pubsub, "dm:#{dm_id}")
   end
 
+  @doc "Unsubscribes the calling process from DM messages."
+  @spec unsubscribe_dm(integer()) :: :ok
+  def unsubscribe_dm(dm_id) do
+    Phoenix.PubSub.unsubscribe(@pubsub, "dm:#{dm_id}")
+  end
+
   @doc "Subscribes the calling process to user-level notifications."
   @spec subscribe_user(integer()) :: :ok | {:error, term()}
   def subscribe_user(user_id) do
