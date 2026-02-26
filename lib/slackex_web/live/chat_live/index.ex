@@ -118,37 +118,64 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("typing", _params, socket) do
-    channel = socket.assigns.active_channel
     user = socket.assigns.current_user
 
-    if channel && socket.assigns.can_send do
-      envelope =
-        Envelope.wrap("typing", {:channel, channel.id}, %{
-          user_id: user.id,
-          username: user.username
-        })
+    cond do
+      socket.assigns.active_dm != nil ->
+        dm = socket.assigns.active_dm
 
-      Phoenix.PubSub.broadcast(
-        Slackex.PubSub,
-        "channel:#{channel.id}",
-        {:envelope, envelope}
-      )
+        envelope =
+          Envelope.wrap("typing", {:dm, dm.id}, %{
+            user_id: user.id,
+            username: user.username
+          })
+
+        Phoenix.PubSub.broadcast(
+          Slackex.PubSub,
+          "dm:#{dm.id}",
+          {:envelope, envelope}
+        )
+
+      socket.assigns.active_channel != nil and socket.assigns.can_send ->
+        channel = socket.assigns.active_channel
+
+        envelope =
+          Envelope.wrap("typing", {:channel, channel.id}, %{
+            user_id: user.id,
+            username: user.username
+          })
+
+        Phoenix.PubSub.broadcast(
+          Slackex.PubSub,
+          "channel:#{channel.id}",
+          {:envelope, envelope}
+        )
+
+      true ->
+        :ok
     end
 
     {:noreply, socket}
   end
 
   def handle_event("load_more", _params, socket) do
-    channel = socket.assigns.active_channel
     oldest_id = socket.assigns.oldest_message_id
 
-    if channel && oldest_id && socket.assigns.has_more_messages do
-      channel.id
-      |> Chat.list_messages(before: oldest_id, limit: 50)
-      |> Enum.reverse()
-      |> prepend_older_messages(socket)
-    else
-      {:noreply, socket}
+    cond do
+      socket.assigns.active_dm != nil and oldest_id != nil and socket.assigns.has_more_messages ->
+        socket.assigns.active_dm.id
+        |> Chat.list_dm_messages(before: oldest_id, limit: 50)
+        |> Enum.reverse()
+        |> prepend_older_messages(socket)
+
+      socket.assigns.active_channel != nil and oldest_id != nil and socket.assigns.has_more_messages ->
+        socket.assigns.active_channel.id
+        |> Chat.list_messages(before: oldest_id, limit: 50)
+        |> Enum.reverse()
+        |> prepend_older_messages(socket)
+
+      true ->
+        {:noreply, socket}
     end
   end
 

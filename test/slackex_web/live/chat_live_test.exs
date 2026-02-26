@@ -179,6 +179,115 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "DM typing indicator and load-more" do
+    setup %{alice: alice, bob: bob} do
+      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
+      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
+      %{dm: dm}
+    end
+
+    test "typing event broadcasts on dm topic when in DM view", %{
+      conn: conn,
+      alice: alice,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Subscribe to the DM topic to observe the broadcast
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "dm:#{dm.id}")
+
+      # Trigger typing event
+      render_hook(lv, :typing, %{})
+
+      # Should receive a typing envelope on the DM topic
+      assert_receive {:envelope, %{event: "typing", payload: payload}}, 1_000
+      assert payload.user_id == alice.id
+      assert payload.username == "alice"
+    end
+
+    test "load_more in DM fetches older messages with cursor pagination", %{
+      conn: conn,
+      alice: alice,
+      dm: dm
+    } do
+      # Create 60 messages so there are older ones to load
+      # Use prefix "old-dm-" for the first 10 so they are distinct from later messages
+      for i <- 1..10 do
+        {:ok, _msg} = Chat.send_dm(dm.id, alice.id, "old-dm-#{i}")
+      end
+
+      for i <- 11..60 do
+        {:ok, _msg} = Chat.send_dm(dm.id, alice.id, "recent-dm-#{i}")
+      end
+
+      {:ok, lv, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Initial load shows the newest 50 messages (messages 11-60)
+      assert html =~ "recent-dm-60"
+      refute html =~ "old-dm-1"
+
+      # Trigger load_more
+      render_hook(lv, :load_more, %{})
+
+      # After load_more, older messages should now appear
+      assert render(lv) =~ "old-dm-1"
+    end
+
+    test "typing indicator from DM participant displays and auto-clears", %{
+      conn: conn,
+      bob: bob,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Simulate bob typing in the DM via PubSub
+      envelope =
+        Envelope.wrap("typing", {:dm, dm.id}, %{
+          user_id: bob.id,
+          username: bob.username
+        })
+
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "dm:#{dm.id}", {:envelope, envelope})
+
+      # Typing indicator should show bob
+      html = render(lv)
+      assert html =~ bob.username
+
+      # After 3 seconds, typing indicator auto-clears
+      Process.sleep(3_100)
+      html = render(lv)
+      refute html =~ "is typing"
+    end
+
+    test "navigating away from DM clears typing state", %{
+      conn: conn,
+      bob: bob,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Simulate bob typing
+      envelope =
+        Envelope.wrap("typing", {:dm, dm.id}, %{
+          user_id: bob.id,
+          username: bob.username
+        })
+
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "dm:#{dm.id}", {:envelope, envelope})
+
+      # Typing indicator visible
+      html = render(lv)
+      assert html =~ bob.username
+
+      # Navigate away from DM
+      html = render_patch(lv, ~p"/chat")
+
+      # Should show welcome screen, no typing indicator
+      assert html =~ "Welcome to Slackex"
+      refute html =~ "is typing"
+    end
+  end
+
   describe "sidebar DM list rendering" do
     setup %{alice: alice, bob: bob} do
       {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
