@@ -7,6 +7,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Messaging
   alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
+  alias SlackexWeb.ChatLive.CreateChannelModal
   alias SlackexWeb.ChatLive.NewDmModal
   alias SlackexWeb.ChatLive.SidebarComponent
 
@@ -233,6 +234,16 @@ defmodule SlackexWeb.ChatLive.Index do
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not start conversation.")}
     end
+  end
+
+  @impl true
+  def handle_info({:channel_created, channel}, socket) do
+    channels = Chat.list_user_channels(socket.assigns.current_user.id)
+
+    {:noreply,
+     socket
+     |> assign(:channels, channels)
+     |> push_patch(to: ~p"/chat/#{channel.slug}")}
   end
 
   @impl true
@@ -519,6 +530,13 @@ defmodule SlackexWeb.ChatLive.Index do
       :if={@live_action == :new_dm}
       module={NewDmModal}
       id="new-dm-modal"
+      current_user={@current_user}
+    />
+
+    <.live_component
+      :if={@live_action == :create_channel}
+      module={CreateChannelModal}
+      id="create-channel-modal"
       current_user={@current_user}
     />
     """

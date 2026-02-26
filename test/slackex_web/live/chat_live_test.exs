@@ -507,6 +507,77 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "create channel modal" do
+    test "modal renders when navigated to /chat/channels/new", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/channels/new")
+
+      assert html =~ "create-channel-modal"
+      assert html =~ "Create Channel"
+    end
+
+    test "name field auto-formats input to lowercase-hyphens on change", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      html =
+        lv
+        |> element("#create-channel-form")
+        |> render_change(%{"channel" => %{"name" => "My Cool Channel"}})
+
+      assert html =~ ~s|value="my-cool-channel"|
+    end
+
+    test "submitting valid form creates channel and closes modal", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      lv
+      |> element("#create-channel-form")
+      |> render_submit(%{
+        "channel" => %{"name" => "new-test-channel", "description" => "A test channel"}
+      })
+
+      # After success, modal should close (navigated away from :create_channel)
+      html = render(lv)
+      refute html =~ "create-channel-modal"
+      # Channel should appear in sidebar
+      assert html =~ "new-test-channel"
+    end
+
+    test "validation errors display when name is blank", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      html =
+        lv
+        |> element("#create-channel-form")
+        |> render_change(%{"channel" => %{"name" => ""}})
+
+      assert html =~ "can&#39;t be blank"
+    end
+
+    test "validation errors display when name is too short", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      html =
+        lv
+        |> element("#create-channel-form")
+        |> render_change(%{"channel" => %{"name" => "a"}})
+
+      assert html =~ "should be at least 2 character(s)"
+    end
+
+    test "modal closes on backdrop click, returning to /chat", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/new")
+
+      assert render(lv) =~ "create-channel-modal"
+
+      lv
+      |> element("#create-channel-modal-backdrop")
+      |> render_click()
+
+      html = render(lv)
+      refute html =~ "create-channel-modal"
+    end
+  end
+
   describe "chat experience" do
     test "user sees their channels in sidebar", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
