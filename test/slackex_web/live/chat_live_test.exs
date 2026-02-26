@@ -104,6 +104,81 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "DM flow: sidebar update, sending, and real-time receipt" do
+    setup %{alice: alice, bob: bob} do
+      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
+      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
+      %{dm: dm}
+    end
+
+    test "start_dm updates sidebar dm_conversations before navigating", %{conn: conn} do
+      # Create a new user that alice has no DM with yet
+      carol = insert(:user, username: "carol_sidebar", display_name: "Carol Sidebar")
+
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      # Sidebar should NOT show carol yet
+      refute render(lv) =~ "Carol Sidebar"
+
+      # Trigger start_dm (as the NewDmModal would)
+      send(lv.pid, {:start_dm, carol.id})
+
+      # After processing, carol should appear in the sidebar dm_conversations
+      # The LiveView push_patches to the new DM route. We need the sidebar
+      # to contain the new DM entry even though it was created after mount.
+      html = render(lv)
+      assert html =~ "Carol Sidebar"
+    end
+
+    test "sending message in DM dispatches via Messaging and message appears", %{
+      conn: conn,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Submit a message via the DM compose form
+      lv
+      |> form("#message-form", message: %{content: "Hello DM!"})
+      |> render_submit()
+
+      # The message should be dispatched via Messaging.send_dm and broadcast
+      # back through PubSub, appearing in the stream. Give it a moment.
+      # If send_message handler ignores DMs, this message won't appear.
+      Process.sleep(100)
+      html = render(lv)
+      assert html =~ "Hello DM!"
+    end
+
+    test "incoming DM messages appear in real-time via PubSub", %{
+      conn: conn,
+      bob: bob,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Simulate an incoming DM message from bob via PubSub
+      envelope =
+        Envelope.wrap("message.new", {:dm, dm.id}, %{
+          id: System.unique_integer([:positive]),
+          content: "Real-time DM from Bob!",
+          sender_id: bob.id,
+          dm_conversation_id: dm.id,
+          inserted_at: DateTime.utc_now(),
+          sender: %{
+            id: bob.id,
+            username: bob.username,
+            display_name: bob.display_name,
+            avatar_url: nil
+          }
+        })
+
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "dm:#{dm.id}", {:envelope, envelope})
+
+      html = render(lv)
+      assert html =~ "Real-time DM from Bob!"
+    end
+  end
+
   describe "sidebar DM list rendering" do
     setup %{alice: alice, bob: bob} do
       {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}

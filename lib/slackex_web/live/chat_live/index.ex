@@ -100,18 +100,20 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_event("send_message", %{"message" => %{"content" => content}}, socket) do
-    channel = socket.assigns.active_channel
     user = socket.assigns.current_user
 
     cond do
-      is_nil(channel) ->
-        {:noreply, socket}
+      socket.assigns.active_dm != nil ->
+        send_message_to_dm(socket.assigns.active_dm, user, content, socket)
 
-      not socket.assigns.can_send ->
+      socket.assigns.active_channel != nil and socket.assigns.can_send ->
+        send_message_to_channel(socket.assigns.active_channel, user, content, socket)
+
+      socket.assigns.active_channel != nil ->
         {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
 
       true ->
-        send_message_to_channel(channel, user, content, socket)
+        {:noreply, socket}
     end
   end
 
@@ -202,7 +204,12 @@ defmodule SlackexWeb.ChatLive.Index do
 
     case Chat.find_or_create_dm(current_user.id, user_id) do
       {:ok, dm} ->
-        {:noreply, push_patch(socket, to: ~p"/chat/dm/#{dm.id}")}
+        dm_conversations = Chat.list_user_dm_conversations(current_user.id)
+
+        {:noreply,
+         socket
+         |> assign(:dm_conversations, dm_conversations)
+         |> push_patch(to: ~p"/chat/dm/#{dm.id}")}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not start conversation.")}
@@ -343,6 +350,27 @@ defmodule SlackexWeb.ChatLive.Index do
 
   defp send_message_to_channel(channel, user, content, socket) do
     case Messaging.send_message(channel.id, user.id, content) do
+      {:ok, _message} ->
+        {:noreply, assign(socket, :message_form, to_form(%{"content" => ""}, as: :message))}
+
+      {:error, :rate_limited} ->
+        {:noreply,
+         put_flash(socket, :error, "You're sending messages too fast. Please slow down.")}
+
+      {:error, :backpressure} ->
+        {:noreply, put_flash(socket, :error, "Server is busy. Please try again in a moment.")}
+
+      {:error, :invalid_content} ->
+        {:noreply,
+         put_flash(socket, :error, "Message content is invalid (must be 1-4000 characters).")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to send message.")}
+    end
+  end
+
+  defp send_message_to_dm(dm, user, content, socket) do
+    case Messaging.send_dm(dm.id, user.id, content) do
       {:ok, _message} ->
         {:noreply, assign(socket, :message_form, to_form(%{"content" => ""}, as: :message))}
 
