@@ -4,6 +4,8 @@ defmodule Slackex.Accounts do
   and session/JWT token lifecycle.
   """
 
+  import Ecto.Query
+
   alias Slackex.Accounts.{User, UserToken}
   alias Slackex.Repo
 
@@ -14,6 +16,38 @@ defmodule Slackex.Accounts do
     %User{}
     |> User.registration_changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc """
+  Searches users by trigram similarity on username and display_name.
+  Returns an empty list for queries shorter than 2 characters.
+
+  ## Options
+
+    * `:exclude` - list of user IDs to exclude from results
+    * `:limit` - maximum number of results (default 10)
+  """
+  def search_users(query, opts \\ [])
+
+  def search_users(query, _opts) when byte_size(query) < 2, do: []
+
+  def search_users(query, opts) do
+    exclude_ids = Keyword.get(opts, :exclude, []) |> List.wrap()
+    limit = Keyword.get(opts, :limit, 10)
+
+    from(u in User,
+      where: u.id not in ^exclude_ids,
+      where: fragment("? % ? OR ? % ?", u.username, ^query, u.display_name, ^query),
+      order_by: fragment("LEAST(? <-> ?, ? <-> ?)", u.username, ^query, u.display_name, ^query),
+      limit: ^limit,
+      select: %{
+        id: u.id,
+        username: u.username,
+        display_name: u.display_name,
+        avatar_url: u.avatar_url
+      }
+    )
+    |> Repo.all()
   end
 
   @doc """

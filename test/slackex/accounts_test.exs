@@ -109,6 +109,59 @@ defmodule Slackex.AccountsTest do
     end
   end
 
+  describe "search_users/2" do
+    test "returns users matching username by trigram similarity" do
+      insert(:user, username: "johndoe", display_name: "John Doe")
+      insert(:user, username: "janedoe", display_name: "Jane Doe")
+      insert(:user, username: "bobsmith", display_name: "Bob Smith")
+
+      results = Accounts.search_users("john")
+
+      assert length(results) >= 1
+      assert Enum.any?(results, fn user -> user.username == "johndoe" end)
+    end
+
+    test "returns users matching display_name by trigram similarity" do
+      insert(:user, username: "jdoe", display_name: "John Doe")
+      insert(:user, username: "bsmith", display_name: "Bob Smith")
+
+      results = Accounts.search_users("John")
+
+      assert length(results) >= 1
+      assert Enum.any?(results, fn user -> user.display_name == "John Doe" end)
+    end
+
+    test "returns empty list for queries shorter than 2 characters" do
+      insert(:user, username: "alice", display_name: "Alice")
+
+      assert Accounts.search_users("a") == []
+      assert Accounts.search_users("") == []
+    end
+
+    test "excludes specified user IDs from results" do
+      excluded = insert(:user, username: "johndoe", display_name: "John Doe")
+      included = insert(:user, username: "johnwick", display_name: "John Wick")
+
+      results = Accounts.search_users("john", exclude: [excluded.id])
+
+      refute Enum.any?(results, fn user -> user.id == excluded.id end)
+      assert Enum.any?(results, fn user -> user.id == included.id end)
+    end
+
+    test "returns only id, username, display_name, and avatar_url fields" do
+      insert(:user, username: "johndoe", display_name: "John Doe", avatar_url: "https://example.com/avatar.png")
+
+      [result | _] = Accounts.search_users("john")
+
+      assert Map.has_key?(result, :id)
+      assert Map.has_key?(result, :username)
+      assert Map.has_key?(result, :display_name)
+      assert Map.has_key?(result, :avatar_url)
+      refute Map.has_key?(result, :email)
+      refute Map.has_key?(result, :hashed_password)
+    end
+  end
+
   describe "JWT token lifecycle" do
     test "access token is valid within TTL" do
       user = insert(:user)
