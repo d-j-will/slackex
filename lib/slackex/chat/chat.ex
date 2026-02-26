@@ -37,10 +37,39 @@ defmodule Slackex.Chat do
   end
 
   @doc """
-  Lists all public channels.
+  Returns the number of subscribers for a channel.
   """
-  def list_public_channels do
-    ReadRepo.read_repo().all(from c in Channel, where: not c.is_private, order_by: c.name)
+  def count_members(channel_id) do
+    from(s in Subscription, where: s.channel_id == ^channel_id, select: count())
+    |> Repo.one()
+  end
+
+  @doc """
+  Lists all public channels, ordered by name.
+
+  Options:
+    - `:exclude_member` — user ID whose channels should be excluded from results
+  """
+  def list_public_channels(opts \\ []) do
+    exclude_user_id = Keyword.get(opts, :exclude_member)
+
+    query = from(c in Channel, where: not c.is_private, order_by: c.name)
+
+    query =
+      if exclude_user_id do
+        from(c in query,
+          left_join: s in Subscription,
+          on: s.channel_id == c.id and s.user_id == ^exclude_user_id,
+          where: is_nil(s.user_id)
+        )
+      else
+        query
+      end
+
+    ReadRepo.read_repo().all(query)
+    |> Enum.map(fn channel ->
+      Map.put(channel, :member_count, count_members(channel.id))
+    end)
   end
 
   @doc "Lists channels with message activity since the given datetime."

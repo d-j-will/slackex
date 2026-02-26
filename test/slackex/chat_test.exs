@@ -247,6 +247,74 @@ defmodule Slackex.ChatTest do
     end
   end
 
+  describe "count_members/1" do
+    test "returns correct subscriber count for a channel" do
+      owner = insert(:user)
+      member = insert(:user)
+
+      {:ok, channel} = Chat.create_channel(owner.id, %{name: "Counting"})
+      Chat.join_channel(member.id, channel.id)
+
+      assert Chat.count_members(channel.id) == 2
+    end
+
+    test "returns 1 for channel with only the creator" do
+      owner = insert(:user)
+      {:ok, channel} = Chat.create_channel(owner.id, %{name: "Solo"})
+
+      assert Chat.count_members(channel.id) == 1
+    end
+  end
+
+  describe "list_public_channels/1" do
+    test "returns all public channels with member_count when called with no opts" do
+      owner = insert(:user)
+      {:ok, channel} = Chat.create_channel(owner.id, %{name: "Open"})
+
+      channels = Chat.list_public_channels()
+      assert [found] = channels
+      assert found.id == channel.id
+      assert found.member_count == 1
+    end
+
+    test "excludes channels the given user is subscribed to" do
+      owner = insert(:user)
+      browser = insert(:user)
+
+      {:ok, joined_channel} = Chat.create_channel(owner.id, %{name: "Already Joined"})
+      {:ok, other_channel} = Chat.create_channel(owner.id, %{name: "Not Joined"})
+      Chat.join_channel(browser.id, joined_channel.id)
+
+      channels = Chat.list_public_channels(exclude_member: browser.id)
+      channel_ids = Enum.map(channels, & &1.id)
+
+      refute joined_channel.id in channel_ids
+      assert other_channel.id in channel_ids
+    end
+
+    test "private channels never appear in results" do
+      owner = insert(:user)
+      {:ok, _private} = Chat.create_channel(owner.id, %{name: "Secret Room", is_private: true})
+      {:ok, public} = Chat.create_channel(owner.id, %{name: "Open Room"})
+
+      channels = Chat.list_public_channels()
+      channel_ids = Enum.map(channels, & &1.id)
+
+      assert public.id in channel_ids
+      refute Enum.any?(channels, fn c -> c.name == "Secret Room" end)
+    end
+
+    test "each channel includes member_count" do
+      owner = insert(:user)
+      member = insert(:user)
+      {:ok, channel} = Chat.create_channel(owner.id, %{name: "Popular"})
+      Chat.join_channel(member.id, channel.id)
+
+      [found] = Chat.list_public_channels()
+      assert found.member_count == 2
+    end
+  end
+
   describe "get_dm_conversation!/1" do
     test "returns DM conversation by ID" do
       alice = insert(:user)
