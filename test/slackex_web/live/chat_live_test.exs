@@ -578,6 +578,130 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "browse channels modal" do
+    setup %{alice: alice, conn: conn} do
+      # Create public channels that alice has NOT joined
+      owner = insert(:user, username: "chan_owner")
+
+      {:ok, dev_channel} =
+        Chat.create_channel(owner.id, %{
+          name: "dev-talk",
+          description: "Developer discussions"
+        })
+
+      {:ok, design_channel} =
+        Chat.create_channel(owner.id, %{
+          name: "design-hub",
+          description: "Design team space"
+        })
+
+      # Create a channel alice IS a member of (from setup: "general")
+      # so we can verify it's excluded
+
+      %{
+        conn: conn,
+        alice: alice,
+        dev_channel: dev_channel,
+        design_channel: design_channel
+      }
+    end
+
+    # -- Acceptance tests (Phase 1) --
+
+    test "modal renders when navigated to /chat/channels/browse", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/channels/browse")
+
+      assert html =~ "browse-channels-modal"
+      assert html =~ "Browse Channels"
+    end
+
+    test "lists public channels user has not joined", %{
+      conn: conn,
+      dev_channel: dev_channel,
+      design_channel: design_channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      # Render just the modal component to avoid matching sidebar content
+      modal_html = lv |> element("#browse-channels-modal") |> render()
+
+      # Should show unjoined public channels
+      assert modal_html =~ dev_channel.name
+      assert modal_html =~ design_channel.name
+
+      # Should NOT show "general" (alice is a member from setup)
+      refute modal_html =~ "general"
+    end
+
+    test "clicking Join adds user to channel and sends {:channel_joined, channel}", %{
+      conn: conn,
+      dev_channel: dev_channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      # Click Join on dev-talk
+      lv
+      |> element("#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{dev_channel.id}\"]")
+      |> render_click()
+
+      # After join, the channel should no longer appear in the browse list
+      # (because user is now a member) and the parent should have received
+      # {:channel_joined, channel}
+      html = render(lv)
+      refute html =~ "browse-channels-modal"
+    end
+
+    # -- Unit-level tests (Phase 2) --
+
+    test "each channel entry displays name, description, and member count", %{
+      conn: conn,
+      dev_channel: _dev_channel
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat/channels/browse")
+
+      assert html =~ "dev-talk"
+      assert html =~ "Developer discussions"
+      # Member count badge (owner is 1 member)
+      assert html =~ "1 member"
+    end
+
+    test "search input filters displayed channels by name", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      html =
+        lv
+        |> element("#browse-channels-search")
+        |> render_change(%{"search_query" => "dev"})
+
+      assert html =~ "dev-talk"
+      refute html =~ "design-hub"
+    end
+
+    test "empty state shown when no channels match search", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      html =
+        lv
+        |> element("#browse-channels-search")
+        |> render_change(%{"search_query" => "zzz-no-match"})
+
+      assert html =~ "No channels found"
+    end
+
+    test "modal closes on backdrop click, navigating back to /chat", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      assert render(lv) =~ "browse-channels-modal"
+
+      lv
+      |> element("#browse-channels-modal-backdrop")
+      |> render_click()
+
+      html = render(lv)
+      refute html =~ "browse-channels-modal"
+    end
+  end
+
   describe "chat experience" do
     test "user sees their channels in sidebar", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
