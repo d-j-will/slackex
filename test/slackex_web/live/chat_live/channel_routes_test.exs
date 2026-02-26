@@ -120,5 +120,4 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
       assert html =~ "Welcome to Slackex"
     end
   end
-
 end

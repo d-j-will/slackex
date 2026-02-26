@@ -696,7 +696,9 @@ defmodule SlackexWeb.ChatLiveTest do
 
       # Click Join on dev-talk
       lv
-      |> element("#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{dev_channel.id}\"]")
+      |> element(
+        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{dev_channel.id}\"]"
+      )
       |> render_click()
 
       # After join, the channel should no longer appear in the browse list

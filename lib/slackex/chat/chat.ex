@@ -51,25 +51,24 @@ defmodule Slackex.Chat do
     - `:exclude_member` — user ID whose channels should be excluded from results
   """
   def list_public_channels(opts \\ []) do
-    exclude_user_id = Keyword.get(opts, :exclude_member)
+    from(c in Channel, where: not c.is_private, order_by: c.name)
+    |> maybe_exclude_member(Keyword.get(opts, :exclude_member))
+    |> ReadRepo.read_repo().all()
+    |> Enum.map(&with_member_count/1)
+  end
 
-    query = from(c in Channel, where: not c.is_private, order_by: c.name)
+  defp maybe_exclude_member(query, nil), do: query
 
-    query =
-      if exclude_user_id do
-        from(c in query,
-          left_join: s in Subscription,
-          on: s.channel_id == c.id and s.user_id == ^exclude_user_id,
-          where: is_nil(s.user_id)
-        )
-      else
-        query
-      end
+  defp maybe_exclude_member(query, user_id) do
+    from(c in query,
+      left_join: s in Subscription,
+      on: s.channel_id == c.id and s.user_id == ^user_id,
+      where: is_nil(s.user_id)
+    )
+  end
 
-    ReadRepo.read_repo().all(query)
-    |> Enum.map(fn channel ->
-      Map.put(channel, :member_count, count_members(channel.id))
-    end)
+  defp with_member_count(channel) do
+    Map.put(channel, :member_count, count_members(channel.id))
   end
 
   @doc "Lists channels with message activity since the given datetime."
@@ -116,10 +115,6 @@ defmodule Slackex.Chat do
       %Subscription{}
       |> Subscription.changeset(%{user_id: user_id, channel_id: channel_id, role: "member"})
       |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :channel_id])
-      |> case do
-        {:ok, subscription} -> {:ok, subscription}
-        {:error, changeset} -> {:error, changeset}
-      end
     end
   end
 

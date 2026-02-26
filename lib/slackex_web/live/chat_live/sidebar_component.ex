@@ -9,7 +9,8 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
   - `@active_dm`          — currently selected DM conversation (or nil)
   - `@current_user`       — logged-in user
 
-  Sends sidebar actions to the parent via `send(self(), {:sidebar_action, action})`.
+  Channel creation, browsing, and new DM actions use `patch` links
+  to navigate the parent LiveView to the corresponding modal routes.
   """
   use SlackexWeb, :live_component
 

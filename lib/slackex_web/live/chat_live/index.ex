@@ -77,35 +77,17 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_params(_params, _uri, %{assigns: %{live_action: :create_channel}} = socket) do
-    socket = leave_conversation(socket)
-
-    {:noreply,
-     socket
-     |> assign(:active_channel, nil)
-     |> assign(:active_dm, nil)
-     |> assign(:page_title, "Create Channel")}
+    {:noreply, enter_modal(socket, "Create Channel")}
   end
 
   @impl true
   def handle_params(_params, _uri, %{assigns: %{live_action: :browse_channels}} = socket) do
-    socket = leave_conversation(socket)
-
-    {:noreply,
-     socket
-     |> assign(:active_channel, nil)
-     |> assign(:active_dm, nil)
-     |> assign(:page_title, "Browse Channels")}
+    {:noreply, enter_modal(socket, "Browse Channels")}
   end
 
   @impl true
   def handle_params(_params, _uri, %{assigns: %{live_action: :new_dm}} = socket) do
-    socket = leave_conversation(socket)
-
-    {:noreply,
-     socket
-     |> assign(:active_channel, nil)
-     |> assign(:active_dm, nil)
-     |> assign(:page_title, "New Message")}
+    {:noreply, enter_modal(socket, "New Message")}
   end
 
   @impl true
@@ -164,10 +146,21 @@ defmodule SlackexWeb.ChatLive.Index do
 
     cond do
       socket.assigns.active_dm != nil and oldest_id != nil and socket.assigns.has_more_messages ->
-        load_older_messages(socket, &Chat.list_dm_messages/2, socket.assigns.active_dm.id, oldest_id)
+        load_older_messages(
+          socket,
+          &Chat.list_dm_messages/2,
+          socket.assigns.active_dm.id,
+          oldest_id
+        )
 
-      socket.assigns.active_channel != nil and oldest_id != nil and socket.assigns.has_more_messages ->
-        load_older_messages(socket, &Chat.list_messages/2, socket.assigns.active_channel.id, oldest_id)
+      socket.assigns.active_channel != nil and oldest_id != nil and
+          socket.assigns.has_more_messages ->
+        load_older_messages(
+          socket,
+          &Chat.list_messages/2,
+          socket.assigns.active_channel.id,
+          oldest_id
+        )
 
       true ->
         {:noreply, socket}
@@ -277,29 +270,12 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_info({:channel_created, channel}, socket) do
-    channels = Chat.list_user_channels(socket.assigns.current_user.id)
-
-    {:noreply,
-     socket
-     |> assign(:channels, channels)
-     |> push_patch(to: ~p"/chat/#{channel.slug}")}
+    {:noreply, refresh_channels_and_navigate(socket, channel)}
   end
 
   @impl true
   def handle_info({:channel_joined, channel}, socket) do
-    channels = Chat.list_user_channels(socket.assigns.current_user.id)
-
-    {:noreply,
-     socket
-     |> assign(:channels, channels)
-     |> push_patch(to: ~p"/chat/#{channel.slug}")}
-  end
-
-  @impl true
-  def handle_info({:sidebar_action, _action}, socket) do
-    # Placeholder — sidebar actions (create channel, browse, new DM)
-    # will be wired in Phase 5 Steps 2-3.
-    {:noreply, socket}
+    {:noreply, refresh_channels_and_navigate(socket, channel)}
   end
 
   @impl true
@@ -319,6 +295,22 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp enter_modal(socket, page_title) do
+    socket
+    |> leave_conversation()
+    |> assign(:active_channel, nil)
+    |> assign(:active_dm, nil)
+    |> assign(:page_title, page_title)
+  end
+
+  defp refresh_channels_and_navigate(socket, channel) do
+    channels = Chat.list_user_channels(socket.assigns.current_user.id)
+
+    socket
+    |> assign(:channels, channels)
+    |> push_patch(to: ~p"/chat/#{channel.slug}")
+  end
 
   defp load_older_messages(socket, list_fn, conversation_id, oldest_id) do
     conversation_id
@@ -448,8 +440,7 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   defp handle_send_result({:error, :rate_limited}, socket) do
-    {:noreply,
-     put_flash(socket, :error, "You're sending messages too fast. Please slow down.")}
+    {:noreply, put_flash(socket, :error, "You're sending messages too fast. Please slow down.")}
   end
 
   defp handle_send_result({:error, :backpressure}, socket) do

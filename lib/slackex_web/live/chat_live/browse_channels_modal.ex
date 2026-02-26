@@ -41,12 +41,13 @@ defmodule SlackexWeb.ChatLive.BrowseChannelsModal do
      |> assign(:filtered_channels, filtered)}
   end
 
-  def handle_event("join", %{"channel-id" => channel_id}, socket) do
+  def handle_event("join", %{"channel-id" => raw_id}, socket) do
     user = socket.assigns.current_user
+    channel_id = String.to_integer(raw_id)
 
-    case Chat.join_channel(user.id, String.to_integer(channel_id)) do
+    case Chat.join_channel(user.id, channel_id) do
       {:ok, _subscription} ->
-        channel = Chat.get_channel!(String.to_integer(channel_id))
+        channel = Chat.get_channel!(channel_id)
         send(self(), {:channel_joined, channel})
         {:noreply, socket}
 

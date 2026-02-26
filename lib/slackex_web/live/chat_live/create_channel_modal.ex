@@ -27,8 +27,7 @@ defmodule SlackexWeb.ChatLive.CreateChannelModal do
 
   @impl true
   def handle_event("validate", %{"channel" => params}, socket) do
-    name = format_channel_name(params["name"] || "")
-    params = Map.put(params, "name", name)
+    params = normalize_channel_params(params)
 
     changeset =
       %Channel{}
@@ -39,8 +38,7 @@ defmodule SlackexWeb.ChatLive.CreateChannelModal do
   end
 
   def handle_event("save", %{"channel" => params}, socket) do
-    name = format_channel_name(params["name"] || "")
-    params = Map.put(params, "name", name)
+    params = normalize_channel_params(params)
 
     case Chat.create_channel(socket.assigns.current_user.id, params) do
       {:ok, channel} ->
@@ -54,6 +52,10 @@ defmodule SlackexWeb.ChatLive.CreateChannelModal do
 
   def handle_event("close_modal", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/chat")}
+  end
+
+  defp normalize_channel_params(params) do
+    Map.update(params, "name", "", &format_channel_name/1)
   end
 
   defp format_channel_name(raw) do
@@ -118,7 +120,9 @@ defmodule SlackexWeb.ChatLive.CreateChannelModal do
 
             <div class="form-control">
               <label class="label" for="channel-description">
-                <span class="label-text">Description <span class="text-base-content/50">(optional)</span></span>
+                <span class="label-text">
+                  Description <span class="text-base-content/50">(optional)</span>
+                </span>
               </label>
               <textarea
                 id="channel-description"
