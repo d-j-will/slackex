@@ -215,6 +215,8 @@ defmodule SlackexWeb.ChatComponents do
   attr :title, :string, required: true
   attr :subtitle, :string, default: nil
 
+  slot :actions
+
   def conversation_header(assigns) do
     ~H"""
     <div class="px-4 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
@@ -225,6 +227,7 @@ defmodule SlackexWeb.ChatComponents do
           {@subtitle}
         </p>
       </div>
+      {render_slot(@actions)}
     </div>
     """
   end

@@ -843,6 +843,109 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "channel header join and leave buttons" do
+    setup %{conn: conn, alice: alice} do
+      # Create a public channel owned by someone else
+      owner = insert(:user, username: "chan_header_owner")
+
+      {:ok, public_channel} =
+        Chat.create_channel(owner.id, %{
+          name: "joinable-#{System.unique_integer([:positive])}",
+          description: "A public channel"
+        })
+
+      # Alice is NOT a member of this channel
+      # Bob will be added as a member (non-owner) for leave tests
+      bob_member = insert(:user, username: "bob_member")
+      Chat.join_channel(bob_member.id, public_channel.id)
+
+      %{
+        conn: conn,
+        alice: alice,
+        owner: owner,
+        bob_member: bob_member,
+        public_channel: public_channel
+      }
+    end
+
+    # AC1: Non-member viewing public channel sees "Join Channel" button
+    test "non-member viewing public channel sees Join Channel button", %{
+      conn: conn,
+      public_channel: public_channel
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{public_channel.slug}")
+
+      assert html =~ "Join Channel"
+    end
+
+    # AC2: Clicking Join Channel adds membership, enables compose, updates sidebar
+    test "clicking Join Channel adds membership and enables compose area", %{
+      conn: conn,
+      public_channel: public_channel
+    } do
+      {:ok, lv, html} = live(conn, ~p"/chat/#{public_channel.slug}")
+
+      # Should see join button, not compose area
+      assert html =~ "Join Channel"
+      refute html =~ "phx-submit=\"send_message\""
+
+      # Click Join Channel
+      lv
+      |> element("button", "Join Channel")
+      |> render_click()
+
+      html = render(lv)
+
+      # After joining: compose area visible, join button gone
+      refute html =~ "Join Channel"
+      assert html =~ "phx-submit=\"send_message\""
+      # Channel should appear in sidebar
+      assert html =~ public_channel.name
+    end
+
+    # AC3: Member (non-owner) sees "Leave Channel" button
+    test "member who is not owner sees Leave Channel button", %{
+      bob_member: bob_member,
+      public_channel: public_channel
+    } do
+      conn = build_conn() |> log_in_user(bob_member)
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{public_channel.slug}")
+
+      assert html =~ "Leave Channel"
+    end
+
+    # AC4: Clicking Leave Channel removes membership, navigates to /chat, updates sidebar
+    test "clicking Leave Channel removes membership and navigates to /chat", %{
+      bob_member: bob_member,
+      public_channel: public_channel
+    } do
+      conn = build_conn() |> log_in_user(bob_member)
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{public_channel.slug}")
+
+      lv
+      |> element("button", "Leave Channel")
+      |> render_click()
+
+      # Should navigate to /chat (welcome screen)
+      html = render(lv)
+      assert html =~ "Welcome to Slackex"
+      # Channel should no longer be in sidebar
+      refute html =~ public_channel.name
+    end
+
+    # AC5: Channel owner does not see Leave Channel button
+    test "channel owner does not see Leave Channel button", %{
+      owner: owner,
+      public_channel: public_channel
+    } do
+      conn = build_conn() |> log_in_user(owner)
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{public_channel.slug}")
+
+      refute html =~ "Leave Channel"
+      refute html =~ "Join Channel"
+    end
+  end
+
   describe "chat experience" do
     test "user sees their channels in sidebar", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")

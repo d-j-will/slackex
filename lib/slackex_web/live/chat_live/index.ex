@@ -33,6 +33,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:active_channel, nil)
      |> assign(:active_dm, nil)
      |> assign(:can_send, false)
+     |> assign(:user_role, nil)
      |> assign(:typing_users, MapSet.new())
      |> assign(:message_form, to_form(%{"content" => ""}, as: :message))
      |> assign(:sidebar_open, true)
@@ -63,8 +64,8 @@ defmodule SlackexWeb.ChatLive.Index do
     channel = Chat.get_channel_by_slug!(slug)
 
     case authorize_channel(user.id, channel) do
-      {:ok, can_send} ->
-        {:noreply, enter_channel(socket, channel, can_send)}
+      {:ok, can_send, role} ->
+        {:noreply, enter_channel(socket, channel, can_send, role)}
 
       {:error, :unauthorized} ->
         {:noreply,
@@ -175,6 +176,43 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event("toggle_sidebar", _params, socket) do
     {:noreply, assign(socket, :sidebar_open, !socket.assigns.sidebar_open)}
+  end
+
+  def handle_event("join_channel", _params, socket) do
+    user = socket.assigns.current_user
+    channel = socket.assigns.active_channel
+
+    case Chat.join_channel(user.id, channel.id) do
+      {:ok, _subscription} ->
+        channels = Chat.list_user_channels(user.id)
+
+        {:noreply,
+         socket
+         |> assign(:channels, channels)
+         |> assign(:can_send, true)
+         |> assign(:user_role, "member")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not join channel.")}
+    end
+  end
+
+  def handle_event("leave_channel", _params, socket) do
+    user = socket.assigns.current_user
+    channel = socket.assigns.active_channel
+    role = socket.assigns.user_role
+
+    if role == "owner" do
+      {:noreply, put_flash(socket, :error, "Channel owners cannot leave.")}
+    else
+      Chat.leave_channel(user.id, channel.id)
+      channels = Chat.list_user_channels(user.id)
+
+      {:noreply,
+       socket
+       |> assign(:channels, channels)
+       |> push_patch(to: ~p"/chat")}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -327,7 +365,7 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:active_dm, nil)
   end
 
-  defp enter_channel(socket, channel, can_send) do
+  defp enter_channel(socket, channel, can_send, user_role) do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
@@ -339,6 +377,7 @@ defmodule SlackexWeb.ChatLive.Index do
     socket
     |> assign(:active_channel, channel)
     |> assign(:can_send, can_send)
+    |> assign(:user_role, user_role)
     |> assign(:page_title, "##{channel.name}")
     |> assign_conversation_state(messages)
     |> assign(:sidebar_open, true)
@@ -431,10 +470,10 @@ defmodule SlackexWeb.ChatLive.Index do
 
     cond do
       role != nil ->
-        {:ok, Permissions.can?(role, :send_message)}
+        {:ok, Permissions.can?(role, :send_message), role}
 
       not channel.is_private ->
-        {:ok, false}
+        {:ok, false, nil}
 
       true ->
         {:error, :unauthorized}
@@ -501,7 +540,20 @@ defmodule SlackexWeb.ChatLive.Index do
           <.conversation_header
             title={"##{@active_channel.name}"}
             subtitle={@active_channel.description}
-          />
+          >
+            <:actions>
+              <%= if @user_role == nil and not @active_channel.is_private do %>
+                <button phx-click="join_channel" class="btn btn-primary btn-xs">
+                  Join Channel
+                </button>
+              <% end %>
+              <%= if @user_role != nil and @user_role != "owner" do %>
+                <button phx-click="leave_channel" class="btn btn-ghost btn-xs text-base-content/60">
+                  Leave Channel
+                </button>
+              <% end %>
+            </:actions>
+          </.conversation_header>
           <.message_stream streams={@streams} current_user_id={@current_user.id} />
           <.typing_indicator users={MapSet.to_list(@typing_users)} />
 
