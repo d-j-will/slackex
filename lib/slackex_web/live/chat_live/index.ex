@@ -73,6 +73,28 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_params(_params, _uri, %{assigns: %{live_action: :create_channel}} = socket) do
+    socket = leave_conversation(socket)
+
+    {:noreply,
+     socket
+     |> assign(:active_channel, nil)
+     |> assign(:active_dm, nil)
+     |> assign(:page_title, "Create Channel")}
+  end
+
+  @impl true
+  def handle_params(_params, _uri, %{assigns: %{live_action: :browse_channels}} = socket) do
+    socket = leave_conversation(socket)
+
+    {:noreply,
+     socket
+     |> assign(:active_channel, nil)
+     |> assign(:active_dm, nil)
+     |> assign(:page_title, "Browse Channels")}
+  end
+
+  @impl true
   def handle_params(_params, _uri, %{assigns: %{live_action: :new_dm}} = socket) do
     socket = leave_conversation(socket)
 
