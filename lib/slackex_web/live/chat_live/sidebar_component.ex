@@ -72,13 +72,29 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
                 />
               </svg>
             </button>
-            <.link
-              patch={~p"/chat/channels/new"}
-              class="btn btn-ghost btn-xs btn-circle text-base-content/60 hover:text-base-content"
-              aria-label="Create channel"
-            >
-              +
-            </.link>
+            <div class="flex items-center gap-0.5">
+              <.link
+                patch={~p"/chat/channels/browse"}
+                class="btn btn-ghost btn-xs btn-circle text-base-content/60 hover:text-base-content"
+                aria-label="Browse channels"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </.link>
+              <.link
+                patch={~p"/chat/channels/new"}
+                class="btn btn-ghost btn-xs btn-circle text-base-content/60 hover:text-base-content"
+                aria-label="Create channel"
+              >
+                +
+              </.link>
+            </div>
           </div>
 
           <ul :if={@channels_expanded} class="mt-1 space-y-0.5">

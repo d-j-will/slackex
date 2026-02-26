@@ -755,6 +755,92 @@ defmodule SlackexWeb.ChatLiveTest do
       html = render(lv)
       refute html =~ "browse-channels-modal"
     end
+
+    test "joined channel no longer appears in browse modal on re-open", %{
+      conn: conn,
+      dev_channel: dev_channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      # dev-talk should be in the browse list initially
+      modal_html = lv |> element("#browse-channels-modal") |> render()
+      assert modal_html =~ dev_channel.name
+
+      # Join dev-talk
+      lv
+      |> element(
+        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{dev_channel.id}\"]"
+      )
+      |> render_click()
+
+      # Navigate back to browse modal
+      render_patch(lv, ~p"/chat/channels/browse")
+
+      # dev-talk should no longer appear (alice is now a member)
+      modal_html = lv |> element("#browse-channels-modal") |> render()
+      refute modal_html =~ "dev-talk"
+    end
+  end
+
+  describe "browse channels: sidebar link and join flow" do
+    setup %{alice: alice, conn: conn} do
+      owner = insert(:user, username: "browse_owner")
+
+      {:ok, browsable_channel} =
+        Chat.create_channel(owner.id, %{
+          name: "browsable-chan",
+          description: "A browsable channel"
+        })
+
+      %{conn: conn, alice: alice, browsable_channel: browsable_channel}
+    end
+
+    test "Browse link appears in sidebar channels section", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ ~s|/chat/channels/browse|
+    end
+
+    test "after joining a channel, sidebar updates to include the joined channel", %{
+      conn: conn,
+      browsable_channel: browsable_channel
+    } do
+      {:ok, lv, html} = live(conn, ~p"/chat")
+
+      # Sidebar should NOT show browsable-chan yet (alice is not a member)
+      refute html =~ "browsable-chan"
+
+      # Navigate to browse modal and join
+      render_patch(lv, ~p"/chat/channels/browse")
+
+      lv
+      |> element(
+        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{browsable_channel.id}\"]"
+      )
+      |> render_click()
+
+      # After joining, sidebar should include the joined channel
+      html = render(lv)
+      assert html =~ "browsable-chan"
+    end
+
+    test "after joining, user navigates to the joined channel view", %{
+      conn: conn,
+      browsable_channel: browsable_channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
+
+      lv
+      |> element(
+        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{browsable_channel.id}\"]"
+      )
+      |> render_click()
+
+      # After join, should navigate to the channel view
+      html = render(lv)
+      assert html =~ "#browsable-chan"
+      refute html =~ "browse-channels-modal"
+    end
   end
 
   describe "chat experience" do
