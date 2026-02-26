@@ -411,6 +411,8 @@ defmodule SlackexWeb.ChatLive.Index do
           id="sidebar"
           channels={@channels}
           active_channel={@active_channel}
+          dm_conversations={@dm_conversations}
+          active_dm={@active_dm}
           current_user={@current_user}
         />
       </div>

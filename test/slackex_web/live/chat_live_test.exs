@@ -104,6 +104,54 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "sidebar DM list rendering" do
+    setup %{alice: alice, bob: bob} do
+      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
+      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
+      %{dm: dm}
+    end
+
+    test "sidebar renders Direct Messages header", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ "Direct Messages"
+    end
+
+    test "DM entries show other user display name in sidebar", %{conn: conn, bob: bob} do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      expected_name = bob.display_name || bob.username
+      assert html =~ expected_name
+    end
+
+    test "New Message link exists and points to /chat/dm/new", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ "New Message"
+      assert html =~ ~s|/chat/dm/new|
+    end
+
+    test "active DM is highlighted in sidebar", %{conn: conn, bob: bob, dm: dm} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # The sidebar should contain the DM link with active styling
+      expected_name = bob.display_name || bob.username
+      assert html =~ expected_name
+      # Active DM entry gets font-semibold class
+      assert html =~ ~s|font-semibold|
+    end
+
+    test "clicking DM entry navigates via patch", %{conn: conn, dm: dm} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      # Click the DM link in the sidebar
+      html = render_patch(lv, ~p"/chat/dm/#{dm.id}")
+
+      # Should now be in the DM view (page title shows other user name)
+      refute html =~ "Welcome to Slackex"
+    end
+  end
+
   describe "channel authorization" do
     test "non-member is redirected from private channel with flash", %{conn: conn} do
       # Create a private channel owned by someone else

@@ -3,9 +3,11 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
   Sidebar LiveComponent for channel navigation and user footer.
 
   Receives assigns from the parent `ChatLive.Index`:
-  - `@channels`       — list of the user's channels
-  - `@active_channel` — currently selected channel (or nil)
-  - `@current_user`   — logged-in user
+  - `@channels`           — list of the user's channels
+  - `@active_channel`     — currently selected channel (or nil)
+  - `@dm_conversations`   — list of DM conversation maps with :id, :other_user
+  - `@active_dm`          — currently selected DM conversation (or nil)
+  - `@current_user`       — logged-in user
 
   Sends sidebar actions to the parent via `send(self(), {:sidebar_action, action})`.
   """
@@ -84,6 +86,48 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
           >
             No channels yet.
           </p>
+        </div>
+
+        <%!-- Direct Messages section --%>
+        <div>
+          <button
+            phx-click="toggle_section"
+            phx-value-section="dms"
+            phx-target={@myself}
+            class="flex items-center justify-between w-full px-2 py-1 text-xs font-semibold uppercase tracking-wider text-base-content/60 hover:text-base-content"
+          >
+            <span>Direct Messages</span>
+            <svg
+              class={["w-3 h-3 transition-transform", !@dms_expanded && "-rotate-90"]}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          <ul :if={@dms_expanded} class="mt-1 space-y-0.5">
+            <.dm_list_item
+              :for={dm <- @dm_conversations}
+              dm={dm}
+              active={@active_dm != nil && @active_dm.id == dm.id}
+            />
+          </ul>
+
+          <div :if={@dms_expanded} class="mt-1 px-2">
+            <.link
+              patch={~p"/chat/dm/new"}
+              class="btn btn-ghost btn-xs w-full justify-start gap-1 text-base-content/60"
+            >
+              + New Message
+            </.link>
+          </div>
         </div>
       </nav>
 
