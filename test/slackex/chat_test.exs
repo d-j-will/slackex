@@ -199,4 +199,69 @@ defmodule Slackex.ChatTest do
       assert {:error, :unauthorized} = Chat.send_dm(dm.id, charlie.id, "Sneaky!")
     end
   end
+
+  describe "list_user_dm_conversations/1" do
+    test "returns DMs with preloaded other_user resolved correctly" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, _dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      results = Chat.list_user_dm_conversations(alice.id)
+
+      assert [conversation] = results
+      assert conversation.other_user.id == bob.id
+      assert conversation.other_user.username
+      assert conversation.other_user.display_name
+    end
+
+    test "resolves other_user from both sides of the conversation" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, _dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      [from_alice] = Chat.list_user_dm_conversations(alice.id)
+      [from_bob] = Chat.list_user_dm_conversations(bob.id)
+
+      assert from_alice.other_user.id == bob.id
+      assert from_bob.other_user.id == alice.id
+    end
+
+    test "returns empty list for user with no DMs" do
+      loner = insert(:user)
+
+      assert [] = Chat.list_user_dm_conversations(loner.id)
+    end
+
+    test "results ordered by inserted_at descending" do
+      alice = insert(:user)
+      bob = insert(:user)
+      charlie = insert(:user)
+
+      {:ok, _dm1} = Chat.find_or_create_dm(alice.id, bob.id)
+      {:ok, _dm2} = Chat.find_or_create_dm(alice.id, charlie.id)
+
+      results = Chat.list_user_dm_conversations(alice.id)
+
+      assert length(results) == 2
+      assert hd(results).inserted_at >= List.last(results).inserted_at
+    end
+  end
+
+  describe "get_dm_conversation!/1" do
+    test "returns DM conversation by ID" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      found = Chat.get_dm_conversation!(dm.id)
+
+      assert found.id == dm.id
+    end
+
+    test "raises when DM conversation not found" do
+      assert_raise Ecto.NoResultsError, fn ->
+        Chat.get_dm_conversation!(0)
+      end
+    end
+  end
 end

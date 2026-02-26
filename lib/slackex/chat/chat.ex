@@ -289,6 +289,29 @@ defmodule Slackex.Chat do
     )
   end
 
+  @doc """
+  Lists DM conversations for a user with the other participant preloaded.
+  Returns a list of maps with :id, :other_user, and :inserted_at.
+  Results are ordered by most recent activity first.
+  """
+  def list_user_dm_conversations(user_id) do
+    from(d in DMConversation,
+      where: d.user_a_id == ^user_id or d.user_b_id == ^user_id,
+      order_by: [desc: d.inserted_at],
+      preload: [:user_a, :user_b]
+    )
+    |> Repo.all()
+    |> Enum.map(fn dm ->
+      other_user = if dm.user_a_id == user_id, do: dm.user_b, else: dm.user_a
+      %{id: dm.id, other_user: other_user, inserted_at: dm.inserted_at}
+    end)
+  end
+
+  @doc """
+  Gets a DM conversation by ID. Raises if not found.
+  """
+  def get_dm_conversation!(id), do: Repo.get!(DMConversation, id)
+
   # ---------------------------------------------------------------------------
   # Read cursor operations
   # ---------------------------------------------------------------------------
