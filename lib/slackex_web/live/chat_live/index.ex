@@ -15,6 +15,7 @@ defmodule SlackexWeb.ChatLive.Index do
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
     channels = Chat.list_user_channels(user.id)
+    dm_conversations = Chat.list_user_dm_conversations(user.id)
 
     if connected?(socket) do
       Messaging.subscribe_user(user.id)
@@ -25,6 +26,7 @@ defmodule SlackexWeb.ChatLive.Index do
     {:ok,
      socket
      |> assign(:channels, channels)
+     |> assign(:dm_conversations, dm_conversations)
      |> assign(:active_channel, nil)
      |> assign(:active_dm, nil)
      |> assign(:can_send, false)
@@ -41,6 +43,18 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
 
   @impl true
+  def handle_params(%{"dm_id" => dm_id}, _uri, socket) do
+    user = socket.assigns.current_user
+    dm = Chat.get_dm_conversation!(dm_id)
+
+    if user.id in [dm.user_a_id, dm.user_b_id] do
+      {:noreply, enter_dm(socket, dm)}
+    else
+      {:noreply, socket |> put_flash(:error, "Not found.") |> redirect(to: ~p"/chat")}
+    end
+  end
+
+  @impl true
   def handle_params(%{"slug" => slug}, _uri, socket) do
     user = socket.assigns.current_user
     channel = Chat.get_channel_by_slug!(slug)
@@ -55,6 +69,17 @@ defmodule SlackexWeb.ChatLive.Index do
          |> put_flash(:error, "You don't have access to that channel.")
          |> redirect(to: ~p"/chat")}
     end
+  end
+
+  @impl true
+  def handle_params(_params, _uri, %{assigns: %{live_action: :new_dm}} = socket) do
+    socket = leave_conversation(socket)
+
+    {:noreply,
+     socket
+     |> assign(:active_channel, nil)
+     |> assign(:active_dm, nil)
+     |> assign(:page_title, "New Message")}
   end
 
   @impl true
@@ -265,6 +290,43 @@ defmodule SlackexWeb.ChatLive.Index do
     |> stream(:messages, messages, reset: true)
   end
 
+  defp enter_dm(socket, dm) do
+    user = socket.assigns.current_user
+    socket = leave_conversation(socket)
+
+    if connected?(socket) do
+      Messaging.subscribe_dm(dm.id)
+    end
+
+    other_user =
+      if dm.user_a_id == user.id do
+        Accounts.get_user!(dm.user_b_id)
+      else
+        Accounts.get_user!(dm.user_a_id)
+      end
+
+    messages =
+      dm.id
+      |> Chat.list_dm_messages(limit: 50)
+      |> Enum.reverse()
+
+    oldest_id =
+      case messages do
+        [first | _] -> first.id
+        [] -> nil
+      end
+
+    socket
+    |> assign(:active_dm, dm)
+    |> assign(:active_channel, nil)
+    |> assign(:can_send, true)
+    |> assign(:page_title, other_user.display_name || other_user.username)
+    |> assign(:typing_users, MapSet.new())
+    |> assign(:oldest_message_id, oldest_id)
+    |> assign(:has_more_messages, length(messages) >= 50)
+    |> stream(:messages, messages, reset: true)
+  end
+
   defp send_message_to_channel(channel, user, content, socket) do
     case Messaging.send_message(channel.id, user.id, content) do
       {:ok, _message} ->
@@ -422,6 +484,64 @@ defmodule SlackexWeb.ChatLive.Index do
             </div>
           <% end %>
         <% else %>
+          <%= if @active_dm do %>
+            <%!-- DM header --%>
+            <div class="px-4 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
+              <button
+                class="md:hidden btn btn-ghost btn-sm btn-square"
+                phx-click="toggle_sidebar"
+                aria-label="Toggle sidebar"
+              >
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </button>
+              <div class="flex-1 min-w-0">
+                <h2 class="font-bold text-lg truncate">{@page_title}</h2>
+              </div>
+            </div>
+
+            <%!-- DM message list --%>
+            <div
+              id="message-list"
+              phx-hook="MessageList"
+              phx-update="stream"
+              class="flex-1 overflow-y-auto px-2 py-4"
+            >
+              <div :for={{dom_id, message} <- @streams.messages} id={dom_id}>
+                <.message_bubble message={message} current_user_id={@current_user.id} />
+              </div>
+            </div>
+
+            <%!-- Typing indicator --%>
+            <.typing_indicator users={MapSet.to_list(@typing_users)} />
+
+            <%!-- DM compose area --%>
+            <div class="p-3 border-t border-base-300 bg-base-100">
+              <.form
+                for={@message_form}
+                id="message-form"
+                phx-submit="send_message"
+                phx-hook="Compose"
+                class="flex gap-2 items-end"
+              >
+                <textarea
+                  name="message[content]"
+                  placeholder={"Message #{@page_title}"}
+                  class="textarea textarea-bordered flex-1 min-h-[2.5rem] max-h-[200px] resize-none leading-normal py-2"
+                  rows="1"
+                  autocomplete="off"
+                  phx-debounce="100"
+                >{@message_form[:content].value}</textarea>
+                <button type="submit" class="btn btn-primary btn-sm">Send</button>
+              </.form>
+            </div>
+          <% else %>
           <%!-- No channel selected --%>
           <div class="flex-1 flex flex-col">
             <div class="px-4 py-3 border-b border-base-300 bg-base-100 md:hidden">
@@ -445,6 +565,7 @@ defmodule SlackexWeb.ChatLive.Index do
               subtitle="Select a channel from the sidebar to start chatting."
             />
           </div>
+          <% end %>
         <% end %>
       </div>
     </div>

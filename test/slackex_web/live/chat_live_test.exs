@@ -30,15 +30,15 @@ defmodule SlackexWeb.ChatLiveTest do
   end
 
   describe "DM route resolution" do
-    test "/chat/dm/new resolves with :new_dm action", %{conn: conn} do
-      {:ok, _lv, _html} = live(conn, ~p"/chat/dm/new")
+    test "/chat/dm/new resolves with :new_dm action and shows New Message title", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/new")
+      assert html =~ "New Message"
     end
 
-    test "/chat/dm/:dm_id resolves with :dm action", %{conn: conn} do
-      dm = insert(:dm_conversation)
+    test "/chat/dm/:dm_id resolves with :dm action", %{conn: conn, alice: alice, bob: bob} do
+      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
+      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
 
-      # The route should resolve (even if handle_params for :dm is not fully wired yet,
-      # the route itself must exist and match the LiveView)
       assert {:ok, _lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
     end
 
@@ -47,7 +47,59 @@ defmodule SlackexWeb.ChatLiveTest do
       # If the slug route matched first, it would crash looking up a channel with slug "dm"
       {:ok, _lv, html} = live(conn, ~p"/chat/dm/new")
 
-      # Route resolved successfully — the catch-all handle_params rendered the welcome state
+      # Route resolved successfully — shows New Message (not a channel lookup error)
+      assert html =~ "New Message"
+    end
+  end
+
+  describe "DM conversations" do
+    setup %{alice: alice, bob: bob} do
+      # Create a DM between alice and bob, respecting user_a_id < user_b_id invariant
+      {a, b} = if alice.id < bob.id, do: {alice, bob}, else: {bob, alice}
+      dm = insert(:dm_conversation, user_a: a, user_b: b, user_a_id: a.id, user_b_id: b.id)
+      %{dm: dm}
+    end
+
+    test "mount assigns dm_conversations without error", %{conn: conn, dm: _dm} do
+      # When a DM exists for alice, mount should load dm_conversations and not crash
+      assert {:ok, _lv, _html} = live(conn, ~p"/chat")
+    end
+
+    test "navigating to DM loads messages into stream", %{conn: conn, alice: alice, dm: dm} do
+      {:ok, _msg} = Chat.send_dm(dm.id, alice.id, "Hello via DM!")
+
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      assert html =~ "Hello via DM!"
+    end
+
+    test "DM page title shows other user display name", %{conn: conn, bob: bob, dm: dm} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Page title should show bob's display name (the "other" user from alice's perspective)
+      expected_name = bob.display_name || bob.username
+      assert html =~ expected_name
+    end
+
+    test "non-participant accessing DM receives flash error and redirects", %{conn: conn} do
+      # Create a DM between two other users (not alice)
+      stranger_dm = insert(:dm_conversation)
+
+      assert {:error, {:redirect, %{flash: flash, to: "/chat"}}} =
+               live(conn, ~p"/chat/dm/#{stranger_dm.id}")
+
+      assert flash["error"] =~ "Not found"
+    end
+
+    test "leaving a DM conversation by navigating away clears active_dm", %{
+      conn: conn,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Navigate to index
+      html = render_patch(lv, ~p"/chat")
+
       assert html =~ "Welcome to Slackex"
     end
   end
