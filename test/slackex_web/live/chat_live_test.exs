@@ -244,6 +244,90 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "new DM modal" do
+    setup %{alice: _alice, bob: _bob} do
+      # Create additional users for search results
+      carol = insert(:user, username: "carol", display_name: "Carol Smith")
+      dave = insert(:user, username: "dave", display_name: "Dave Jones")
+      _eve = insert(:user, username: "eve", display_name: "Eve Adams")
+      %{carol: carol, dave: dave}
+    end
+
+    test "modal renders when navigated to /chat/dm/new", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/new")
+
+      assert html =~ "new-dm-modal"
+      assert html =~ "Search users"
+    end
+
+    test "typing 2+ chars in search field returns matching users", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      html =
+        lv
+        |> element("#new-dm-search")
+        |> render_change(%{"search_query" => "carol"})
+
+      assert html =~ "Carol Smith"
+    end
+
+    test "current user excluded from search results", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      # Alice is logged in; searching "ali" should not return alice
+      html =
+        lv
+        |> element("#new-dm-search")
+        |> render_change(%{"search_query" => "ali"})
+
+      refute html =~ ~s|alice|
+    end
+
+    test "selecting a user sends {:start_dm, user_id} to parent", %{conn: conn, carol: carol} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      # Search for carol
+      lv
+      |> element("#new-dm-search")
+      |> render_change(%{"search_query" => "carol"})
+
+      # Click on carol's result
+      lv
+      |> element("#new-dm-modal [data-user-id=\"#{carol.id}\"]")
+      |> render_click()
+
+      # After selection, modal should close (navigated away from :new_dm)
+      html = render(lv)
+      refute html =~ "new-dm-modal"
+    end
+
+    test "queries under 2 chars return empty results without showing users", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      html =
+        lv
+        |> element("#new-dm-search")
+        |> render_change(%{"search_query" => "c"})
+
+      refute html =~ "Carol Smith"
+      refute html =~ "Dave Jones"
+    end
+
+    test "modal closes on backdrop click, navigating back to /chat", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      assert render(lv) =~ "new-dm-modal"
+
+      # Click backdrop
+      lv
+      |> element("#new-dm-modal-backdrop")
+      |> render_click()
+
+      html = render(lv)
+      refute html =~ "new-dm-modal"
+    end
+  end
+
   describe "chat experience" do
     test "user sees their channels in sidebar", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")

@@ -7,6 +7,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Messaging
   alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
+  alias SlackexWeb.ChatLive.NewDmModal
   alias SlackexWeb.ChatLive.SidebarComponent
 
   import SlackexWeb.ChatComponents
@@ -193,6 +194,19 @@ defmodule SlackexWeb.ChatLive.Index do
     OnlineTracker.refresh(socket.assigns.current_user.id)
     Process.send_after(self(), :online_heartbeat, 60_000)
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:start_dm, user_id}, socket) do
+    current_user = socket.assigns.current_user
+
+    case Chat.find_or_create_dm(current_user.id, user_id) do
+      {:ok, dm} ->
+        {:noreply, push_patch(socket, to: ~p"/chat/dm/#{dm.id}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not start conversation.")}
+    end
   end
 
   @impl true
@@ -571,6 +585,13 @@ defmodule SlackexWeb.ChatLive.Index do
         <% end %>
       </div>
     </div>
+
+    <.live_component
+      :if={@live_action == :new_dm}
+      module={NewDmModal}
+      id="new-dm-modal"
+      current_user={@current_user}
+    />
     """
   end
 end
