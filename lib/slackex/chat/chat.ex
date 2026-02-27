@@ -807,7 +807,7 @@ defmodule Slackex.Chat do
     })
     |> Repo.insert(
       on_conflict: {:replace, [:last_read_message_id, :updated_at]},
-      conflict_target: [:user_id, :channel_id]
+      conflict_target: {:unsafe_fragment, "(user_id, channel_id) WHERE channel_id IS NOT NULL"}
     )
 
     :ok
@@ -829,6 +829,76 @@ defmodule Slackex.Chat do
         where: m.channel_id == ^channel_id and m.id > ^cursor,
         select: count(m.id)
     ) || 0
+  end
+
+  @doc """
+  Upserts the read cursor for a user/DM conversation to the latest message ID.
+  """
+  def mark_dm_as_read(user_id, dm_conversation_id) do
+    latest_id =
+      Repo.one(
+        from m in Message,
+          where: m.dm_conversation_id == ^dm_conversation_id,
+          select: max(m.id)
+      ) || 0
+
+    %ReadCursor{}
+    |> ReadCursor.changeset(%{
+      user_id: user_id,
+      dm_conversation_id: dm_conversation_id,
+      last_read_message_id: latest_id
+    })
+    |> Repo.insert(
+      on_conflict: {:replace, [:last_read_message_id, :updated_at]},
+      conflict_target: {:unsafe_fragment, "(user_id, dm_conversation_id) WHERE dm_conversation_id IS NOT NULL"}
+    )
+
+    :ok
+  end
+
+  @doc """
+  Returns unread counts for all channels and DM conversations a user participates in.
+
+  Uses exactly 2 queries: one for channels, one for DMs.
+
+  Returns `%{channel_counts: %{channel_id => count}, dm_counts: %{dm_id => count}}`.
+  Conversations with zero unread messages are included with count 0 (not absent).
+  """
+  def batch_unread_counts(user_id) do
+    channel_counts = batch_channel_unread_counts(user_id)
+    dm_counts = batch_dm_unread_counts(user_id)
+
+    %{channel_counts: channel_counts, dm_counts: dm_counts}
+  end
+
+  defp batch_channel_unread_counts(user_id) do
+    Repo.all(
+      from s in Subscription,
+        where: s.user_id == ^user_id,
+        left_join: rc in ReadCursor,
+          on: rc.user_id == ^user_id and rc.channel_id == s.channel_id,
+        left_join: m in Message,
+          on: m.channel_id == s.channel_id and
+              m.id > coalesce(rc.last_read_message_id, 0),
+        group_by: s.channel_id,
+        select: {s.channel_id, count(m.id)}
+    )
+    |> Map.new()
+  end
+
+  defp batch_dm_unread_counts(user_id) do
+    Repo.all(
+      from d in DMConversation,
+        where: d.user_a_id == ^user_id or d.user_b_id == ^user_id,
+        left_join: rc in ReadCursor,
+          on: rc.user_id == ^user_id and rc.dm_conversation_id == d.id,
+        left_join: m in Message,
+          on: m.dm_conversation_id == d.id and
+              m.id > coalesce(rc.last_read_message_id, 0),
+        group_by: d.id,
+        select: {d.id, count(m.id)}
+    )
+    |> Map.new()
   end
 
   # ---------------------------------------------------------------------------
