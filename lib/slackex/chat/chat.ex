@@ -6,7 +6,7 @@ defmodule Slackex.Chat do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias Slackex.Chat.{Channel, DMConversation, Message, Permissions, ReadCursor, Subscription, UserBlock}
+  alias Slackex.Chat.{Channel, DMConversation, DMRateLimiter, Message, Permissions, ReadCursor, Subscription, UserBlock}
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.ReadRepo
   alias Slackex.Repo
@@ -284,11 +284,13 @@ defmodule Slackex.Chat do
   """
   def find_or_create_dm(user_a_id, user_b_id) do
     {a, b} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
+    is_self_dm = user_a_id == user_b_id
 
-    if user_a_id != user_b_id and block_exists_between?(a, b) do
+    if not is_self_dm and block_exists_between?(a, b) do
       {:error, :blocked}
     else
-      find_or_create_dm_record(a, b)
+      initiator_id = user_a_id
+      find_or_create_dm_record(a, b, initiator_id, is_self_dm)
     end
   end
 
@@ -296,21 +298,26 @@ defmodule Slackex.Chat do
     blocked?(user_a_id, user_b_id) or blocked?(user_b_id, user_a_id)
   end
 
-  defp find_or_create_dm_record(a, b) do
+  defp find_or_create_dm_record(a, b, initiator_id, is_self_dm) do
     case Repo.get_by(DMConversation, user_a_id: a, user_b_id: b) do
       nil ->
-        %DMConversation{}
-        |> DMConversation.changeset(%{user_a_id: a, user_b_id: b})
-        |> Repo.insert()
-        |> tap(fn
-          {:ok, dm} -> broadcast_new_dm(dm)
-          _error -> :ok
-        end)
+        with :ok <- check_rate_limit(initiator_id, is_self_dm) do
+          %DMConversation{}
+          |> DMConversation.changeset(%{user_a_id: a, user_b_id: b})
+          |> Repo.insert()
+          |> tap(fn
+            {:ok, dm} -> broadcast_new_dm(dm)
+            _error -> :ok
+          end)
+        end
 
       dm ->
         {:ok, dm}
     end
   end
+
+  defp check_rate_limit(_initiator_id, true = _is_self_dm), do: :ok
+  defp check_rate_limit(initiator_id, false = _is_self_dm), do: DMRateLimiter.check(initiator_id)
 
   defp broadcast_new_dm(dm) do
     Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_a_id}", {:dm_conversation_new, dm})

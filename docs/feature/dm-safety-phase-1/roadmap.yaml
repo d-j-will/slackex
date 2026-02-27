@@ -1,0 +1,155 @@
+roadmap:
+  project_id: dm-safety-phase-1
+  created_at: '2026-02-27T11:00:41Z'
+  total_steps: 9
+  phases: 3
+phases:
+- id: '01'
+  name: 'DM Delivery Fix'
+  steps:
+  - id: 01-01
+    name: 'Add updated_at to dm_conversations'
+    criteria:
+      - 'Migration adds updated_at (utc_datetime_usec) column to dm_conversations'
+      - 'Existing rows backfilled with updated_at = inserted_at'
+      - 'Column is non-null with DB default after backfill'
+      - 'DMConversation schema includes updated_at field'
+      - 'mix ecto.migrate succeeds with zero errors'
+    files_to_modify:
+      - priv/repo/migrations/TIMESTAMP_add_updated_at_to_dm_conversations.exs
+      - lib/slackex/chat/dm_conversation.ex
+    dependencies: []
+    estimated_hours: 0.5
+  - id: 01-02
+    name: 'Update updated_at on each DM message and order sidebar by activity'
+    criteria:
+      - 'send_dm atomically updates dm_conversation.updated_at within same transaction'
+      - 'list_user_dm_conversations returns conversations ordered by updated_at desc'
+      - 'Sending a message to an older conversation moves it to top of sidebar list'
+      - 'Returned conversation maps include updated_at field'
+    files_to_modify:
+      - lib/slackex/chat/chat.ex
+      - test/slackex/chat_test.exs
+    dependencies:
+      - 01-01
+    estimated_hours: 1.5
+  - id: 01-03
+    name: 'Broadcast new DM conversations to recipient via PubSub'
+    criteria:
+      - 'Creating a new DM broadcasts {:dm_conversation_new, dm} to both participants user topics'
+      - 'Reopening an existing DM does not broadcast'
+      - 'ChatLive handles :dm_conversation_new by refreshing dm_conversations assigns'
+      - 'Recipient sidebar updates in real-time without page refresh'
+    files_to_modify:
+      - lib/slackex/chat/chat.ex
+      - lib/slackex_web/live/chat_live/index.ex
+      - test/slackex/chat_test.exs
+      - test/slackex_web/live/chat_live_test.exs
+    dependencies:
+      - 01-02
+    estimated_hours: 1.5
+- id: '02'
+  name: 'User Blocking'
+  steps:
+  - id: 02-01
+    name: 'Create user_blocks schema and migration'
+    criteria:
+      - 'Migration creates user_blocks table with blocker_id, blocked_id, reason, timestamps'
+      - 'Unique index on (blocker_id, blocked_id) prevents duplicate blocks'
+      - 'Index on blocked_id for reverse lookups'
+      - 'UserBlock schema validates required fields and prevents self-blocking'
+      - 'mix ecto.migrate succeeds with zero errors'
+    files_to_modify:
+      - priv/repo/migrations/TIMESTAMP_create_user_blocks.exs
+      - lib/slackex/chat/user_block.ex
+    dependencies: []
+    estimated_hours: 1.0
+  - id: 02-02
+    name: 'Add blocking context functions'
+    criteria:
+      - 'block_user/2 creates a block and returns {:ok, block}'
+      - 'unblock_user/2 removes block and returns :ok, or {:error, :not_found}'
+      - 'blocked?/2 returns true only in blocker->blocked direction (directional)'
+      - 'list_blocked_users/1 returns all blocks created by a user'
+      - 'Duplicate block returns changeset error'
+    files_to_modify:
+      - lib/slackex/chat/chat.ex
+      - test/slackex/chat/user_block_test.exs
+    dependencies:
+      - 02-01
+    estimated_hours: 1.5
+  - id: 02-03
+    name: 'Enforce blocks in DM creation and user search'
+    criteria:
+      - 'find_or_create_dm returns {:error, :blocked} when either user has blocked the other'
+      - 'Self-DMs are exempt from block checks'
+      - 'Blocked users excluded from new DM user search results'
+      - 'list_blocked_user_ids/1 returns IDs for search filtering'
+    files_to_modify:
+      - lib/slackex/chat/chat.ex
+      - lib/slackex/accounts/accounts.ex
+      - test/slackex/chat/user_block_test.exs
+    dependencies:
+      - 02-02
+    estimated_hours: 1.5
+- id: '03'
+  name: 'Rate Limiting and UI'
+  steps:
+  - id: 03-01
+    name: 'Rate-limit DM creation'
+    criteria:
+      - 'New DM creation limited to 5 per hour per user (ETS-backed)'
+      - 'Exceeding limit returns {:error, :rate_limited} from find_or_create_dm'
+      - 'Reopening existing conversations is not rate-limited'
+      - 'Different users have independent rate limit buckets'
+      - 'ETS table initialized in application.ex startup'
+    files_to_modify:
+      - lib/slackex/chat/dm_rate_limiter.ex
+      - lib/slackex/chat/chat.ex
+      - lib/slackex/application.ex
+      - test/slackex/chat/dm_rate_limiter_test.exs
+    dependencies:
+      - 02-03
+    estimated_hours: 2.0
+  - id: 03-02
+    name: 'Add block UI to DM conversation header'
+    criteria:
+      - 'Block button visible in active DM conversation header'
+      - 'Clicking block with confirmation creates block and redirects to /chat'
+      - 'Flash message confirms user was blocked'
+      - 'DM sidebar refreshes after blocking'
+    files_to_modify:
+      - lib/slackex_web/live/chat_live/index.ex
+    dependencies:
+      - 02-03
+    estimated_hours: 1.0
+  - id: 03-03
+    name: 'Filter blocked users from new DM user search'
+    criteria:
+      - 'Blocked users do not appear in new DM modal search results'
+      - 'Users who have blocked the current user also excluded'
+      - 'search_users accepts exclude_ids option for filtering'
+    files_to_modify:
+      - lib/slackex_web/live/chat_live/new_dm_modal.ex
+      - lib/slackex/accounts/accounts.ex
+      - lib/slackex/chat/chat.ex
+      - test/support/factory.ex
+    dependencies:
+      - 02-03
+      - 03-02
+    estimated_hours: 1.5
+implementation_scope:
+  source_directories:
+    - lib/slackex/
+    - lib/slackex_web/
+  test_directories:
+    - test/slackex/
+    - test/slackex_web/
+  excluded_patterns:
+    - _build/**
+    - deps/**
+    - .elixir_ls/**
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-02-27T11:10:00Z'
