@@ -7,10 +7,9 @@ defmodule Slackex.Application do
 
   @impl true
   def start(_type, _args) do
-    Slackex.Chat.DMRateLimiter.init()
-
     children = [
       SlackexWeb.Telemetry,
+      Slackex.Chat.DMRateLimiter,
       Slackex.Repo,
       Slackex.ReadRepo,
       Slackex.ReadRepo.LagMonitor,

@@ -7,7 +7,7 @@ defmodule Slackex.Chat.DMRateLimiterTest do
   @max_dms_per_hour 5
 
   setup do
-    DMRateLimiter.init()
+    :ets.delete_all_objects(:dm_rate_limits)
     :ok
   end
 

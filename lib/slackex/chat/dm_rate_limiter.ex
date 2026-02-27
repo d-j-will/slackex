@@ -4,7 +4,13 @@ defmodule Slackex.Chat.DMRateLimiter do
 
   Uses the pure functional RateLimiter internally, storing per-user
   limiter state in an ETS table. Rate: 5 new DMs per hour per user.
+
+  Runs as a GenServer to own the ETS table lifecycle. The table is
+  `:public`, so check/reset are direct ETS operations with no
+  GenServer bottleneck.
   """
+
+  use GenServer
 
   alias Slackex.Infrastructure.RateLimiter
 
@@ -12,20 +18,10 @@ defmodule Slackex.Chat.DMRateLimiter do
   @rate 5
   @per :hour
 
-  @doc """
-  Creates the ETS table. Safe to call multiple times (handles table-already-exists).
-  Called from application.ex startup.
-  """
-  @spec init() :: :ok
-  def init do
-    case :ets.whereis(@table) do
-      :undefined ->
-        :ets.new(@table, [:named_table, :public, :set])
-        :ok
+  ## Client API
 
-      _ref ->
-        :ok
-    end
+  def start_link(_opts) do
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @doc """
@@ -54,6 +50,16 @@ defmodule Slackex.Chat.DMRateLimiter do
     :ets.delete(@table, user_id)
     :ok
   end
+
+  ## GenServer callbacks
+
+  @impl true
+  def init(_) do
+    table = :ets.new(@table, [:named_table, :public, :set])
+    {:ok, %{table: table}}
+  end
+
+  ## Private
 
   defp get_or_create_limiter(user_id) do
     case :ets.lookup(@table, user_id) do
