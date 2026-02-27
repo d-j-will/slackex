@@ -6,7 +6,7 @@ defmodule Slackex.Chat do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias Slackex.Chat.{Channel, DMConversation, Message, Permissions, ReadCursor, Subscription}
+  alias Slackex.Chat.{Channel, DMConversation, Message, Permissions, ReadCursor, Subscription, UserBlock}
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.ReadRepo
   alias Slackex.Repo
@@ -418,5 +418,51 @@ defmodule Slackex.Chat do
         where: m.channel_id == ^channel_id and m.id > ^cursor,
         select: count(m.id)
     ) || 0
+  end
+
+  # ---------------------------------------------------------------------------
+  # User block operations
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Blocks a user. Creates a UserBlock record from blocker to blocked.
+  Returns `{:ok, block}` or `{:error, changeset}` on duplicate/validation failure.
+  """
+  def block_user(blocker_id, blocked_id) do
+    %UserBlock{}
+    |> UserBlock.changeset(%{blocker_id: blocker_id, blocked_id: blocked_id})
+    |> Repo.insert()
+  end
+
+  @doc """
+  Unblocks a user. Removes the block from blocker to blocked.
+  Returns `:ok` or `{:error, :not_found}`.
+  """
+  def unblock_user(blocker_id, blocked_id) do
+    case Repo.get_by(UserBlock, blocker_id: blocker_id, blocked_id: blocked_id) do
+      nil -> {:error, :not_found}
+      block -> Repo.delete(block) |> then(fn {:ok, _} -> :ok end)
+    end
+  end
+
+  @doc """
+  Checks if blocker has blocked the given user. Directional: only checks
+  blocker -> blocked direction.
+  """
+  def blocked?(blocker_id, blocked_id) do
+    Repo.exists?(
+      from ub in UserBlock,
+        where: ub.blocker_id == ^blocker_id and ub.blocked_id == ^blocked_id
+    )
+  end
+
+  @doc """
+  Lists all blocks created by the given user.
+  """
+  def list_blocked_users(user_id) do
+    Repo.all(
+      from ub in UserBlock,
+        where: ub.blocker_id == ^user_id
+    )
   end
 end

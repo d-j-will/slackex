@@ -1,6 +1,7 @@
 defmodule Slackex.Chat.UserBlockTest do
   use Slackex.DataCase, async: true
 
+  alias Slackex.Chat
   alias Slackex.Chat.UserBlock
 
   describe "changeset/2" do
@@ -88,6 +89,101 @@ defmodule Slackex.Chat.UserBlockTest do
                |> Repo.insert()
 
       assert %{blocker_id: ["has already blocked this user"]} = errors_on(changeset)
+    end
+  end
+
+  describe "Chat.block_user/2" do
+    test "creates a block and returns {:ok, block}" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      assert {:ok, block} = Chat.block_user(blocker.id, blocked.id)
+      assert block.blocker_id == blocker.id
+      assert block.blocked_id == blocked.id
+    end
+
+    test "duplicate block returns changeset error" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      assert {:ok, _} = Chat.block_user(blocker.id, blocked.id)
+      assert {:error, changeset} = Chat.block_user(blocker.id, blocked.id)
+      assert %{blocker_id: ["has already blocked this user"]} = errors_on(changeset)
+    end
+  end
+
+  describe "Chat.unblock_user/2" do
+    test "removes an existing block and returns :ok" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      {:ok, _} = Chat.block_user(blocker.id, blocked.id)
+      assert :ok = Chat.unblock_user(blocker.id, blocked.id)
+      refute Chat.blocked?(blocker.id, blocked.id)
+    end
+
+    test "returns {:error, :not_found} when no block exists" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      assert {:error, :not_found} = Chat.unblock_user(blocker.id, blocked.id)
+    end
+  end
+
+  describe "Chat.blocked?/2" do
+    test "returns true when blocker has blocked the user" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      {:ok, _} = Chat.block_user(blocker.id, blocked.id)
+      assert Chat.blocked?(blocker.id, blocked.id)
+    end
+
+    test "is directional - reverse direction returns false" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      {:ok, _} = Chat.block_user(blocker.id, blocked.id)
+      refute Chat.blocked?(blocked.id, blocker.id)
+    end
+
+    test "returns false when no block exists" do
+      user_a = insert(:user)
+      user_b = insert(:user)
+
+      refute Chat.blocked?(user_a.id, user_b.id)
+    end
+  end
+
+  describe "Chat.list_blocked_users/1" do
+    test "returns all blocks created by the user" do
+      blocker = insert(:user)
+      blocked_1 = insert(:user)
+      blocked_2 = insert(:user)
+
+      {:ok, block_1} = Chat.block_user(blocker.id, blocked_1.id)
+      {:ok, block_2} = Chat.block_user(blocker.id, blocked_2.id)
+
+      blocks = Chat.list_blocked_users(blocker.id)
+      block_ids = Enum.map(blocks, & &1.id) |> Enum.sort()
+
+      assert length(blocks) == 2
+      assert block_ids == Enum.sort([block_1.id, block_2.id])
+    end
+
+    test "returns empty list when user has no blocks" do
+      user = insert(:user)
+
+      assert Chat.list_blocked_users(user.id) == []
+    end
+
+    test "does not include blocks where user is the blocked party" do
+      user = insert(:user)
+      other = insert(:user)
+
+      {:ok, _} = Chat.block_user(other.id, user.id)
+
+      assert Chat.list_blocked_users(user.id) == []
     end
   end
 end
