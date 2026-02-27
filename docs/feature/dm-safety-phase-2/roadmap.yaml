@@ -1,0 +1,291 @@
+roadmap:
+  project_id: dm-safety-phase-2
+  created_at: '2026-02-27T13:31:37Z'
+  total_steps: 11
+  phases: 4
+phases:
+- id: '01'
+  name: 'Schema & Foundation'
+  steps:
+  - id: 01-01
+    name: 'DM requests table and schema'
+    description: >
+      Migration and Ecto schema for dm_requests: Snowflake PK, sender_id,
+      recipient_id, preview_text (500 chars), status enum (pending/accepted/declined),
+      nullable dm_conversation_id FK, inserted_at, responded_at. Unique partial
+      index on (sender_id, recipient_id) WHERE status = pending.
+    time_estimate: '1h'
+    dependencies: []
+    criteria:
+      - 'dm_requests table exists with all columns and correct types'
+      - 'Unique partial index prevents duplicate pending requests between same pair'
+      - 'Schema validates preview_text max 500 chars and status inclusion'
+      - 'Snowflake ID assigned on insert'
+      - 'belongs_to associations to users and dm_conversations defined'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/dm_request.ex
+      migrations:
+        - priv/repo/migrations/*_create_dm_requests.exs
+      test:
+        - test/slackex/chat/dm_request_test.exs
+  - id: 01-02
+    name: 'User trust scores table and schema'
+    description: >
+      Migration and Ecto schema for user_trust_scores: id, user_id (unique),
+      decline_count (default 0), block_count (default 0), report_count (default 0),
+      dm_restricted (bool, default false), dm_restricted_at (nullable), updated_at.
+    time_estimate: '45m'
+    dependencies: []
+    criteria:
+      - 'user_trust_scores table exists with all columns and defaults'
+      - 'Unique index on user_id prevents duplicate rows'
+      - 'Schema defaults decline/block/report counts to 0 and dm_restricted to false'
+      - 'Changeset validates required user_id field'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/user_trust_score.ex
+      migrations:
+        - priv/repo/migrations/*_create_user_trust_scores.exs
+      test:
+        - test/slackex/chat/user_trust_score_test.exs
+  - id: 01-03
+    name: 'DM preference field on users'
+    description: >
+      Add dm_preference string column to users table (default "anyone").
+      Update User schema and registration/update changeset to include the field
+      with validation for allowed values: anyone, shared_channels, nobody.
+    time_estimate: '30m'
+    dependencies: []
+    criteria:
+      - 'users.dm_preference column exists with default "anyone"'
+      - 'User schema exposes dm_preference field'
+      - 'Changeset rejects values outside anyone/shared_channels/nobody'
+      - 'Existing users receive default "anyone" via migration'
+    implementation_scope:
+      source:
+        - lib/slackex/accounts/user.ex
+      migrations:
+        - priv/repo/migrations/*_add_dm_preference_to_users.exs
+      test:
+        - test/slackex/accounts/user_dm_preference_test.exs
+- id: '02'
+  name: 'Request/Accept Core Logic'
+  steps:
+  - id: 02-01
+    name: 'Create DM request with foundational pre-flight checks'
+    description: >
+      Chat.create_dm_request/3 function with ordered pre-flight pipeline:
+      (1) account age < 24h hard gate, (2) bidirectional block check,
+      (3) dm_restricted check via user_trust_scores, (4) account < 7d
+      shared-channel-only gate. On pass, creates dm_request with status=pending
+      and preview_text. Age thresholds via module attributes
+      (@min_account_age_hours, @new_account_age_days). Shared channel check
+      queries subscriptions for common channel_ids.
+    time_estimate: '1.5h'
+    dependencies: ['01-01', '01-02', '01-03']
+    criteria:
+      - 'Returns {:error, :account_too_new} for accounts under 24 hours old'
+      - 'Returns {:error, :blocked} when block exists in either direction'
+      - 'Returns {:error, :dm_restricted} when sender trust score has dm_restricted true'
+      - 'Returns {:error, :no_shared_channels} for accounts under 7 days with no shared channels'
+      - 'Account over 7 days bypasses shared channel gate'
+      - 'Creates pending dm_request on successful pre-flight'
+      - 'Age thresholds configurable via module attributes'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/chat.ex
+        - lib/slackex/chat/dm_request.ex
+      test:
+        - test/slackex/chat/dm_request_flow_test.exs
+  - id: 02-02
+    name: 'DM request rate limiting and pending limits'
+    description: >
+      Extend create_dm_request pre-flight pipeline with rate limiting:
+      (1) max 5 new requests per hour (reuse DMRateLimiter pattern),
+      (2) max 20 new requests per day (new daily limiter),
+      (3) max 10 pending requests per sender (DB count query).
+      Thresholds via module attributes. Self-DMs exempt from rate limits.
+    time_estimate: '1h'
+    dependencies: ['02-01']
+    criteria:
+      - 'Returns {:error, :rate_limited} when sender exceeds 5 requests per hour'
+      - 'Returns {:error, :rate_limited} when sender exceeds 20 requests per day'
+      - 'Returns {:error, :too_many_pending} when sender has 10+ pending requests'
+      - 'Rate limit thresholds configurable via module attributes'
+      - 'Self-DMs exempt from all request rate limits'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/chat.ex
+        - lib/slackex/chat/dm_rate_limiter.ex
+      test:
+        - test/slackex/chat/dm_request_flow_test.exs
+        - test/slackex/chat/dm_rate_limiter_test.exs
+  - id: 02-03
+    name: 'DM preference gate, existing conversation bypass, and PubSub broadcast'
+    description: >
+      Complete create_dm_request pipeline: (1) check recipient dm_preference
+      ("anyone" allows all, "shared_channels" requires common channel,
+      "nobody" rejects unless existing accepted conversation), (2) bypass
+      request flow when accepted DM conversation already exists (return it
+      directly), (3) broadcast {:dm_request_new, request} on recipient
+      user PubSub topic after successful creation.
+    time_estimate: '1h'
+    dependencies: ['02-02']
+    criteria:
+      - 'Returns {:error, :dm_preference_rejected} when recipient preference blocks sender'
+      - 'dm_preference "anyone" allows all senders'
+      - 'dm_preference "shared_channels" requires at least one common channel'
+      - 'dm_preference "nobody" rejects all new requests'
+      - 'Bypasses request flow when accepted DM conversation exists between users'
+      - 'Broadcasts dm_request.new to recipient via user PubSub topic'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/chat.ex
+      test:
+        - test/slackex/chat/dm_request_flow_test.exs
+  - id: 02-04
+    name: 'Accept DM request flow'
+    description: >
+      Chat.accept_dm_request/2 atomic operation via Ecto.Multi: create or
+      link dm_conversation, update dm_request status to accepted with
+      dm_conversation_id and responded_at, deliver preview_text as first
+      message in conversation. Broadcasts {:dm_request_accepted, request}
+      on sender user PubSub topic.
+    time_estimate: '1.5h'
+    dependencies: ['02-03']
+    criteria:
+      - 'Creates dm_conversation linking both users on accept'
+      - 'Updates dm_request status to accepted with responded_at timestamp'
+      - 'Sets dm_conversation_id on the accepted request'
+      - 'Delivers preview_text as first message in the new conversation'
+      - 'Broadcasts accepted event to sender via user PubSub topic'
+      - 'Returns {:error, :not_found} for non-existent or non-pending requests'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/chat.ex
+      test:
+        - test/slackex/chat/dm_request_flow_test.exs
+  - id: 02-05
+    name: 'Decline DM request with graduated enforcement'
+    description: >
+      Chat.decline_dm_request/2 sets status to declined and responded_at.
+      Counts prior declines between same sender-recipient pair for graduated
+      enforcement: strike 1 = 7-day cooldown (stored in dm_request, checked
+      in create_dm_request pre-flight), strike 2 = 30-day cooldown, strike 3
+      = auto-block via Chat.block_user (which triggers 04-01 trust increment).
+      Increments sender user_trust_score.decline_count (upserts if missing).
+      Sender receives no notification. Cooldown thresholds via module attributes.
+      Active cooldowns checked in create_dm_request pre-flight as
+      {:error, :cooldown_active}.
+    time_estimate: '1.5h'
+    dependencies: ['02-03']
+    criteria:
+      - 'Updates dm_request status to declined with responded_at timestamp'
+      - 'First decline enforces 7-day cooldown on new requests from same sender'
+      - 'Second decline enforces 30-day cooldown on new requests from same sender'
+      - 'Third decline auto-blocks sender via Chat.block_user'
+      - 'Increments decline_count on sender user_trust_score (upserts if missing)'
+      - 'No PubSub event broadcast to sender on decline'
+      - 'Active cooldown returns {:error, :cooldown_active} in create_dm_request'
+      - 'Cooldown thresholds configurable via module attributes'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/chat.ex
+        - lib/slackex/chat/user_trust_score.ex
+      test:
+        - test/slackex/chat/dm_request_flow_test.exs
+- id: '03'
+  name: 'LiveView UI'
+  steps:
+  - id: 03-01
+    name: 'Message Requests sidebar section with accept/decline/block'
+    description: >
+      New sidebar section "Message Requests" showing pending dm_requests
+      for current user with badge count. Request view displays sender info,
+      preview_text (truncated to 100 chars), and accept/decline/block action
+      buttons. Accept navigates to new DM conversation. Decline and block
+      remove from list. Badge count owned by sidebar component, updated
+      on mount and via assigns.
+    time_estimate: '2h'
+    dependencies: ['02-04', '02-05']
+    criteria:
+      - 'Sidebar shows Message Requests section with pending request count badge'
+      - 'Clicking a request shows sender info and truncated preview text'
+      - 'Accept button triggers accept flow and navigates to DM conversation'
+      - 'Decline button removes request from list without sender notification'
+      - 'Block button blocks sender and removes request from list'
+    implementation_scope:
+      source:
+        - lib/slackex_web/live/chat_live/sidebar_component.ex
+        - lib/slackex_web/live/chat_live/index.ex
+      test:
+        - test/slackex_web/live/chat_live_test.exs
+  - id: 03-02
+    name: 'Real-time PubSub integration for request notifications'
+    description: >
+      Handle {:dm_request_new, request} and {:dm_request_accepted, request}
+      PubSub events in ChatLive. New requests prepend to sidebar requests
+      list and increment badge count. Accepted requests refresh DM sidebar
+      and navigate sender to new conversation. Update NewDmModal to route
+      through create_dm_request for first contact instead of find_or_create_dm.
+      Badge count updates driven by PubSub assigns in sidebar component.
+    time_estimate: '1.5h'
+    dependencies: ['03-01']
+    criteria:
+      - 'New dm_request appears in recipient sidebar without page refresh'
+      - 'Accepted dm_request adds conversation to sender DM sidebar in real-time'
+      - 'NewDmModal creates dm_request instead of dm_conversation for first contact'
+      - 'Badge count increments on new request and decrements on accept/decline'
+    implementation_scope:
+      source:
+        - lib/slackex_web/live/chat_live/index.ex
+        - lib/slackex_web/live/chat_live/new_dm_modal.ex
+        - lib/slackex_web/live/chat_live/sidebar_component.ex
+      test:
+        - test/slackex_web/live/chat_live_test.exs
+- id: '04'
+  name: 'Trust Enforcement'
+  steps:
+  - id: 04-01
+    name: 'Global trust score enforcement with auto-restrict'
+    description: >
+      Wire block_count increment into Chat.block_user/2: after creating
+      user_blocks row, upsert sender user_trust_score and increment
+      block_count. When block_count reaches threshold (5 distinct users),
+      set dm_restricted=true and dm_restricted_at. This fires on all
+      block_user calls including strike-3 auto-blocks from 02-05. The
+      pre-flight check in 02-01 already rejects dm_restricted senders.
+      Threshold via @block_restriction_threshold module attribute.
+    time_estimate: '1h'
+    dependencies: ['02-01', '02-05']
+    criteria:
+      - 'Blocking a user increments block_count on blocked user trust score'
+      - 'User with blocks from 5+ distinct users gets dm_restricted set to true'
+      - 'dm_restricted user cannot send new DM requests (rejected at pre-flight)'
+      - 'Threshold value configurable via module attribute'
+      - 'dm_restricted_at timestamp recorded when restriction activates'
+      - 'Triggered by all block_user calls including strike-3 auto-blocks'
+    implementation_scope:
+      source:
+        - lib/slackex/chat/chat.ex
+        - lib/slackex/chat/user_trust_score.ex
+      test:
+        - test/slackex/chat/trust_enforcement_test.exs
+implementation_scope:
+  source_directories:
+  - lib/slackex/chat/
+  - lib/slackex/accounts/
+  - lib/slackex_web/live/chat_live/
+  test_directories:
+  - test/slackex/chat/
+  - test/slackex/accounts/
+  - test/slackex_web/live/
+  excluded_patterns:
+  - _build/**
+  - deps/**
+  - .elixir_ls/**
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-02-27T14:00:00Z'
