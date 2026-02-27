@@ -375,6 +375,53 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_info({:dm_request_new, request}, socket) do
+    request = Slackex.Repo.preload(request, :sender)
+    dm_requests = [request | socket.assigns.dm_requests]
+    dm_request_count = socket.assigns.dm_request_count + 1
+
+    {:noreply,
+     socket
+     |> assign(:dm_requests, dm_requests)
+     |> assign(:dm_request_count, dm_request_count)}
+  end
+
+  @impl true
+  def handle_info({:dm_request_accepted, _request}, socket) do
+    user = socket.assigns.current_user
+    dm_conversations = Chat.list_user_dm_conversations(user.id)
+
+    {:noreply,
+     socket
+     |> assign(:dm_conversations, dm_conversations)
+     |> put_flash(:info, "Your DM request was accepted")}
+  end
+
+  @impl true
+  def handle_info({:start_dm_request, user_id}, socket) do
+    current_user = socket.assigns.current_user
+
+    case Chat.create_dm_request(current_user.id, user_id, "") do
+      {:ok, %Slackex.Chat.DMRequest{}} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "DM request sent")
+         |> push_patch(to: ~p"/chat")}
+
+      {:ok, %Slackex.Chat.DMConversation{} = dm} ->
+        dm_conversations = Chat.list_user_dm_conversations(current_user.id)
+
+        {:noreply,
+         socket
+         |> assign(:dm_conversations, dm_conversations)
+         |> push_patch(to: ~p"/chat/dm/#{dm.id}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not send DM request.")}
+    end
+  end
+
+  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
   end

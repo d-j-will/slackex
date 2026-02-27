@@ -1,6 +1,8 @@
 defmodule SlackexWeb.ChatLiveTest do
   use SlackexWeb.ConnCase
 
+  import Ecto.Query
+
   alias Slackex.Chat
   alias Slackex.Messaging.Envelope
 
@@ -461,7 +463,21 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ ~s|alice|
     end
 
-    test "selecting a user sends {:start_dm, user_id} to parent", %{conn: conn, carol: carol} do
+    test "selecting a user sends {:start_dm_request, user_id} to parent", %{
+      conn: conn,
+      alice: alice,
+      carol: carol
+    } do
+      # Make alice's account old enough to pass create_dm_request checks
+      Slackex.Repo.update_all(
+        from(u in Slackex.Accounts.User, where: u.id == ^alice.id),
+        set: [inserted_at: DateTime.add(DateTime.utc_now(), -48 * 3600, :second)]
+      )
+
+      # Alice and carol must share a channel for the request to succeed
+      channel = Chat.get_channel_by_slug!("general")
+      Chat.join_channel(carol.id, channel.id)
+
       {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
 
       # Search for carol
@@ -474,7 +490,7 @@ defmodule SlackexWeb.ChatLiveTest do
       |> element("#new-dm-modal [data-user-id=\"#{carol.id}\"]")
       |> render_click()
 
-      # After selection, modal should close (navigated away from :new_dm)
+      # After selection, modal should close (navigated to /chat with flash)
       html = render(lv)
       refute html =~ "new-dm-modal"
     end
@@ -1375,6 +1391,185 @@ defmodule SlackexWeb.ChatLiveTest do
       {:ok, _lv, html} = live(bob_conn, ~p"/chat")
 
       refute html =~ "Message Requests"
+    end
+  end
+
+  describe "PubSub: real-time DM request notifications" do
+    test "new dm_request appears in recipient sidebar without page refresh", %{
+      conn: conn,
+      alice: alice
+    } do
+      sender = insert(:user, username: "pubsub_sender", display_name: "PubSub Sender")
+
+      {:ok, lv, html} = live(conn, ~p"/chat")
+
+      # Sidebar should NOT show Message Requests yet (alice has no pending requests)
+      refute html =~ "PubSub Sender"
+
+      # Simulate PubSub broadcast of a new DM request (as Chat context would)
+      request =
+        insert(:dm_request,
+          sender: sender,
+          recipient: alice,
+          preview_text: "Hello from PubSub!",
+          status: "pending"
+        )
+
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "user:#{alice.id}",
+        {:dm_request_new, request}
+      )
+
+      # LiveView processes the message; sidebar should now show the request
+      html = render(lv)
+      assert html =~ "PubSub Sender"
+      assert html =~ "Message Requests"
+      assert html =~ "1"
+    end
+
+    test "accepted dm_request adds conversation to sender DM sidebar in real-time", %{
+      conn: _conn
+    } do
+      # Use fresh users to avoid shared-channel sidebar pollution
+      sender = insert(:user, username: "accept_sender", display_name: "Accept Sender")
+      recipient = insert(:user, username: "accept_recip", display_name: "Accept Recipient")
+
+      # Log in as sender
+      sender_conn = build_conn() |> log_in_user(sender)
+      {:ok, sender_lv, sender_html} = live(sender_conn, ~p"/chat")
+
+      # Sender should NOT see recipient in DM sidebar initially
+      refute sender_html =~ "Accept Recipient"
+
+      # Create a DM request struct to simulate acceptance
+      request =
+        insert(:dm_request,
+          sender: sender,
+          recipient: recipient,
+          preview_text: "Hey!",
+          status: "accepted"
+        )
+
+      # Create the DM conversation that acceptance would produce
+      _dm = create_dm_between(sender, recipient)
+
+      # Simulate PubSub broadcast that Chat.accept_dm_request sends to sender
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "user:#{sender.id}",
+        {:dm_request_accepted, request}
+      )
+
+      # Sender's sidebar should now show recipient in DM conversations
+      html = render(sender_lv)
+      assert html =~ "Accept Recipient"
+    end
+
+    test "badge count increments on new request via PubSub", %{conn: conn, alice: alice} do
+      # Set up alice with one existing request
+      sender1 = insert(:user, username: "badge_s1", display_name: "Badge Sender 1")
+
+      insert(:dm_request,
+        sender: sender1,
+        recipient: alice,
+        preview_text: "First request",
+        status: "pending"
+      )
+
+      {:ok, lv, html} = live(conn, ~p"/chat")
+      assert html =~ "1"
+
+      # Broadcast a second request
+      sender2 = insert(:user, username: "badge_s2", display_name: "Badge Sender 2")
+
+      request2 =
+        insert(:dm_request,
+          sender: sender2,
+          recipient: alice,
+          preview_text: "Second request",
+          status: "pending"
+        )
+
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "user:#{alice.id}",
+        {:dm_request_new, request2}
+      )
+
+      html = render(lv)
+      assert html =~ "2"
+      assert html =~ "Badge Sender 2"
+    end
+  end
+
+  describe "NewDmModal routes through create_dm_request for first contact" do
+    setup %{alice: _alice, bob: _bob} do
+      carol = insert(:user, username: "dm_req_carol", display_name: "DmReq Carol")
+      %{carol: carol}
+    end
+
+    test "selecting a user with no existing DM creates a dm_request and shows flash", %{
+      conn: conn,
+      alice: alice,
+      carol: carol
+    } do
+      # Make alice's account old enough to pass the account age check
+      Slackex.Repo.update_all(
+        from(u in Slackex.Accounts.User, where: u.id == ^alice.id),
+        set: [inserted_at: DateTime.add(DateTime.utc_now(), -48 * 3600, :second)]
+      )
+
+      # Alice and carol share a channel (general from setup) -- join carol
+      channel = Chat.get_channel_by_slug!("general")
+      Chat.join_channel(carol.id, channel.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      # Search for carol
+      lv
+      |> element("#new-dm-search")
+      |> render_change(%{"search_query" => "dm_req_carol"})
+
+      # Click on carol
+      lv
+      |> element("#new-dm-modal [data-user-id=\"#{carol.id}\"]")
+      |> render_click()
+
+      # Should show flash about request sent (not navigate to a DM)
+      html = render(lv)
+      assert html =~ "request sent" or html =~ "Request sent" or html =~ "DM request sent"
+    end
+
+    test "selecting a user with existing DM navigates to DM as before", %{
+      conn: conn,
+      alice: alice,
+      bob: bob
+    } do
+      # Create existing DM between alice and bob
+      _dm = create_dm_between(alice, bob)
+
+      # Make alice's account old enough
+      Slackex.Repo.update_all(
+        from(u in Slackex.Accounts.User, where: u.id == ^alice.id),
+        set: [inserted_at: DateTime.add(DateTime.utc_now(), -48 * 3600, :second)]
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      # Search for bob
+      lv
+      |> element("#new-dm-search")
+      |> render_change(%{"search_query" => "bob"})
+
+      # Click on bob
+      lv
+      |> element("#new-dm-modal [data-user-id=\"#{bob.id}\"]")
+      |> render_click()
+
+      # Should navigate to the existing DM conversation (modal closes)
+      html = render(lv)
+      refute html =~ "new-dm-modal"
     end
   end
 end
