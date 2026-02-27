@@ -82,6 +82,129 @@ defmodule SlackexWeb.ChatLive.IndexTest do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Acceptance: Real-time unread increment via PubSub
+  # ---------------------------------------------------------------------------
+
+  describe "real-time unread increment" do
+    setup %{user: user} do
+      bob = insert(:user, username: "bob_realtime")
+
+      # Channel where user is owner, bob is member
+      {:ok, channel} = Chat.create_channel(user.id, %{name: "realtime-test"})
+      Chat.join_channel(bob.id, channel.id)
+      Chat.mark_as_read(user.id, channel.id)
+
+      # Second channel for non-active testing
+      {:ok, channel2} = Chat.create_channel(user.id, %{name: "other-channel"})
+      Chat.join_channel(bob.id, channel2.id)
+      Chat.mark_as_read(user.id, channel2.id)
+
+      # DM conversation
+      {:ok, dm} = Chat.find_or_create_dm(user.id, bob.id)
+      Chat.mark_dm_as_read(user.id, dm.id)
+
+      %{bob: bob, channel: channel, channel2: channel2, dm: dm}
+    end
+
+    test "incoming message for non-active channel increments sidebar badge",
+         %{conn: conn, bob: bob, channel: channel} do
+      {:ok, view, html} = live(conn, ~p"/chat")
+
+      # Baseline: no badge for channel
+      refute html =~ ~r/<span[^>]*badge-primary[^>]*>\s*1\s*<\/span>/
+
+      # Simulate a message arriving on channel PubSub topic
+      envelope =
+        Slackex.Messaging.Envelope.wrap("message.new", {:channel, channel.id}, %{
+          id: System.unique_integer([:positive]),
+          content: "Hello from bob",
+          sender_id: bob.id,
+          sender: bob,
+          channel_id: channel.id,
+          inserted_at: DateTime.utc_now()
+        })
+
+      Phoenix.PubSub.broadcast!(Slackex.PubSub, "channel:#{channel.id}", {:envelope, envelope})
+
+      # Wait for the LiveView to process and re-render
+      html = render(view)
+
+      # Should now show badge with count 1
+      assert html =~ ~r/<span[^>]*badge-primary[^>]*>\s*1\s*<\/span>/
+    end
+
+    test "incoming message for active channel does NOT increment badge",
+         %{conn: conn, bob: bob, channel: channel} do
+      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Simulate a message arriving on active channel
+      envelope =
+        Slackex.Messaging.Envelope.wrap("message.new", {:channel, channel.id}, %{
+          id: System.unique_integer([:positive]),
+          content: "Hello while active",
+          sender_id: bob.id,
+          sender: bob,
+          channel_id: channel.id,
+          inserted_at: DateTime.utc_now()
+        })
+
+      Phoenix.PubSub.broadcast!(Slackex.PubSub, "channel:#{channel.id}", {:envelope, envelope})
+
+      html = render(view)
+
+      # No unread badge should appear for the active channel
+      refute html =~ ~r/<span[^>]*badge-primary[^>]*>\s*1\s*<\/span>/
+    end
+
+    test "incoming DM for non-active conversation increments sidebar badge",
+         %{conn: conn, bob: bob, dm: dm} do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      # Simulate a DM message arriving
+      envelope =
+        Slackex.Messaging.Envelope.wrap("message.new", {:dm, dm.id}, %{
+          id: System.unique_integer([:positive]),
+          content: "DM from bob",
+          sender_id: bob.id,
+          sender: bob,
+          dm_conversation_id: dm.id,
+          inserted_at: DateTime.utc_now()
+        })
+
+      Phoenix.PubSub.broadcast!(Slackex.PubSub, "dm:#{dm.id}", {:envelope, envelope})
+
+      html = render(view)
+
+      assert html =~ ~r/<span[^>]*badge-primary[^>]*>\s*1\s*<\/span>/
+    end
+
+    test "entering a conversation with real-time unreads resets badge to 0",
+         %{conn: conn, bob: bob, channel: channel} do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      # Send a message to create an unread
+      envelope =
+        Slackex.Messaging.Envelope.wrap("message.new", {:channel, channel.id}, %{
+          id: System.unique_integer([:positive]),
+          content: "Unread msg",
+          sender_id: bob.id,
+          sender: bob,
+          channel_id: channel.id,
+          inserted_at: DateTime.utc_now()
+        })
+
+      Phoenix.PubSub.broadcast!(Slackex.PubSub, "channel:#{channel.id}", {:envelope, envelope})
+      html = render(view)
+      assert html =~ ~r/<span[^>]*badge-primary[^>]*>\s*1\s*<\/span>/
+
+      # Now enter the channel -- badge should reset
+      view |> element("a[href=\"/chat/#{channel.slug}\"]") |> render_click()
+      html = render(view)
+      refute html =~ ~r/<span[^>]*badge-primary[^>]*>\s*1\s*<\/span>/
+    end
+  end
+
   describe "heartbeat" do
     test "refresh heartbeat keeps user online and reschedules", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, ~p"/chat")

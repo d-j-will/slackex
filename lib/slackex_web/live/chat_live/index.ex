@@ -27,6 +27,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
     if connected?(socket) do
       Messaging.subscribe_user(user.id)
+      subscribe_all_conversations(channels, dm_conversations)
       OnlineTracker.mark_online(user.id)
       Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
     end
@@ -305,15 +306,19 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_info({:envelope, %{event: "message.new", payload: message}}, socket) do
-    message = enrich_message(message)
+  def handle_info({:envelope, %{event: "message.new", payload: message} = envelope}, socket) do
+    if message_for_active_conversation?(envelope, socket) do
+      message = enrich_message(message)
 
-    socket =
-      socket
-      |> stream_insert(:messages, message)
-      |> maybe_mark_as_read(message)
+      socket =
+        socket
+        |> stream_insert(:messages, message)
+        |> maybe_mark_as_read(message)
 
-    {:noreply, socket}
+      {:noreply, socket}
+    else
+      {:noreply, increment_unread_count(socket, envelope)}
+    end
   end
 
   @impl true
@@ -654,6 +659,41 @@ defmodule SlackexWeb.ChatLive.Index do
 
     socket
   end
+
+  defp subscribe_all_conversations(channels, dm_conversations) do
+    Enum.each(channels, fn channel -> Messaging.subscribe_channel(channel.id) end)
+    Enum.each(dm_conversations, fn dm -> Messaging.subscribe_dm(dm.id) end)
+  end
+
+  defp message_for_active_conversation?(%{target: %{type: :channel, id: id}}, socket) do
+    socket.assigns.active_channel != nil and socket.assigns.active_channel.id == id
+  end
+
+  defp message_for_active_conversation?(%{target: %{type: :dm, id: id}}, socket) do
+    socket.assigns.active_dm != nil and socket.assigns.active_dm.id == id
+  end
+
+  defp message_for_active_conversation?(_envelope, _socket), do: false
+
+  defp increment_unread_count(socket, %{target: %{type: :channel, id: channel_id}}) do
+    current_counts = socket.assigns.unread_counts
+    channel_counts = current_counts.channel_counts
+    new_count = Map.get(channel_counts, channel_id, 0) + 1
+    updated_channel_counts = Map.put(channel_counts, channel_id, new_count)
+    updated_unread_counts = Map.put(current_counts, :channel_counts, updated_channel_counts)
+    assign(socket, :unread_counts, updated_unread_counts)
+  end
+
+  defp increment_unread_count(socket, %{target: %{type: :dm, id: dm_id}}) do
+    current_counts = socket.assigns.unread_counts
+    dm_counts = current_counts.dm_counts
+    new_count = Map.get(dm_counts, dm_id, 0) + 1
+    updated_dm_counts = Map.put(dm_counts, dm_id, new_count)
+    updated_unread_counts = Map.put(current_counts, :dm_counts, updated_dm_counts)
+    assign(socket, :unread_counts, updated_unread_counts)
+  end
+
+  defp increment_unread_count(socket, _envelope), do: socket
 
   # ---------------------------------------------------------------------------
   # Template
