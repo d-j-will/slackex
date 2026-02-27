@@ -69,6 +69,10 @@ defmodule Slackex.Chat.DMRateLimiterTest do
 
       assert :ok = DMRateLimiter.check(user_id)
     end
+
+    test "reset on non-existent user does not crash" do
+      assert :ok = DMRateLimiter.reset(999_999)
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -141,24 +145,15 @@ defmodule Slackex.Chat.DMRateLimiterTest do
     end
 
     test "rate limit applies to the initiator, not the sorted user ID" do
-      # Create two users where initiator has a HIGHER ID than the other user
-      # This ensures the sorted user_a_id != initiator
-      user_low = insert(:user)
-      user_high = insert(:user)
+      initiator = insert(:user)
 
-      # Ensure we know which has the higher ID
-      {initiator, _other} =
-        if user_high.id > user_low.id,
-          do: {user_high, user_low},
-          else: {user_low, user_high}
-
-      # Exhaust initiator's limit
+      # Exhaust initiator's limit with 5 new DM conversations
       for _ <- 1..@max_dms_per_hour do
         other = insert(:user)
         {:ok, _dm} = Chat.find_or_create_dm(initiator.id, other.id)
       end
 
-      # Initiator should be rate-limited
+      # The 6th attempt by the same initiator should fail
       one_more = insert(:user)
       assert {:error, :rate_limited} = Chat.find_or_create_dm(initiator.id, one_more.id)
     end

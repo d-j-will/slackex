@@ -277,6 +277,11 @@ defmodule Slackex.Chat do
 
   @doc """
   Finds or creates a DM conversation between two users. Normalizes user order.
+
+  Returns `{:ok, dm}` on success.
+  Returns `{:error, :blocked}` when either user has blocked the other.
+  Returns `{:error, :rate_limited}` when DM creation rate limit exceeded.
+  Returns `{:error, changeset}` on validation failure.
   """
   def find_or_create_dm(user_a_id, user_b_id) do
     {lower_id, higher_id} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
@@ -473,6 +478,9 @@ defmodule Slackex.Chat do
   Used for filtering search results.
   """
   def list_blocked_user_ids(user_id) do
+    # For each block row involving this user, return the *other* user's ID:
+    # - If this user is the blocker, return the blocked_id (user they blocked)
+    # - If this user is the blocked, return the blocker_id (user who blocked them)
     Repo.all(
       from ub in UserBlock,
         where: ub.blocker_id == ^user_id or ub.blocked_id == ^user_id,

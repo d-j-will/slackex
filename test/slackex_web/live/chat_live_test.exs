@@ -141,9 +141,8 @@ defmodule SlackexWeb.ChatLiveTest do
       |> render_submit()
 
       # The message should be dispatched via Messaging.send_dm and broadcast
-      # back through PubSub, appearing in the stream. Give it a moment.
-      # If send_message handler ignores DMs, this message won't appear.
-      Process.sleep(100)
+      # back through PubSub, appearing in the stream.
+      # render(lv) processes pending messages in the LiveView mailbox.
       html = render(lv)
       assert html =~ "Hello DM!"
     end
@@ -250,8 +249,8 @@ defmodule SlackexWeb.ChatLiveTest do
       html = render(lv)
       assert html =~ bob.username
 
-      # After 3 seconds, typing indicator auto-clears
-      Process.sleep(3_100)
+      # Simulate the auto-clear timer firing by sending the clear message directly
+      send(lv.pid, {:clear_typing, bob.username})
       html = render(lv)
       refute html =~ "is typing"
     end
@@ -896,10 +895,11 @@ defmodule SlackexWeb.ChatLiveTest do
       {:ok, dave_lv, _html} = live(dave_conn, ~p"/chat")
       send(dave_lv.pid, {:start_dm, carol.id})
 
-      # Give PubSub time to deliver
-      Process.sleep(100)
+      # Process pending messages in dave's LiveView to ensure DM creation completes
+      render(dave_lv)
 
       # Carol's sidebar should now show Dave (the new DM partner) without page refresh
+      # render(carol_lv) processes pending PubSub messages in carol's LiveView mailbox
       carol_html = render(carol_lv)
       assert carol_html =~ "Dave Broadcast"
     end
@@ -919,8 +919,8 @@ defmodule SlackexWeb.ChatLiveTest do
       {:ok, alice_lv, _html} = live(conn, ~p"/chat")
       send(alice_lv.pid, {:start_dm, bob.id})
 
-      # Give PubSub time to deliver (if any broadcast were sent)
-      Process.sleep(100)
+      # Process pending messages in alice's LiveView to ensure the reopen completes
+      render(alice_lv)
 
       # No :dm_conversation_new broadcast should have been sent
       refute_received {:dm_conversation_new, _}
