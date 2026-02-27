@@ -10,6 +10,7 @@ defmodule Slackex.Pipeline.BatchWriter do
   `Task.Supervisor` that must be in the application supervision tree).
   """
 
+  alias Slackex.Chat.Message
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.Repo
 
@@ -50,7 +51,7 @@ defmodule Slackex.Pipeline.BatchWriter do
 
         %{rows: [[_db_epoch]]} ->
           entries = Enum.map(messages, &to_row/1)
-          {count, _} = Repo.insert_all("messages", entries, on_conflict: :nothing)
+          {count, _} = Repo.insert_all(Message, entries, on_conflict: :nothing)
           count
 
         %{rows: []} ->
