@@ -1040,12 +1040,14 @@ defmodule Slackex.Chat do
     - Upserts report_count on reported user's trust score
 
   Returns `{:ok, abuse_report}` on success.
+  Returns `{:error, :self_report}` when reporter and reported user are the same.
   Returns `{:error, :account_too_new}` for accounts under 7 days.
   Returns `{:error, :dm_restricted}` for restricted reporters.
   Returns `{:error, changeset}` on validation failure (includes duplicate open report).
   """
   def create_abuse_report(reporter_id, reported_user_id, attrs) do
-    with :ok <- check_reporter_account_age(reporter_id),
+    with :ok <- check_self_report(reporter_id, reported_user_id),
+         :ok <- check_reporter_account_age(reporter_id),
          :ok <- check_not_dm_restricted(reporter_id) do
       id = Snowflake.generate()
 
@@ -1059,7 +1061,7 @@ defmodule Slackex.Chat do
       case %AbuseReport{id: id} |> AbuseReport.changeset(report_attrs) |> Repo.insert() do
         {:ok, report} ->
           # Auto-block: reporter blocks reported user. Ignore errors (already blocked).
-          block_user(reporter_id, reported_user_id)
+          _ = block_user(reporter_id, reported_user_id)
           upsert_report_count(reported_user_id)
           check_report_thresholds(reported_user_id)
           check_velocity(reported_user_id)
@@ -1070,6 +1072,9 @@ defmodule Slackex.Chat do
       end
     end
   end
+
+  defp check_self_report(user_id, user_id), do: {:error, :self_report}
+  defp check_self_report(_reporter_id, _reported_user_id), do: :ok
 
   defp check_reporter_account_age(reporter_id) do
     cutoff = days_ago(@new_account_age_days)
@@ -1120,6 +1125,18 @@ defmodule Slackex.Chat do
   # Counts distinct reporter clusters by grouping reporters whose first report
   # falls within the same 24-hour window. This dampens coordinated reporting:
   # multiple reporters filing within a single window count as one cluster.
+  #
+  # Algorithm: Walk the time-sorted list of {reporter_id, first_report_at} pairs.
+  # Start a new cluster (increment count) whenever a reporter's timestamp exceeds
+  # the current window_start by more than 24 hours; otherwise they join the
+  # existing cluster.
+  #
+  # Example with reporters A(t=0h), B(t=2h), C(t=30h), D(t=31h):
+  #   - A starts cluster 1 (window_start = 0h)
+  #   - B at 2h is within 24h of 0h -> stays in cluster 1
+  #   - C at 30h exceeds 24h from 0h -> starts cluster 2 (window_start = 30h)
+  #   - D at 31h is within 24h of 30h -> stays in cluster 2
+  #   Result: 2 distinct reporter clusters
   defp dampen_reporter_clusters([]), do: 0
 
   defp dampen_reporter_clusters([{_first_reporter, first_timestamp} | rest]) do

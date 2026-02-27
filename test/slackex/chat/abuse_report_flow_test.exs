@@ -49,6 +49,13 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
   # ---------------------------------------------------------------------------
 
   describe "create_abuse_report/3 pre-flight rejections" do
+    test "reporter cannot report themselves" do
+      reporter = insert_user_with_age_days(10)
+
+      assert {:error, :self_report} =
+               Chat.create_abuse_report(reporter.id, reporter.id, %{category: "spam"})
+    end
+
     test "rejects reporter with account under 7 days" do
       reporter = insert_user_with_age_days(3)
       reported = insert_user_with_age_days(10)
@@ -339,7 +346,7 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
       assert trust_score.dm_restricted_at != nil
     end
 
-    test "fewer than 3 distinct reporters does not trigger threshold restriction" do
+    test "fewer than 3 distinct reporters does not trigger threshold restriction (velocity may still restrict)" do
       reported = insert_user_with_age_days(10)
       reporters = for _ <- 1..2, do: insert_user_with_age_days(10)
 
@@ -349,10 +356,11 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
       end
 
       trust_score = Repo.get_by!(UserTrustScore, user_id: reported.id)
-      # dm_restricted is true via velocity (2 reports + 2 auto-blocks = 4 signals in 24h >= 3)
-      # but admin_flagged is false (only 1 dampened distinct reporter, well below 5)
-      assert trust_score.dm_restricted == true
+      # Distinct-reporter threshold (3+) NOT met -- only 2 reporters
       assert trust_score.admin_flagged == false
+      # Velocity detection (3+ signals in 24h) IS triggered:
+      # 2 reports + 2 auto-blocks = 4 signals >= 3 threshold
+      assert trust_score.dm_restricted == true
     end
 
     test "multiple reports from same reporter count as 1 distinct reporter for dampening" do
@@ -376,50 +384,16 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
       reporters = for _ <- 1..5, do: insert_user_with_age_days(10)
       categories = ["spam", "harassment", "other", "phishing", "inappropriate_content"]
 
-      # Space reports >24h apart so dampening treats each as a separate cluster
+      # Create 5 backdated reports via factory (bypasses create_abuse_report, so no
+      # auto-blocks or trust score side effects). Each report is >24h apart so
+      # dampening treats them as separate clusters.
       for {reporter, i} <- Enum.with_index(reporters) do
-        {:ok, report} =
-          Chat.create_abuse_report(reporter.id, reported.id, %{category: Enum.at(categories, i)})
-
-        # Backdate report to (i+1)*25 hours ago so each is >24h apart
-        past =
-          DateTime.utc_now()
-          |> DateTime.add(-(i + 1) * 25 * 3600, :second)
-          |> DateTime.truncate(:microsecond)
-
-        Repo.update_all(
-          from(ar in AbuseReport, where: ar.id == ^report.id),
-          set: [inserted_at: past]
-        )
+        hours = (i + 1) * 25
+        insert_backdated_abuse_report(reporter, reported, Enum.at(categories, i), hours)
       end
-
-      # Force re-evaluation of thresholds after backdating
-      # The last report's insert already ran check_report_thresholds,
-      # but with non-backdated timestamps. Re-run by filing one more report
-      # that will trigger the check with correct backdated data.
-      # Instead, we can directly check: all 5 are >24h apart => 5 clusters => 5 distinct
-      # But the pipeline already ran. We need to also backdate the blocks.
-      # Simpler: backdate everything then trigger threshold check via a new report.
-
-      # Backdate all auto-blocks to match
-      for {reporter, i} <- Enum.with_index(reporters) do
-        past =
-          DateTime.utc_now()
-          |> DateTime.add(-(i + 1) * 25 * 3600, :second)
-          |> DateTime.truncate(:microsecond)
-
-        Repo.update_all(
-          from(ub in Slackex.Chat.UserBlock,
-            where: ub.blocker_id == ^reporter.id and ub.blocked_id == ^reported.id
-          ),
-          set: [inserted_at: past]
-        )
-      end
-
-      # Reset trust score so the final report can re-evaluate cleanly
-      Repo.delete_all(from(ts in UserTrustScore, where: ts.user_id == ^reported.id))
 
       # File a 6th report from a new reporter to trigger fresh threshold evaluation
+      # with all 5 backdated reports visible as separate clusters
       reporter_6 = insert_user_with_age_days(10)
 
       {:ok, _report} =

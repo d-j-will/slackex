@@ -132,6 +132,36 @@ defmodule Slackex.Factory do
     insert_user_with_age(days_ago * 24)
   end
 
+  @doc """
+  Creates an abuse report with a backdated inserted_at timestamp.
+  Useful for testing time-window-dependent logic (dampening, velocity).
+  """
+  def insert_backdated_abuse_report(reporter, reported, category, hours_ago) do
+    report_attrs = %{
+      reporter_id: reporter.id,
+      reported_user_id: reported.id,
+      category: category,
+      status: "open"
+    }
+
+    {:ok, report} =
+      %Slackex.Chat.AbuseReport{id: unique_bigint_id()}
+      |> Slackex.Chat.AbuseReport.changeset(report_attrs)
+      |> Slackex.Repo.insert()
+
+    past =
+      DateTime.utc_now()
+      |> DateTime.add(-hours_ago * 3600, :second)
+      |> DateTime.truncate(:microsecond)
+
+    Slackex.Repo.update_all(
+      from(ar in Slackex.Chat.AbuseReport, where: ar.id == ^report.id),
+      set: [inserted_at: past]
+    )
+
+    %{report | inserted_at: past}
+  end
+
   # Generates a large monotonic integer suitable as a bigint ID.
   # Not a real Snowflake, but valid for factory use where the Snowflake
   # GenServer is not started.
