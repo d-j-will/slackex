@@ -22,7 +22,7 @@ defmodule Slackex.Infrastructure.RateLimiter do
           last_refill: integer()
         }
 
-  @spec new(rate: pos_integer(), per: :second | :minute | :hour) :: t()
+  @spec new(rate: pos_integer(), per: :second | :minute | :hour | :day) :: t()
   def new(rate: rate, per: per) do
     %__MODULE__{
       rate: rate,
@@ -56,4 +56,5 @@ defmodule Slackex.Infrastructure.RateLimiter do
   defp per_to_ms(:second), do: 1_000
   defp per_to_ms(:minute), do: 60_000
   defp per_to_ms(:hour), do: 3_600_000
+  defp per_to_ms(:day), do: 86_400_000
 end

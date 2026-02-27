@@ -14,6 +14,9 @@ defmodule Slackex.Chat do
 
   @min_account_age_hours 24
   @new_account_age_days 7
+  @max_requests_per_hour 5
+  @max_requests_per_day 20
+  @max_pending_requests 10
 
   # ---------------------------------------------------------------------------
   # Channel operations
@@ -340,6 +343,9 @@ defmodule Slackex.Chat do
     2. Bidirectional block check
     3. dm_restricted check via user_trust_scores
     4. Shared channel gate for accounts < 7 days old
+    5. Hourly request rate limit (#{@max_requests_per_hour}/hour)
+    6. Daily request rate limit (#{@max_requests_per_day}/day)
+    7. Pending request count limit (max #{@max_pending_requests})
 
   Self-DM requests bypass all checks and create the DM directly.
 
@@ -348,6 +354,8 @@ defmodule Slackex.Chat do
   Returns `{:error, :blocked}` when a block exists in either direction.
   Returns `{:error, :dm_restricted}` when sender trust score has dm_restricted.
   Returns `{:error, :no_shared_channels}` for accounts under 7 days with no shared channels.
+  Returns `{:error, :rate_limited}` when hourly or daily request rate limit exceeded.
+  Returns `{:error, :too_many_pending}` when sender has #{@max_pending_requests}+ pending requests.
   """
   def create_dm_request(sender_id, sender_id, _preview_text) do
     find_or_create_dm(sender_id, sender_id)
@@ -357,7 +365,10 @@ defmodule Slackex.Chat do
     with :ok <- check_account_age(sender_id),
          :ok <- check_not_blocked(sender_id, recipient_id),
          :ok <- check_not_dm_restricted(sender_id),
-         :ok <- check_shared_channels_if_new(sender_id, recipient_id) do
+         :ok <- check_shared_channels_if_new(sender_id, recipient_id),
+         :ok <- check_request_rate_hourly(sender_id),
+         :ok <- check_request_rate_daily(sender_id),
+         :ok <- check_pending_request_count(sender_id) do
       insert_dm_request(sender_id, recipient_id, preview_text)
     end
   end
@@ -414,6 +425,25 @@ defmodule Slackex.Chat do
         on: s1.channel_id == s2.channel_id,
         where: s1.user_id == ^user_a_id and s2.user_id == ^user_b_id
     )
+  end
+
+  defp check_request_rate_hourly(sender_id) do
+    DMRateLimiter.check_request_hourly(sender_id)
+  end
+
+  defp check_request_rate_daily(sender_id) do
+    DMRateLimiter.check_request_daily(sender_id)
+  end
+
+  defp check_pending_request_count(sender_id) do
+    pending_count =
+      Repo.one(
+        from r in DMRequest,
+          where: r.sender_id == ^sender_id and r.status == "pending",
+          select: count()
+      )
+
+    if pending_count < @max_pending_requests, do: :ok, else: {:error, :too_many_pending}
   end
 
   defp insert_dm_request(sender_id, recipient_id, preview_text) do

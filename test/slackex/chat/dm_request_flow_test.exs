@@ -1,8 +1,8 @@
 defmodule Slackex.Chat.DMRequestFlowTest do
-  use Slackex.DataCase, async: true
+  use Slackex.DataCase, async: false
 
   alias Slackex.Chat
-  alias Slackex.Chat.{DMRequest, UserTrustScore}
+  alias Slackex.Chat.{DMRateLimiter, DMRequest, UserTrustScore}
 
   # ---------------------------------------------------------------------------
   # Helpers
@@ -153,6 +153,121 @@ defmodule Slackex.Chat.DMRequestFlowTest do
 
       assert {:error, :account_too_new} =
                Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: DM request rate limiting
+  # ---------------------------------------------------------------------------
+
+  describe "create_dm_request/3 hourly rate limit" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "rejects when sender exceeds 5 requests per hour" do
+      sender = insert_user_with_age_days(10)
+
+      # Create 5 requests (exhausts hourly limit)
+      for _ <- 1..5 do
+        recipient = insert_user_with_age(48)
+        assert {:ok, %DMRequest{}} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+      end
+
+      # 6th request should be rate limited
+      one_more = insert_user_with_age(48)
+
+      assert {:error, :rate_limited} =
+               Chat.create_dm_request(sender.id, one_more.id, "Hi")
+    end
+
+    test "self-DMs are exempt from hourly rate limit" do
+      sender = insert_user_with_age(1)
+
+      # Exhaust rate limit (would fail for non-self)
+      for _ <- 1..6 do
+        assert {:ok, _dm} = Chat.create_dm_request(sender.id, sender.id, "Note")
+      end
+    end
+  end
+
+  describe "create_dm_request/3 daily rate limit" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "rejects when sender exceeds 20 requests per day" do
+      sender = insert_user_with_age_days(10)
+
+      # Create 20 requests in batches of 5, resetting hourly bucket and
+      # declining pending requests between batches to isolate the daily limit
+      for batch <- 1..4 do
+        for _ <- 1..5 do
+          recipient = insert_user_with_age(48)
+          assert {:ok, %DMRequest{}} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+        end
+
+        # Reset hourly bucket so next batch isn't blocked by hourly limit
+        DMRateLimiter.reset_request_hourly(sender.id)
+
+        # Decline all pending requests so pending count stays under 10
+        if batch < 4 do
+          Repo.update_all(
+            from(r in DMRequest, where: r.sender_id == ^sender.id and r.status == "pending"),
+            set: [status: "declined"]
+          )
+        end
+      end
+
+      # Reset hourly bucket one more time so the 21st attempt hits daily, not hourly
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # 21st request should be rate limited by daily cap
+      one_more = insert_user_with_age(48)
+
+      assert {:error, :rate_limited} =
+               Chat.create_dm_request(sender.id, one_more.id, "Hi")
+    end
+  end
+
+  describe "create_dm_request/3 pending request limit" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "rejects when sender has 10 or more pending requests" do
+      sender = insert_user_with_age_days(10)
+
+      # Create 10 pending requests in batches of 5, resetting hourly bucket between
+      for _ <- 1..5 do
+        recipient = insert_user_with_age(48)
+        assert {:ok, %DMRequest{}} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+      end
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      for _ <- 1..5 do
+        recipient = insert_user_with_age(48)
+        assert {:ok, %DMRequest{}} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+      end
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # 11th should fail with too_many_pending
+      one_more = insert_user_with_age(48)
+
+      assert {:error, :too_many_pending} =
+               Chat.create_dm_request(sender.id, one_more.id, "Hi")
+    end
+
+    test "self-DMs are exempt from pending request limit" do
+      sender = insert_user_with_age(1)
+
+      # Even with many pending requests, self-DM should work
+      assert {:ok, _dm} = Chat.create_dm_request(sender.id, sender.id, "Note")
     end
   end
 end
