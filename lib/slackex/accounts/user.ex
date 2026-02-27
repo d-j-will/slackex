@@ -14,6 +14,7 @@ defmodule Slackex.Accounts.User do
     field :password, :string, virtual: true, redact: true
     field :avatar_url, :string
     field :status, :string, default: "offline"
+    field :dm_preference, :string, default: "anyone"
 
     has_many :subscriptions, Slackex.Chat.Subscription
     has_many :channels, through: [:subscriptions, :channel]
@@ -34,6 +35,16 @@ defmodule Slackex.Accounts.User do
     |> validate_password()
     |> unique_constraint(:username)
     |> unique_constraint(:email)
+  end
+
+  @doc """
+  Changeset for updating a user's DM preference.
+  Validates the value is one of: anyone, shared_channels, nobody.
+  """
+  def dm_preference_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:dm_preference])
+    |> validate_inclusion(:dm_preference, ["anyone", "shared_channels", "nobody"])
   end
 
   @doc """
