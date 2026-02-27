@@ -1,0 +1,218 @@
+roadmap:
+  project_id: dm-conversations-ui
+  created_at: '2026-02-26T15:46:17Z'
+  total_steps: 9
+  phases: 3
+
+phases:
+- id: '01'
+  name: 'Database and Backend'
+  steps:
+  - id: 01-01
+    name: 'Trigram extension and indexes migration'
+    estimated_hours: 1
+    description: >
+      Create migration enabling pg_trgm extension and adding GiST trigram
+      indexes on users.username and users.display_name for typeahead search.
+    files_to_modify:
+    - priv/repo/migrations/TIMESTAMP_add_trigram_indexes.exs
+    criteria:
+    - 'Migration enables pg_trgm extension idempotently'
+    - 'GiST trigram indexes exist on users.username and users.display_name'
+    - 'Migration rolls back cleanly dropping indexes and extension'
+    architectural_constraints:
+    - 'GiST over GIN for KNN-ordered similarity ranking'
+    - 'Extension enable wrapped in execute with up/down for rollback safety'
+
+  - id: 01-02
+    name: 'Trigram user search in Accounts context'
+    estimated_hours: 1.5
+    description: >
+      Add search_users/2 to Accounts context. Uses pg_trgm similarity
+      operator on username and display_name, excludes given user IDs,
+      enforces minimum query length.
+    files_to_modify:
+    - lib/slackex/accounts/accounts.ex
+    - test/slackex/accounts_test.exs
+    criteria:
+    - 'Searching with 2+ chars returns users matching username or display_name'
+    - 'Queries under 2 chars return empty list without hitting DB'
+    - 'Excluded user IDs are omitted from results'
+    - 'Results include id, username, display_name, avatar_url fields'
+    architectural_constraints:
+    - 'Uses pg_trgm % operator via fragment for similarity matching'
+
+  - id: 01-03
+    name: 'DM conversation listing with preloaded other user'
+    estimated_hours: 1.5
+    description: >
+      Add list_user_dm_conversations/1 to Chat context. Returns DM
+      conversations for a user with the other participant preloaded,
+      ordered by most recent activity.
+    files_to_modify:
+    - lib/slackex/chat/chat.ex
+    - test/slackex/chat_test.exs
+    criteria:
+    - 'Returns DM conversations where user is participant (user_a or user_b)'
+    - 'Each result includes preloaded other_user with username, display_name, avatar_url'
+    - 'Results ordered by inserted_at descending (most recent first)'
+    - 'Empty list returned for user with no DMs'
+    architectural_constraints:
+    - 'Reuses existing list_dms/1 query pattern, extends with preload logic'
+    - 'Resolves "other user" based on which side of user_a/user_b the caller is'
+
+- id: '02'
+  name: 'Routing and Navigation'
+  steps:
+  - id: 02-01
+    name: 'DM routes and unsubscribe helper'
+    estimated_hours: 1.5
+    description: >
+      Add DM routes to authenticated live session. Add unsubscribe_dm/1 to
+      Messaging context. Add leave_conversation/1 helper to Index LiveView
+      that handles both channel and DM unsubscription.
+    files_to_modify:
+    - lib/slackex_web/router.ex
+    - lib/slackex/messaging/messaging.ex
+    - lib/slackex_web/live/chat_live/index.ex
+    criteria:
+    - '/chat/dm/new route resolves to ChatLive.Index with :new_dm action'
+    - '/chat/dm/:dm_id route resolves to ChatLive.Index with :dm action'
+    - 'Literal /chat/dm/* routes declared before slug /chat/:slug route'
+    - 'Messaging.unsubscribe_dm/1 unsubscribes from dm:ID PubSub topic'
+    architectural_constraints:
+    - 'Routes within existing :chat live_session scope'
+    - 'leave_conversation/1 generalizes channel/DM cleanup for reuse'
+
+  - id: 02-02
+    name: 'DM mount loading and handle_params'
+    estimated_hours: 2
+    description: >
+      Load DM conversations in mount. Add handle_params clause for :dm
+      action that verifies participant, subscribes to DM PubSub topic,
+      loads messages, and resets stream. Update catch-all handle_params
+      to use leave_conversation/1.
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/index.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - 'Mount assigns @dm_conversations from list_user_dm_conversations/1'
+    - 'Navigating to /chat/dm/:dm_id loads DM messages into stream'
+    - 'Non-participant accessing DM receives flash error and redirects to /chat'
+    - 'Leaving a DM conversation unsubscribes from its PubSub topic'
+    - 'DM page title shows other user display name'
+    architectural_constraints:
+    - 'enter_dm mirrors enter_channel pattern: unsubscribe old, subscribe new, load messages, reset stream'
+    - 'Participant check uses dm.user_a_id/user_b_id against current_user.id'
+
+- id: '03'
+  name: 'UI Components and Integration'
+  steps:
+  - id: 03-01
+    name: 'Sidebar DM list rendering'
+    estimated_hours: 1.5
+    description: >
+      Pass @dm_conversations to SidebarComponent. Render DM list below
+      channels section with other user avatar, name, and link. Add
+      "New Message" button that navigates to /chat/dm/new.
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/sidebar_component.ex
+    - lib/slackex_web/live/chat_live/index.ex
+    - lib/slackex_web/components/chat_components.ex
+    criteria:
+    - 'DM conversations appear below channels in sidebar under "Direct Messages" header'
+    - 'Each DM entry shows other user avatar and display name'
+    - 'Clicking a DM entry navigates to /chat/dm/:dm_id via patch'
+    - 'Active DM is visually highlighted in sidebar'
+    - '"New Message" button navigates to /chat/dm/new via patch'
+    architectural_constraints:
+    - 'SidebarComponent receives @dm_conversations assign from parent'
+    - 'Uses existing dms_expanded toggle state already in SidebarComponent'
+    - 'All navigation uses push_patch (in-view, no full reload)'
+
+  - id: 03-02
+    name: 'New DM modal LiveComponent'
+    estimated_hours: 2.5
+    description: >
+      Create NewDmModal LiveComponent with user search input and results
+      list. Debounced search calls Accounts.search_users/2. Selecting a
+      user sends {:start_dm, user_id} to parent. Modal opens when action
+      is :new_dm.
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/new_dm_modal.ex
+    - lib/slackex_web/live/chat_live/index.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - 'Modal renders when navigated to /chat/dm/new'
+    - 'Typing 2+ chars in search field returns matching users'
+    - 'Current user excluded from search results'
+    - 'Selecting a user closes modal and sends {:start_dm, user_id} to parent'
+    - 'Modal closes on backdrop click or escape, navigating back to /chat'
+    - 'Queries under 2 chars return empty results without DB call'
+    architectural_constraints:
+    - 'LiveComponent manages own @search_query and @search_results state'
+    - 'Search input debounced (300ms) to avoid excessive queries'
+    - 'Modal is a LiveComponent rendered conditionally on @live_action == :new_dm'
+
+  - id: 03-03
+    name: 'Start DM flow and DM message sending'
+    estimated_hours: 2
+    description: >
+      Handle {:start_dm, user_id} in Index: call Chat.find_or_create_dm/2,
+      update @dm_conversations, push_patch to new DM. Wire send_message
+      event to dispatch to Messaging.send_dm/4 when active conversation
+      is a DM. Handle DM real-time message receipt via PubSub.
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/index.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - 'Starting DM with existing conversation navigates to it without creating duplicate'
+    - 'Starting DM with new user creates conversation and navigates to it'
+    - 'New DM appears in sidebar dm_conversations list immediately'
+    - 'Sending message in DM conversation delivers via Messaging.send_dm/4'
+    - 'Incoming DM messages appear in real-time via PubSub stream insert'
+    architectural_constraints:
+    - 'find_or_create_dm/2 already exists in Chat context -- reuse directly'
+    - 'send_message event handler branches on active conversation type (channel vs DM)'
+    - 'DM PubSub messages use same {:envelope, %{event: "message.new"}} format as channels'
+
+  - id: 03-04
+    name: 'DM typing indicator and load-more'
+    estimated_hours: 1
+    description: >
+      Extend typing event to broadcast on DM PubSub topic when active
+      conversation is a DM. Extend load_more to paginate DM messages
+      using Chat.list_dm_messages/2 with :before cursor.
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/index.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - 'Typing indicator broadcasts to dm:ID topic when in DM view'
+    - 'Load more in DM conversation fetches older messages with cursor pagination'
+    - 'Typing indicators from other DM participant display and auto-clear'
+    - 'Navigating away from DM clears typing state via leave_conversation'
+    architectural_constraints:
+    - 'Reuses existing typing broadcast pattern, switches topic based on conversation type'
+    - 'Reuses existing prepend_older_messages/2 helper for DM pagination'
+
+implementation_scope:
+  source_directories:
+  - lib/slackex/accounts/
+  - lib/slackex/chat/
+  - lib/slackex/messaging/
+  - lib/slackex_web/live/chat_live/
+  - lib/slackex_web/components/
+  - priv/repo/migrations/
+  test_directories:
+  - test/slackex/accounts_test.exs
+  - test/slackex/chat_test.exs
+  - test/slackex_web/live/chat_live_test.exs
+  excluded_patterns:
+  - _build/**
+  - deps/**
+  - priv/static/**
+
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-02-26T16:00:00Z'

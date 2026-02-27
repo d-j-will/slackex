@@ -1,0 +1,162 @@
+roadmap:
+  project_id: channel-browsing-join-leave
+  created_at: '2026-02-26T23:21:02Z'
+  total_steps: 7
+  phases: 3
+phases:
+- id: '01'
+  name: 'Backend extensions and route wiring'
+  steps:
+  - id: 01-01
+    name: 'Add count_members/1 and enhance list_public_channels/1'
+    description: >
+      Extend Chat context with count_members/1 returning integer member count
+      for a channel, and add exclude_member option to list_public_channels/1
+      so it filters out channels the given user already belongs to.
+    time_estimate: '30 min'
+    dependencies: []
+    files_to_modify:
+    - lib/slackex/chat/chat.ex
+    - test/slackex/chat_test.exs
+    criteria:
+    - 'count_members/1 returns correct subscriber count for a channel'
+    - 'list_public_channels(exclude_member: user_id) omits channels user is subscribed to'
+    - 'list_public_channels/0 with no opts still returns all public channels (backward compatible)'
+    - 'Private channels never appear in list_public_channels results'
+  - id: 01-02
+    name: 'Add channel creation, browse, and join/leave routes'
+    description: >
+      Add three new live routes before the /chat/:slug catch-all:
+      /chat/channels/new (:create_channel), /chat/channels/browse (:browse_channels).
+      Wire handle_params clauses for new actions in Index LiveView.
+    time_estimate: '20 min'
+    dependencies:
+    - 01-01
+    files_to_modify:
+    - lib/slackex_web/router.ex
+    - lib/slackex_web/live/chat_live/index.ex
+    criteria:
+    - '/chat/channels/new resolves to :create_channel action (not caught by :slug)'
+    - '/chat/channels/browse resolves to :browse_channels action (not caught by :slug)'
+    - 'Existing routes /chat, /chat/dm/new, /chat/dm/:dm_id, /chat/:slug still work'
+    - 'Navigating to new routes does not crash the LiveView'
+- id: '02'
+  name: 'Channel creation'
+  steps:
+  - id: 02-01
+    name: 'CreateChannelModal LiveComponent'
+    description: >
+      Build create_channel_modal.ex LiveComponent with form: name (auto-formats
+      to lowercase-hyphens on change), description, is_private toggle. Validates
+      on change, submits on save. On success sends {:channel_created, channel}
+      to parent. Closes via push_patch to /chat.
+    time_estimate: '45 min'
+    dependencies:
+    - 01-02
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/create_channel_modal.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - 'Modal renders when live_action is :create_channel'
+    - 'Name field auto-formats input to lowercase-hyphens on change'
+    - 'Submitting valid form creates channel with current user as owner'
+    - 'Validation errors display when name is blank or too short'
+    - 'Modal closes on backdrop click, returning to /chat'
+  - id: 02-02
+    name: 'Wire CreateChannelModal into Index and sidebar'
+    description: >
+      Mount CreateChannelModal in Index render when live_action is :create_channel.
+      Handle {:channel_created, channel} in Index to refresh sidebar channel list
+      and navigate to the new channel. Add "+" button in sidebar channels section
+      linking to /chat/channels/new.
+    time_estimate: '30 min'
+    dependencies:
+    - 02-01
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/index.ex
+    - lib/slackex_web/live/chat_live/sidebar_component.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - '"+" button appears in sidebar channels section and links to /chat/channels/new'
+    - 'After channel creation, sidebar channel list includes the new channel'
+    - 'After channel creation, user navigates to the new channel view'
+    - 'Created channel shows current user as owner (get_role returns "owner")'
+- id: '03'
+  name: 'Channel browsing and membership actions'
+  steps:
+  - id: 03-01
+    name: 'BrowseChannelsModal LiveComponent'
+    description: >
+      Build browse_channels_modal.ex LiveComponent listing public channels user
+      has not joined. Each entry shows name, description, member count, and Join
+      button. Search/filter by name. On join sends {:channel_joined, channel}
+      to parent. Closes via push_patch to /chat.
+    time_estimate: '45 min'
+    dependencies:
+    - 01-01
+    - 01-02
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/browse_channels_modal.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - 'Modal renders when live_action is :browse_channels'
+    - 'Lists only public channels the current user has NOT joined'
+    - 'Each channel entry displays name, description, and member count'
+    - 'Clicking Join adds user to channel and sends {:channel_joined, channel}'
+    - 'Search input filters displayed channels by name'
+  - id: 03-02
+    name: 'Wire BrowseChannelsModal into Index and sidebar'
+    description: >
+      Mount BrowseChannelsModal in Index render when live_action is :browse_channels.
+      Handle {:channel_joined, channel} in Index to refresh sidebar and navigate
+      to joined channel. Add "Browse" link in sidebar channels section linking
+      to /chat/channels/browse.
+    time_estimate: '25 min'
+    dependencies:
+    - 03-01
+    - 02-02
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/index.ex
+    - lib/slackex_web/live/chat_live/sidebar_component.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - '"Browse" link appears in sidebar channels section and opens browse modal'
+    - 'After joining a channel, sidebar updates to include the joined channel'
+    - 'After joining, user navigates to the joined channel view'
+    - 'Joined channel no longer appears in browse modal on re-open'
+  - id: 03-03
+    name: 'Channel header Join and Leave buttons'
+    description: >
+      Extend conversation_header (or Index render) to show membership action
+      in channel header: "Join Channel" for non-members viewing a public channel,
+      "Leave Channel" for members who are not the owner, hidden for owners.
+      Handle join_channel and leave_channel events in Index, refreshing sidebar.
+    time_estimate: '35 min'
+    dependencies:
+    - 03-02
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/index.ex
+    - lib/slackex_web/components/chat_components.ex
+    - test/slackex_web/live/chat_live_test.exs
+    criteria:
+    - 'Non-member viewing public channel sees "Join Channel" button in header'
+    - 'Clicking "Join Channel" adds membership, enables compose area, and updates sidebar'
+    - 'Member (non-owner) sees "Leave Channel" button in header'
+    - 'Clicking "Leave Channel" removes membership, navigates to /chat, and updates sidebar'
+    - 'Channel owner does not see "Leave Channel" button'
+implementation_scope:
+  source_directories:
+  - lib/slackex/chat/
+  - lib/slackex_web/live/chat_live/
+  - lib/slackex_web/components/
+  - lib/slackex_web/
+  test_directories:
+  - test/slackex/
+  - test/slackex_web/live/
+  excluded_patterns:
+  - _build/**
+  - deps/**
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-02-26T23:25:00Z'
