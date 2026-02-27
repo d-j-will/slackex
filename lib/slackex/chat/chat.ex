@@ -39,6 +39,8 @@ defmodule Slackex.Chat do
   @cooldown_after_second_decline_days 30
   @auto_block_after_declines 3
   @auto_restrict_block_threshold 5
+  @report_restrict_threshold 3
+  @report_admin_flag_threshold 5
 
   # Default message ID when no read cursor exists (counts all messages as unread)
   @no_cursor_message_id 0
@@ -1056,6 +1058,7 @@ defmodule Slackex.Chat do
           # Auto-block: reporter blocks reported user. Ignore errors (already blocked).
           block_user(reporter_id, reported_user_id)
           upsert_report_count(reported_user_id)
+          check_report_thresholds(reported_user_id)
           {:ok, report}
 
         {:error, changeset} ->
@@ -1083,6 +1086,56 @@ defmodule Slackex.Chat do
       on_conflict: [inc: [report_count: 1]],
       conflict_target: :user_id
     )
+  end
+
+  defp check_report_thresholds(reported_user_id) do
+    distinct_count = count_distinct_reporters(reported_user_id)
+
+    if distinct_count >= @report_restrict_threshold do
+      maybe_apply_report_restriction(reported_user_id)
+    end
+
+    if distinct_count >= @report_admin_flag_threshold do
+      maybe_apply_admin_flag(reported_user_id)
+    end
+  end
+
+  defp count_distinct_reporters(reported_user_id) do
+    Repo.one(
+      from ar in AbuseReport,
+        where: ar.reported_user_id == ^reported_user_id,
+        select: count(ar.reporter_id, :distinct)
+    )
+  end
+
+  defp maybe_apply_report_restriction(reported_user_id) do
+    case Repo.get_by(UserTrustScore, user_id: reported_user_id) do
+      %{dm_restricted: false} = trust_score ->
+        trust_score
+        |> UserTrustScore.changeset(%{
+          dm_restricted: true,
+          dm_restricted_at: DateTime.utc_now()
+        })
+        |> Repo.update()
+
+      _already_restricted ->
+        :ok
+    end
+  end
+
+  defp maybe_apply_admin_flag(reported_user_id) do
+    case Repo.get_by(UserTrustScore, user_id: reported_user_id) do
+      %{admin_flagged: false} = trust_score ->
+        trust_score
+        |> UserTrustScore.changeset(%{
+          admin_flagged: true,
+          admin_flagged_at: DateTime.utc_now()
+        })
+        |> Repo.update()
+
+      _already_flagged ->
+        :ok
+    end
   end
 
   # ---------------------------------------------------------------------------

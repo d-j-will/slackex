@@ -17,6 +17,8 @@ defmodule Slackex.Chat.UserTrustScore do
     field :report_count, :integer, default: 0
     field :dm_restricted, :boolean, default: false
     field :dm_restricted_at, :utc_datetime_usec
+    field :admin_flagged, :boolean, default: false
+    field :admin_flagged_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -27,7 +29,9 @@ defmodule Slackex.Chat.UserTrustScore do
     :block_count,
     :report_count,
     :dm_restricted,
-    :dm_restricted_at
+    :dm_restricted_at,
+    :admin_flagged,
+    :admin_flagged_at
   ]
 
   @doc """

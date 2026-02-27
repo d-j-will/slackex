@@ -44,5 +44,30 @@ events:
   s: EXECUTED
   sid: 01-02
   t: '2026-02-27T20:22:36Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-02-27T20:23:21Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T20:25:14Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T20:26:20Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T20:26:22Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T20:27:40Z'
 project_id: dm-safety-phase-3
 schema_version: '3.0'
