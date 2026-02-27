@@ -64,6 +64,7 @@ defmodule Slackex.Search.HistoryLoader do
       {:__meta__, _}, acc -> acc
       {_k, %Ecto.Association.NotLoaded{}}, acc -> acc
       {k, %{__struct__: _} = inner}, acc -> Map.put(acc, k, struct_to_map(inner))
+      {k, v}, acc when is_binary(v) -> if String.valid?(v), do: Map.put(acc, k, v), else: acc
       {k, v}, acc -> Map.put(acc, k, v)
     end)
   end

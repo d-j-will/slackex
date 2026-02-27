@@ -8,10 +8,24 @@ defmodule Slackex.Accounts.User do
 
   @valid_dm_preferences ~w(anyone shared_channels nobody)
 
+  @derive {Jason.Encoder,
+           only: [
+             :id,
+             :username,
+             :display_name,
+             :email,
+             :avatar_url,
+             :status,
+             :dm_preference,
+             :inserted_at,
+             :updated_at
+           ]}
+
   schema "users" do
     field :username, :string
     field :display_name, :string
-    field :email, :string
+    field :email, Slackex.Encrypted.Binary, source: :encrypted_email
+    field :email_hash, Slackex.Encrypted.HMAC
     field :hashed_password, :string
     field :password, :string, virtual: true, redact: true
     field :avatar_url, :string
@@ -35,8 +49,9 @@ defmodule Slackex.Accounts.User do
     |> validate_username()
     |> validate_email()
     |> validate_password()
+    |> put_email_hash()
     |> unique_constraint(:username)
-    |> unique_constraint(:email)
+    |> unique_constraint(:email_hash)
   end
 
   @doc """
@@ -81,6 +96,13 @@ defmodule Slackex.Accounts.User do
     changeset
     |> validate_length(:password, min: 8, max: 72, message: "should be at least 8 characters")
     |> maybe_hash_password()
+  end
+
+  defp put_email_hash(changeset) do
+    case get_change(changeset, :email) do
+      nil -> changeset
+      email -> put_change(changeset, :email_hash, email)
+    end
   end
 
   defp maybe_hash_password(changeset) do

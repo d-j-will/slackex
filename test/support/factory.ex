@@ -9,14 +9,19 @@ defmodule Slackex.Factory do
   alias Slackex.Chat.{Channel, DMConversation, DMRequest, Message, ReadCursor, Subscription}
   alias Slackex.Notifications.DeviceToken
 
-  def user_factory do
-    %User{
+  def user_factory(attrs) do
+    email = Map.get(attrs, :email, sequence(:email, &"user#{&1}@example.com"))
+
+    user = %User{
       username: sequence(:username, &"user#{&1}"),
       display_name: sequence(:display_name, &"User #{&1}"),
-      email: sequence(:email, &"user#{&1}@example.com"),
+      email: email,
+      email_hash: email,
       hashed_password: Bcrypt.hash_pwd_salt("password123"),
       status: "offline"
     }
+
+    merge_attributes(user, Map.delete(attrs, :email))
   end
 
   def channel_factory do

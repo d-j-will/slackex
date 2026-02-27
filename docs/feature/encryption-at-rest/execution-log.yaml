@@ -44,5 +44,30 @@ events:
   s: EXECUTED
   sid: 01-02
   t: '2026-02-27T23:11:38Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-02-27T23:12:33Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T23:14:09Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T23:14:44Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T23:14:45Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-27T23:20:02Z'
 project_id: encryption-at-rest
 schema_version: '3.0'
