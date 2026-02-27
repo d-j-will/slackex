@@ -8,6 +8,7 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
   use SlackexWeb, :live_component
 
   alias Slackex.Accounts
+  alias Slackex.Chat
 
   import SlackexWeb.ChatComponents
 
@@ -26,8 +27,10 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
 
   @impl true
   def handle_event("search", %{"search_query" => query}, socket) do
+    blocked_ids = Chat.list_blocked_user_ids(socket.assigns.current_user.id)
+
     results =
-      Accounts.search_users(query)
+      Accounts.search_users(query, exclude: blocked_ids)
 
     {:noreply,
      socket

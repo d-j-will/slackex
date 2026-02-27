@@ -507,6 +507,74 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "new DM modal: blocked user filtering" do
+    setup %{alice: alice, bob: _bob} do
+      # Create users with searchable names
+      carol = insert(:user, username: "carol_block", display_name: "Carol Blocktest")
+      dave = insert(:user, username: "dave_block", display_name: "Dave Blocktest")
+      %{alice: alice, carol: carol, dave: dave}
+    end
+
+    test "blocked users do not appear in search results", %{
+      conn: conn,
+      alice: alice,
+      carol: carol
+    } do
+      # Alice blocks carol
+      {:ok, _} = Chat.block_user(alice.id, carol.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      html =
+        lv
+        |> element("#new-dm-search")
+        |> render_change(%{"search_query" => "carol_block"})
+
+      # Carol should NOT appear because alice blocked her
+      refute html =~ "Carol Blocktest"
+    end
+
+    test "users who blocked the current user are also excluded from search", %{
+      conn: conn,
+      alice: alice,
+      dave: dave
+    } do
+      # Dave blocks alice (reverse direction)
+      {:ok, _} = Chat.block_user(dave.id, alice.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      html =
+        lv
+        |> element("#new-dm-search")
+        |> render_change(%{"search_query" => "dave_block"})
+
+      # Dave should NOT appear because dave blocked alice
+      refute html =~ "Dave Blocktest"
+    end
+
+    test "non-blocked users still appear in search results", %{
+      conn: conn,
+      alice: alice,
+      carol: carol,
+      dave: _dave
+    } do
+      # Alice blocks carol only -- dave is NOT blocked
+      {:ok, _} = Chat.block_user(alice.id, carol.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
+
+      html =
+        lv
+        |> element("#new-dm-search")
+        |> render_change(%{"search_query" => "block"})
+
+      # Dave should still appear; carol should not
+      assert html =~ "Dave Blocktest"
+      refute html =~ "Carol Blocktest"
+    end
+  end
+
   describe "create channel modal" do
     test "modal renders when navigated to /chat/channels/new", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat/channels/new")
