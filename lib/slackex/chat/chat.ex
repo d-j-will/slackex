@@ -6,10 +6,14 @@ defmodule Slackex.Chat do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias Slackex.Chat.{Channel, DMConversation, DMRateLimiter, Message, Permissions, ReadCursor, Subscription, UserBlock}
+  alias Slackex.Accounts.User
+  alias Slackex.Chat.{Channel, DMConversation, DMRateLimiter, DMRequest, Message, Permissions, ReadCursor, Subscription, UserBlock, UserTrustScore}
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.ReadRepo
   alias Slackex.Repo
+
+  @min_account_age_hours 24
+  @new_account_age_days 7
 
   # ---------------------------------------------------------------------------
   # Channel operations
@@ -322,6 +326,107 @@ defmodule Slackex.Chat do
   defp broadcast_new_dm(dm) do
     Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_a_id}", {:dm_conversation_new, dm})
     Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_b_id}", {:dm_conversation_new, dm})
+  end
+
+  # ---------------------------------------------------------------------------
+  # DM request operations
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Creates a DM request from sender to recipient with a preview message.
+
+  Runs an ordered pre-flight pipeline before creating the request:
+    1. Account age >= 24h hard gate
+    2. Bidirectional block check
+    3. dm_restricted check via user_trust_scores
+    4. Shared channel gate for accounts < 7 days old
+
+  Self-DM requests bypass all checks and create the DM directly.
+
+  Returns `{:ok, dm_request}` on success.
+  Returns `{:error, :account_too_new}` for accounts under 24 hours.
+  Returns `{:error, :blocked}` when a block exists in either direction.
+  Returns `{:error, :dm_restricted}` when sender trust score has dm_restricted.
+  Returns `{:error, :no_shared_channels}` for accounts under 7 days with no shared channels.
+  """
+  def create_dm_request(sender_id, sender_id, _preview_text) do
+    find_or_create_dm(sender_id, sender_id)
+  end
+
+  def create_dm_request(sender_id, recipient_id, preview_text) do
+    with :ok <- check_account_age(sender_id),
+         :ok <- check_not_blocked(sender_id, recipient_id),
+         :ok <- check_not_dm_restricted(sender_id),
+         :ok <- check_shared_channels_if_new(sender_id, recipient_id) do
+      insert_dm_request(sender_id, recipient_id, preview_text)
+    end
+  end
+
+  defp check_account_age(sender_id) do
+    cutoff = DateTime.utc_now() |> DateTime.add(-@min_account_age_hours * 3600, :second)
+
+    account_old_enough =
+      Repo.exists?(
+        from u in User,
+          where: u.id == ^sender_id and u.inserted_at <= ^cutoff
+      )
+
+    if account_old_enough, do: :ok, else: {:error, :account_too_new}
+  end
+
+  defp check_not_blocked(sender_id, recipient_id) do
+    if block_exists_between?(sender_id, recipient_id),
+      do: {:error, :blocked},
+      else: :ok
+  end
+
+  defp check_not_dm_restricted(sender_id) do
+    restricted =
+      Repo.exists?(
+        from ts in UserTrustScore,
+          where: ts.user_id == ^sender_id and ts.dm_restricted == true
+      )
+
+    if restricted, do: {:error, :dm_restricted}, else: :ok
+  end
+
+  defp check_shared_channels_if_new(sender_id, recipient_id) do
+    cutoff = DateTime.utc_now() |> DateTime.add(-@new_account_age_days * 24 * 3600, :second)
+
+    account_mature =
+      Repo.exists?(
+        from u in User,
+          where: u.id == ^sender_id and u.inserted_at <= ^cutoff
+      )
+
+    if account_mature do
+      :ok
+    else
+      has_shared = shared_channel_exists?(sender_id, recipient_id)
+      if has_shared, do: :ok, else: {:error, :no_shared_channels}
+    end
+  end
+
+  defp shared_channel_exists?(user_a_id, user_b_id) do
+    Repo.exists?(
+      from s1 in Subscription,
+        join: s2 in Subscription,
+        on: s1.channel_id == s2.channel_id,
+        where: s1.user_id == ^user_a_id and s2.user_id == ^user_b_id
+    )
+  end
+
+  defp insert_dm_request(sender_id, recipient_id, preview_text) do
+    id = Snowflake.generate()
+
+    %DMRequest{id: id}
+    |> DMRequest.changeset(%{
+      sender_id: sender_id,
+      recipient_id: recipient_id,
+      preview_text: preview_text,
+      status: "pending"
+    })
+    |> Repo.insert()
   end
 
   @doc """
