@@ -386,6 +386,41 @@ defmodule Slackex.ChatTest do
     end
   end
 
+  describe "find_or_create_dm/2 PubSub broadcast" do
+    test "broadcasts {:dm_conversation_new, dm} to both user topics when creating a new DM" do
+      alice = insert(:user)
+      bob = insert(:user)
+
+      # Subscribe to both user topics
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{alice.id}")
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{bob.id}")
+
+      {:ok, dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      # Both participants should receive the broadcast
+      assert_receive {:dm_conversation_new, ^dm}
+      assert_receive {:dm_conversation_new, ^dm}
+    end
+
+    test "does NOT broadcast when returning an existing DM" do
+      alice = insert(:user)
+      bob = insert(:user)
+
+      # Create the DM first
+      {:ok, _dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      # Subscribe after creation to only capture broadcasts from the second call
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{alice.id}")
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{bob.id}")
+
+      # Reopen the existing DM
+      {:ok, _dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      # No broadcast should occur
+      refute_receive {:dm_conversation_new, _}
+    end
+  end
+
   describe "get_dm_conversation!/1" do
     test "returns DM conversation by ID" do
       alice = insert(:user)

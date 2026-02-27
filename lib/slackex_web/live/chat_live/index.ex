@@ -279,6 +279,13 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_info({:dm_conversation_new, _dm}, socket) do
+    user = socket.assigns.current_user
+    dm_conversations = Chat.list_user_dm_conversations(user.id)
+    {:noreply, assign(socket, :dm_conversations, dm_conversations)}
+  end
+
+  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
   end

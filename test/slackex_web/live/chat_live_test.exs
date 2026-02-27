@@ -808,6 +808,57 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "DM conversation broadcast: recipient sidebar real-time update" do
+    test "creating a new DM broadcasts to recipient, updating their sidebar in real-time", %{
+      conn: _conn
+    } do
+      # Create a user with a unique display name that won't appear anywhere else
+      carol = insert(:user, username: "carol_rt", display_name: "Carol Realtime")
+      dave = insert(:user, username: "dave_rt", display_name: "Dave Broadcast")
+
+      # Open a LiveView session as carol (the recipient)
+      carol_conn = build_conn() |> log_in_user(carol)
+      {:ok, carol_lv, carol_html} = live(carol_conn, ~p"/chat")
+
+      # Carol's sidebar should NOT show Dave yet
+      refute carol_html =~ "Dave Broadcast"
+
+      # Dave initiates a DM with carol (triggers find_or_create_dm which should broadcast)
+      dave_conn = build_conn() |> log_in_user(dave)
+      {:ok, dave_lv, _html} = live(dave_conn, ~p"/chat")
+      send(dave_lv.pid, {:start_dm, carol.id})
+
+      # Give PubSub time to deliver
+      Process.sleep(100)
+
+      # Carol's sidebar should now show Dave (the new DM partner) without page refresh
+      carol_html = render(carol_lv)
+      assert carol_html =~ "Dave Broadcast"
+    end
+
+    test "reopening an existing DM does NOT broadcast to recipient", %{
+      conn: conn,
+      alice: alice,
+      bob: bob
+    } do
+      # Create the DM first so it already exists
+      {:ok, _dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      # Subscribe to bob's user topic to observe broadcasts
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{bob.id}")
+
+      # Alice reopens the existing DM
+      {:ok, alice_lv, _html} = live(conn, ~p"/chat")
+      send(alice_lv.pid, {:start_dm, bob.id})
+
+      # Give PubSub time to deliver (if any broadcast were sent)
+      Process.sleep(100)
+
+      # No :dm_conversation_new broadcast should have been sent
+      refute_received {:dm_conversation_new, _}
+    end
+  end
+
   describe "browse channels: sidebar link and join flow" do
     setup %{alice: alice, conn: conn} do
       owner = insert(:user, username: "browse_owner")

@@ -290,10 +290,19 @@ defmodule Slackex.Chat do
         %DMConversation{}
         |> DMConversation.changeset(%{user_a_id: a, user_b_id: b})
         |> Repo.insert()
+        |> tap(fn
+          {:ok, dm} -> broadcast_new_dm(dm)
+          _error -> :ok
+        end)
 
       dm ->
         {:ok, dm}
     end
+  end
+
+  defp broadcast_new_dm(dm) do
+    Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_a_id}", {:dm_conversation_new, dm})
+    Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_b_id}", {:dm_conversation_new, dm})
   end
 
   @doc """
