@@ -93,9 +93,11 @@ defmodule Slackex.Pipeline.BatchWriter do
   # Private helpers
   # ---------------------------------------------------------------------------
 
+  @milliseconds_to_microseconds 1_000
+
   defp to_row(%{id: id} = message) do
-    ts_ms = Snowflake.extract_timestamp(id)
-    inserted_at = DateTime.from_unix!(ts_ms * 1000, :microsecond)
+    timestamp_ms = Snowflake.extract_timestamp(id)
+    inserted_at = DateTime.from_unix!(timestamp_ms * @milliseconds_to_microseconds, :microsecond)
 
     %{
       id: id,

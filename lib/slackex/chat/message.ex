@@ -65,30 +65,32 @@ defmodule Slackex.Chat.Message do
     end
   end
 
+  @milliseconds_to_microseconds 1_000
+
   defp put_inserted_at(changeset) do
     case get_change(changeset, :id) do
       nil ->
         changeset
 
       id ->
-        ts_ms = Snowflake.extract_timestamp(id)
-        inserted_at = DateTime.from_unix!(ts_ms * 1000, :microsecond)
+        timestamp_ms = Snowflake.extract_timestamp(id)
+
+        inserted_at =
+          DateTime.from_unix!(timestamp_ms * @milliseconds_to_microseconds, :microsecond)
+
         put_change(changeset, :inserted_at, inserted_at)
     end
   end
 
-  def validate_target(changeset) do
-    channel_id = get_field(changeset, :channel_id)
-    dm_conversation_id = get_field(changeset, :dm_conversation_id)
-
-    case {channel_id, dm_conversation_id} do
+  defp validate_target(changeset) do
+    case {get_field(changeset, :channel_id), get_field(changeset, :dm_conversation_id)} do
       {nil, nil} ->
         add_error(changeset, :base, "must have either channel_id or dm_conversation_id")
 
-      {_, _} when not is_nil(channel_id) and not is_nil(dm_conversation_id) ->
+      {cid, did} when cid != nil and did != nil ->
         add_error(changeset, :base, "cannot have both channel_id and dm_conversation_id")
 
-      _ ->
+      _one_set ->
         changeset
     end
   end

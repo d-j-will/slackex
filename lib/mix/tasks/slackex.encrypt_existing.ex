@@ -86,25 +86,19 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
   # ---------------------------------------------------------------------------
 
   defp encrypt_abuse_reports do
-    total_desc =
-      encrypt_table(
-        "abuse_reports",
-        "description",
-        "encrypted_description",
-        &encrypt_binary/1
-      )
+    encrypt_table(
+      "abuse_reports",
+      "description",
+      "encrypted_description",
+      &encrypt_binary/1
+    )
 
-    total_meta =
-      encrypt_table(
-        "abuse_reports",
-        "metadata",
-        "encrypted_metadata",
-        &encrypt_map/1
-      )
-
-    if total_desc > 0 or total_meta > 0 do
-      :ok
-    end
+    encrypt_table(
+      "abuse_reports",
+      "metadata",
+      "encrypted_metadata",
+      &encrypt_map/1
+    )
   end
 
   # ---------------------------------------------------------------------------
@@ -129,10 +123,14 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
   end
 
   defp fetch_batches(table, plaintext_col, encrypted_col, process_fn) do
-    do_fetch_batches(table, plaintext_col, encrypted_col, process_fn, 0, 0, 0)
+    do_fetch_batches(table, plaintext_col, encrypted_col, process_fn, %{
+      offset: 0,
+      batch_num: 0,
+      total: 0
+    })
   end
 
-  defp do_fetch_batches(table, plaintext_col, encrypted_col, process_fn, offset, batch_num, total) do
+  defp do_fetch_batches(table, plaintext_col, encrypted_col, process_fn, progress) do
     %{rows: rows} =
       Repo.query!(
         """
@@ -144,17 +142,17 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
         LIMIT $1
         OFFSET $2
         """,
-        [@batch_size, offset]
+        [@batch_size, progress.offset]
       )
 
     case rows do
       [] ->
-        total
+        progress.total
 
       batch ->
         batch_count = length(batch)
-        new_batch_num = batch_num + 1
-        new_total = total + batch_count
+        new_batch_num = progress.batch_num + 1
+        new_total = progress.total + batch_count
 
         Mix.shell().info(
           "[EncryptExisting] #{table}: batch #{new_batch_num}, #{batch_count} rows (#{new_total} total)"
@@ -162,15 +160,11 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
 
         process_fn.(batch)
 
-        do_fetch_batches(
-          table,
-          plaintext_col,
-          encrypted_col,
-          process_fn,
-          offset + batch_count,
-          new_batch_num,
-          new_total
-        )
+        do_fetch_batches(table, plaintext_col, encrypted_col, process_fn, %{
+          offset: progress.offset + batch_count,
+          batch_num: new_batch_num,
+          total: new_total
+        })
     end
   end
 
