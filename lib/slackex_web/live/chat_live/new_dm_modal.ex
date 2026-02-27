@@ -47,7 +47,7 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="new-dm-modal">
+    <div id="new-dm-modal" phx-window-keydown="close_modal" phx-key="Escape" phx-target={@myself}>
       <div
         id="new-dm-modal-backdrop"
         class="fixed inset-0 z-40 bg-black/50"
