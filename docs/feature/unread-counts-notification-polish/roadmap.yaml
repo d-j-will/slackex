@@ -1,0 +1,104 @@
+roadmap:
+  project_id: unread-counts-notification-polish
+  created_at: '2026-02-27T16:08:44Z'
+  total_steps: 5
+  phases: 3
+  phase_dependencies:
+    '02': ['01']
+    '03': ['02']
+phases:
+- id: '01'
+  name: 'Backend: batch unread query and mark-as-read coverage'
+  steps:
+  - id: 01-01
+    name: 'Batch unread count query for channels and DMs'
+    depends_on: []
+    criteria:
+    - 'New migration adds nullable dm_conversation_id to read_cursors with CHECK constraint ensuring exactly one of channel_id or dm_conversation_id is non-null'
+    - 'ReadCursor schema updated with optional dm_conversation_id field'
+    - 'Chat.batch_unread_counts/1 created, returns %{channel_counts: %{id => count}, dm_counts: %{id => count}}'
+    - 'Channel counts match per-channel Chat.unread_count/2 for same user'
+    - 'DM counts reflect messages after the user read cursor per DM conversation'
+    - 'Returns zero counts for conversations with no unread messages (not absent keys)'
+    - 'Exactly 2 queries regardless of conversation count (one channels, one DMs)'
+    files_to_modify:
+    - 'priv/repo/migrations/*_add_dm_conversation_id_to_read_cursors.exs (CREATE)'
+    - 'lib/slackex/chat/read_cursor.ex (MODIFY)'
+    - 'lib/slackex/chat/chat.ex (MODIFY - add batch_unread_counts/1)'
+    - 'test/slackex/chat/unread_counts_test.exs (CREATE)'
+  - id: 01-02
+    name: 'Mark-as-read on DM conversation entry'
+    depends_on: ['01-01']
+    criteria:
+    - 'Chat.mark_dm_as_read/2 created, accepts user_id and dm_conversation_id'
+    - 'Upserts read cursor with latest message snowflake ID for the DM conversation'
+    - 'Subsequent call to batch_unread_counts returns 0 for that DM'
+    - 'Existing mark_as_read/2 for channels unchanged (no regression)'
+    files_to_modify:
+    - 'lib/slackex/chat/chat.ex (MODIFY - add mark_dm_as_read/2)'
+    - 'test/slackex/chat/unread_counts_test.exs (MODIFY - add mark_dm_as_read tests)'
+- id: '02'
+  name: 'LiveView UI wiring: sidebar unread badges and bold styling'
+  steps:
+  - id: 02-01
+    name: 'Load and pass unread counts to sidebar components'
+    depends_on: ['01-01', '01-02']
+    criteria:
+    - 'ChatLive.Index mount calls Chat.batch_unread_counts/1 exactly once'
+    - 'Unread counts assigned as map to socket (not individual assigns per conversation)'
+    - 'SidebarComponent receives unread_counts and passes per-item count to channel_list_item and dm_list_item'
+    - 'Unread badge renders next to channel/DM name when count > 0'
+    - 'Active conversation count resets to 0 on entry via mark_as_read'
+    files_to_modify:
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - mount + enter_channel/enter_dm)'
+    - 'lib/slackex_web/live/chat_live/sidebar_component.ex (MODIFY - pass unread_count per item)'
+  - id: 02-02
+    name: 'Bold unread conversation names in sidebar'
+    depends_on: ['02-01']
+    criteria:
+    - 'channel_list_item applies font-semibold class when unread_count > 0'
+    - 'dm_list_item applies font-semibold class when unread_count > 0'
+    - 'Active conversation remains bold regardless of unread count (existing behavior preserved)'
+    - 'Conversations with zero unread use normal font weight'
+    files_to_modify:
+    - 'lib/slackex_web/components/chat_components.ex (MODIFY - conditional CSS class on channel_list_item and dm_list_item)'
+- id: '03'
+  name: 'Real-time updates: PubSub-driven sidebar unread refresh'
+  steps:
+  - id: 03-01
+    name: 'Increment sidebar unread counts on incoming messages for non-active conversations'
+    depends_on: ['02-01', '02-02']
+    criteria:
+    - 'ChatLive.Index subscribes to PubSub topics for all user channels and DMs on mount'
+    - 'handle_info for new message events increments unread_counts[conversation_id] by 1 when conversation is NOT the active one'
+    - 'Messages in the active conversation do NOT increment the unread count'
+    - 'Sidebar updates via LiveView assign patch (no full page reload)'
+    - 'Entering an unread conversation resets its count to 0 and removes bold and badge'
+    pubsub_topology: 'Subscribe to all user channel and DM topics on mount (Messaging.subscribe_to_channel/1 and equivalent for DMs). Trade-off: upfront subscription for all conversations ensures no missed unreads vs lazy subscription which risks missing messages. Upfront chosen because user channel count is bounded and PubSub subscriptions are lightweight in Phoenix.'
+    files_to_modify:
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - mount subscriptions + handle_info for unread increment + enter_channel/enter_dm reset)'
+implementation_scope:
+  source_directories:
+  - lib/slackex/chat/
+  - lib/slackex_web/live/chat_live/
+  - lib/slackex_web/components/
+  - priv/repo/migrations/
+  test_directories:
+  - test/slackex/chat/
+  - test/slackex_web/live/
+  excluded_patterns:
+  - _build/**
+  - deps/**
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-02-27T16:15:00Z'
+  review_iterations: 2
+  defects_addressed:
+  - 'D1: Added explicit depends_on fields to all steps and phase_dependencies section'
+  - 'D2: Added migration + ReadCursor schema extension as explicit acceptance criteria in 01-01'
+  - 'D3: Clarified Chat.batch_unread_counts/1 is created in 01-01, added files_to_modify'
+  - 'D4: Clarified handle_info guard condition for non-active conversation check in 03-01'
+  - 'D5: Added explicit font-semibold conditional CSS class criteria in 02-02'
+  - 'D6: Added pubsub_topology field to 03-01 documenting upfront subscription trade-off'
+  - 'D7: Kept 02-01 as single step (load + pass are tightly coupled)'
