@@ -348,14 +348,15 @@ defmodule Slackex.Chat do
 
   Runs an ordered pre-flight pipeline before creating the request:
     1. Account age >= 24h hard gate
-    2. Bidirectional block check
-    3. dm_restricted check via user_trust_scores
-    4. Shared channel gate for accounts < 7 days old
-    5. Hourly request rate limit (max #{@max_requests_per_hour}/hour)
-    6. Daily request rate limit (max #{@max_requests_per_day}/day)
-    7. Pending request count limit (max #{@max_pending_requests} pending)
-    8. Recipient DM preference gate ("anyone"/"shared_channels"/"nobody")
-    9. Existing DM conversation bypass (returns conversation directly)
+    2. Existing DM conversation bypass (returns conversation directly)
+    3. Bidirectional block check
+    4. dm_restricted check via user_trust_scores
+    5. Cooldown check (graduated after prior declines)
+    6. Shared channel gate for accounts < 7 days old
+    7. Hourly request rate limit (max #{@max_requests_per_hour}/hour)
+    8. Daily request rate limit (max #{@max_requests_per_day}/day)
+    9. Pending request count limit (max #{@max_pending_requests} pending)
+   10. Recipient DM preference gate ("anyone"/"shared_channels"/"nobody")
 
   After successful request creation, broadcasts `{:dm_request_new, request}`
   to the recipient's user PubSub topic.
@@ -367,6 +368,7 @@ defmodule Slackex.Chat do
   Returns `{:error, :account_too_new}` for accounts under 24 hours.
   Returns `{:error, :blocked}` when a block exists in either direction.
   Returns `{:error, :dm_restricted}` when sender trust score has dm_restricted.
+  Returns `{:error, :cooldown_active}` when sender is within cooldown period after prior decline(s).
   Returns `{:error, :no_shared_channels}` for accounts under 7 days with no shared channels.
   Returns `{:error, :rate_limited}` when hourly or daily request rate limit exceeded.
   Returns `{:error, :too_many_pending}` when sender has #{@max_pending_requests}+ pending requests.
@@ -378,6 +380,7 @@ defmodule Slackex.Chat do
 
   def create_dm_request(sender_id, recipient_id, preview_text) do
     with :ok <- check_account_age(sender_id),
+         :new <- check_existing_conversation(sender_id, recipient_id),
          :ok <- check_not_blocked(sender_id, recipient_id),
          :ok <- check_not_dm_restricted(sender_id),
          :ok <- check_cooldown(sender_id, recipient_id),
@@ -385,8 +388,7 @@ defmodule Slackex.Chat do
          :ok <- check_request_rate_hourly(sender_id),
          :ok <- check_request_rate_daily(sender_id),
          :ok <- check_pending_request_count(sender_id),
-         :ok <- check_dm_preference(sender_id, recipient_id),
-         :new <- check_existing_conversation(sender_id, recipient_id) do
+         :ok <- check_dm_preference(sender_id, recipient_id) do
       insert_dm_request(sender_id, recipient_id, preview_text)
       |> tap(fn
         {:ok, request} -> broadcast_dm_request_new(request, recipient_id)

@@ -121,6 +121,42 @@ defmodule Slackex.Chat.DMRequestFlowTest do
       assert dm.user_a_id == sender.id
       assert dm.user_b_id == sender.id
     end
+
+    test "dm_restricted user can create self-DM" do
+      user = insert_user_with_age(48)
+      mark_dm_restricted(user)
+
+      # Self-DM should still succeed despite dm_restricted
+      assert {:ok, %DMConversation{} = dm} =
+               Chat.create_dm_request(user.id, user.id, "Note to self")
+
+      assert dm.user_a_id == user.id
+      assert dm.user_b_id == user.id
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: duplicate pending request rejection
+  # ---------------------------------------------------------------------------
+
+  describe "create_dm_request/3 duplicate pending request" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "second pending request to same user is rejected" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, %DMRequest{status: "pending"}} =
+        Chat.create_dm_request(sender.id, recipient.id, "Hi")
+
+      assert {:error, changeset} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hi again")
+
+      assert %Ecto.Changeset{} = changeset
+    end
   end
 
   # ---------------------------------------------------------------------------
