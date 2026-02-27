@@ -19,6 +19,7 @@ defmodule Slackex.Chat do
   @max_pending_requests 10
   @cooldown_strike_1_days 7
   @cooldown_strike_2_days 30
+  @block_restriction_threshold 5
 
   # ---------------------------------------------------------------------------
   # Channel operations
@@ -844,9 +845,37 @@ defmodule Slackex.Chat do
   Returns `{:ok, block}` or `{:error, changeset}` on duplicate/validation failure.
   """
   def block_user(blocker_id, blocked_id) do
-    %UserBlock{}
-    |> UserBlock.changeset(%{blocker_id: blocker_id, blocked_id: blocked_id})
-    |> Repo.insert()
+    with {:ok, block} <-
+           %UserBlock{}
+           |> UserBlock.changeset(%{blocker_id: blocker_id, blocked_id: blocked_id})
+           |> Repo.insert() do
+      upsert_block_count(blocked_id)
+      {:ok, block}
+    end
+  end
+
+  defp upsert_block_count(user_id) do
+    {:ok, trust_score} =
+      %UserTrustScore{user_id: user_id}
+      |> UserTrustScore.changeset(%{user_id: user_id, block_count: 1})
+      |> Repo.insert(
+        on_conflict: [inc: [block_count: 1]],
+        conflict_target: :user_id,
+        returning: true
+      )
+
+    maybe_apply_block_restriction(trust_score)
+  end
+
+  defp maybe_apply_block_restriction(trust_score) do
+    if trust_score.block_count >= @block_restriction_threshold and not trust_score.dm_restricted do
+      trust_score
+      |> UserTrustScore.changeset(%{
+        dm_restricted: true,
+        dm_restricted_at: DateTime.utc_now()
+      })
+      |> Repo.update()
+    end
   end
 
   @doc """
