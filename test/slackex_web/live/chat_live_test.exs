@@ -450,16 +450,16 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ "Carol Smith"
     end
 
-    test "current user excluded from search results", %{conn: conn} do
+    test "current user included in search results for self-DM", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/chat/dm/new")
 
-      # Alice is logged in; searching "ali" should not return alice
+      # Alice is logged in; searching "ali" should return alice (self-DM for notes)
       html =
         lv
         |> element("#new-dm-search")
         |> render_change(%{"search_query" => "ali"})
 
-      refute html =~ ~s|alice|
+      assert html =~ ~s|alice|
     end
 
     test "selecting a user sends {:start_dm, user_id} to parent", %{conn: conn, carol: carol} do

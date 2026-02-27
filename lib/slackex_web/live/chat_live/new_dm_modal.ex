@@ -27,7 +27,7 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
   @impl true
   def handle_event("search", %{"search_query" => query}, socket) do
     results =
-      Accounts.search_users(query, exclude: [socket.assigns.current_user.id])
+      Accounts.search_users(query)
 
     {:noreply,
      socket
