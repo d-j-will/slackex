@@ -232,18 +232,67 @@ defmodule Slackex.ChatTest do
       assert [] = Chat.list_user_dm_conversations(loner.id)
     end
 
-    test "results ordered by inserted_at descending" do
+    test "results ordered by updated_at descending" do
       alice = insert(:user)
       bob = insert(:user)
       charlie = insert(:user)
 
       {:ok, _dm1} = Chat.find_or_create_dm(alice.id, bob.id)
+      Process.sleep(10)
       {:ok, _dm2} = Chat.find_or_create_dm(alice.id, charlie.id)
 
       results = Chat.list_user_dm_conversations(alice.id)
 
       assert length(results) == 2
-      assert hd(results).inserted_at >= List.last(results).inserted_at
+      assert hd(results).updated_at >= List.last(results).updated_at
+    end
+  end
+
+  describe "DM conversation activity ordering" do
+    test "send_dm updates dm_conversation.updated_at" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      before = dm.updated_at
+      Process.sleep(10)
+      {:ok, _msg} = Chat.send_dm(dm.id, alice.id, "Hello")
+
+      refreshed = Slackex.Repo.get!(Slackex.Chat.DMConversation, dm.id)
+      assert DateTime.compare(refreshed.updated_at, before) == :gt
+    end
+
+    test "list_user_dm_conversations orders by updated_at desc" do
+      alice = insert(:user)
+      bob = insert(:user)
+      charlie = insert(:user)
+
+      {:ok, dm_bob} = Chat.find_or_create_dm(alice.id, bob.id)
+      Process.sleep(10)
+      {:ok, dm_charlie} = Chat.find_or_create_dm(alice.id, charlie.id)
+
+      # dm_charlie is newer, should be first
+      convos = Chat.list_user_dm_conversations(alice.id)
+      assert [first | _] = convos
+      assert first.id == dm_charlie.id
+
+      # Now send a message in dm_bob to bump its updated_at
+      Process.sleep(10)
+      {:ok, _msg} = Chat.send_dm(dm_bob.id, alice.id, "bump")
+
+      convos = Chat.list_user_dm_conversations(alice.id)
+      assert [first | _] = convos
+      assert first.id == dm_bob.id
+    end
+
+    test "returned conversation maps include updated_at field" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, _dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      [conversation] = Chat.list_user_dm_conversations(alice.id)
+      assert Map.has_key?(conversation, :updated_at)
+      assert %DateTime{} = conversation.updated_at
     end
   end
 

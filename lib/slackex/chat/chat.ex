@@ -306,19 +306,23 @@ defmodule Slackex.Chat do
       id = Snowflake.generate()
       sanitized = HtmlSanitizeEx.strip_tags(content)
 
-      %Message{}
-      |> Message.changeset(%{
+      Multi.new()
+      |> Multi.insert(:message, Message.changeset(%Message{}, %{
         id: id,
         content: sanitized,
         sender_id: sender_id,
         dm_conversation_id: dm_id
-      })
-      |> Repo.insert()
+      }))
+      |> Multi.update(:dm, Ecto.Changeset.change(dm, updated_at: DateTime.utc_now()))
+      |> Repo.transaction()
       |> case do
-        {:ok, message} ->
+        {:ok, %{message: message}} ->
           {:ok, Repo.preload(message, :sender)}
 
-        {:error, changeset} ->
+        {:error, :message, changeset, _} ->
+          {:error, changeset}
+
+        {:error, :dm, changeset, _} ->
           {:error, changeset}
       end
     else
@@ -345,7 +349,7 @@ defmodule Slackex.Chat do
   def list_user_dm_conversations(user_id) do
     from(d in DMConversation,
       where: d.user_a_id == ^user_id or d.user_b_id == ^user_id,
-      order_by: [desc: d.inserted_at],
+      order_by: [desc: d.updated_at],
       preload: [:user_a, :user_b]
     )
     |> Repo.all()
