@@ -396,4 +396,157 @@ defmodule Slackex.Chat.DMRequestFlowTest do
       refute_receive {:dm_request_new, _}
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: accept_dm_request/2 happy path
+  # ---------------------------------------------------------------------------
+
+  describe "accept_dm_request/2 happy path" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, request} =
+        Chat.create_dm_request(sender.id, recipient.id, "Want to collaborate?")
+
+      %{sender: sender, recipient: recipient, request: request}
+    end
+
+    test "creates dm_conversation and returns success tuple", %{
+      recipient: recipient,
+      request: request
+    } do
+      assert {:ok, result} = Chat.accept_dm_request(request.id, recipient.id)
+
+      assert %{request: _accepted_request, dm_conversation: dm, message: _message} = result
+
+      # dm_conversation links both users
+      assert dm.user_a_id <= dm.user_b_id
+      user_ids = MapSet.new([dm.user_a_id, dm.user_b_id])
+      assert MapSet.member?(user_ids, request.sender_id)
+      assert MapSet.member?(user_ids, request.recipient_id)
+    end
+
+    test "updates request status to accepted with responded_at", %{
+      recipient: recipient,
+      request: request
+    } do
+      {:ok, %{request: accepted_request}} =
+        Chat.accept_dm_request(request.id, recipient.id)
+
+      assert accepted_request.status == "accepted"
+      assert accepted_request.responded_at != nil
+    end
+
+    test "sets dm_conversation_id on the accepted request", %{
+      recipient: recipient,
+      request: request
+    } do
+      {:ok, %{request: accepted_request, dm_conversation: dm}} =
+        Chat.accept_dm_request(request.id, recipient.id)
+
+      assert accepted_request.dm_conversation_id == dm.id
+    end
+
+    test "delivers preview_text as first message in the new conversation", %{
+      sender: sender,
+      recipient: recipient,
+      request: request
+    } do
+      {:ok, %{message: message, dm_conversation: dm}} =
+        Chat.accept_dm_request(request.id, recipient.id)
+
+      assert message.content == "Want to collaborate?"
+      assert message.sender_id == sender.id
+      assert message.dm_conversation_id == dm.id
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: accept_dm_request/2 not found / authorization
+  # ---------------------------------------------------------------------------
+
+  describe "accept_dm_request/2 not found and authorization" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "returns error for non-existent request" do
+      recipient = insert_user_with_age(48)
+
+      assert {:error, :not_found} = Chat.accept_dm_request(-1, recipient.id)
+    end
+
+    test "returns error when request is not pending (already accepted)" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, request} =
+        Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+
+      # Accept once
+      {:ok, _} = Chat.accept_dm_request(request.id, recipient.id)
+
+      # Accept again should fail
+      assert {:error, :not_found} = Chat.accept_dm_request(request.id, recipient.id)
+    end
+
+    test "returns error when caller is not the recipient" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+      other_user = insert_user_with_age(48)
+
+      {:ok, request} =
+        Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+
+      assert {:error, :not_found} = Chat.accept_dm_request(request.id, other_user.id)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: accept_dm_request/2 PubSub broadcast
+  # ---------------------------------------------------------------------------
+
+  describe "accept_dm_request/2 PubSub broadcast" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, request} =
+        Chat.create_dm_request(sender.id, recipient.id, "Hey!")
+
+      %{sender: sender, recipient: recipient, request: request}
+    end
+
+    test "broadcasts dm_request_accepted to sender user topic", %{
+      sender: sender,
+      recipient: recipient,
+      request: request
+    } do
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{sender.id}")
+
+      {:ok, %{request: accepted_request}} =
+        Chat.accept_dm_request(request.id, recipient.id)
+
+      assert_receive {:dm_request_accepted, ^accepted_request}
+    end
+
+    test "broadcasts dm_conversation_new to both users", %{
+      sender: sender,
+      recipient: recipient,
+      request: request
+    } do
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{sender.id}")
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{recipient.id}")
+
+      {:ok, %{dm_conversation: dm}} =
+        Chat.accept_dm_request(request.id, recipient.id)
+
+      assert_receive {:dm_conversation_new, ^dm}
+      assert_receive {:dm_conversation_new, ^dm}
+    end
+  end
 end

@@ -508,6 +508,107 @@ defmodule Slackex.Chat do
   end
 
   @doc """
+  Accepts a pending DM request. Only the request's recipient may accept.
+
+  Atomically via Ecto.Multi:
+    1. Fetches and validates the request (must exist, be pending, recipient must match)
+    2. Creates or finds the DM conversation between both users
+    3. Updates the request: status -> "accepted", sets dm_conversation_id and responded_at
+    4. Delivers the preview_text as the first message in the new conversation
+
+  After success, broadcasts `{:dm_request_accepted, request}` on the sender's
+  user PubSub topic and `{:dm_conversation_new, dm}` on both users' topics.
+
+  Returns `{:ok, %{request: request, dm_conversation: dm, message: message}}` on success.
+  Returns `{:error, :not_found}` when the request doesn't exist, isn't pending,
+  or the caller is not the recipient.
+  """
+  def accept_dm_request(request_id, recipient_id) do
+    Multi.new()
+    |> Multi.run(:request, fn _repo, _changes ->
+      fetch_pending_request(request_id, recipient_id)
+    end)
+    |> Multi.run(:dm_conversation, fn _repo, %{request: request} ->
+      find_or_insert_dm_conversation(request.sender_id, request.recipient_id)
+    end)
+    |> Multi.run(:accept, fn _repo, %{request: request, dm_conversation: dm} ->
+      request
+      |> DMRequest.changeset(%{
+        status: "accepted",
+        dm_conversation_id: dm.id,
+        responded_at: DateTime.utc_now()
+      })
+      |> Repo.update()
+    end)
+    |> Multi.run(:message, fn _repo, %{request: request, dm_conversation: dm} ->
+      id = Snowflake.generate()
+      sanitized = HtmlSanitizeEx.strip_tags(request.preview_text)
+
+      %Message{}
+      |> Message.changeset(%{
+        id: id,
+        content: sanitized,
+        sender_id: request.sender_id,
+        dm_conversation_id: dm.id
+      })
+      |> Repo.insert()
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{accept: accepted_request, dm_conversation: dm, message: message} = _changes} ->
+        broadcast_dm_request_accepted(accepted_request)
+        broadcast_new_dm(dm)
+        {:ok, %{request: accepted_request, dm_conversation: dm, message: message}}
+
+      {:error, :request, :not_found, _} ->
+        {:error, :not_found}
+
+      {:error, _step, changeset, _} ->
+        {:error, changeset}
+    end
+  end
+
+  defp fetch_pending_request(request_id, recipient_id) do
+    case Repo.one(
+           from r in DMRequest,
+             where:
+               r.id == ^request_id and
+                 r.recipient_id == ^recipient_id and
+                 r.status == "pending"
+         ) do
+      nil -> {:error, :not_found}
+      request -> {:ok, request}
+    end
+  end
+
+  defp find_or_insert_dm_conversation(user_a_id, user_b_id) do
+    {lower_id, higher_id} =
+      if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
+
+    case Repo.get_by(DMConversation, user_a_id: lower_id, user_b_id: higher_id) do
+      nil ->
+        %DMConversation{}
+        |> DMConversation.changeset(%{user_a_id: lower_id, user_b_id: higher_id})
+        |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_a_id, :user_b_id])
+        |> case do
+          {:ok, dm} -> {:ok, dm}
+          {:error, changeset} -> {:error, changeset}
+        end
+
+      dm ->
+        {:ok, dm}
+    end
+  end
+
+  defp broadcast_dm_request_accepted(request) do
+    Phoenix.PubSub.broadcast(
+      Slackex.PubSub,
+      "user:#{request.sender_id}",
+      {:dm_request_accepted, request}
+    )
+  end
+
+  @doc """
   Sends a DM. Verifies sender is a participant. Sanitizes content. Broadcasts.
   """
   def send_dm(dm_id, sender_id, content) do
