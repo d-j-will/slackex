@@ -1024,6 +1024,73 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "DM block button in conversation header" do
+    setup %{alice: alice, bob: bob} do
+      %{dm: create_dm_between(alice, bob)}
+    end
+
+    test "block button visible in active DM conversation header", %{conn: conn, dm: dm} do
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      assert html =~ "Block"
+      assert html =~ "block_user"
+    end
+
+    test "block button NOT visible for self-DM conversations", %{conn: conn, alice: alice} do
+      # Create a self-DM (alice with herself)
+      {:ok, self_dm} = Chat.find_or_create_dm(alice.id, alice.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/#{self_dm.id}")
+
+      refute html =~ "block_user"
+    end
+
+    test "clicking block creates the block, shows flash, and redirects to /chat", %{
+      conn: conn,
+      alice: alice,
+      bob: bob,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Click the block button (confirm dialog is bypassed in tests)
+      lv
+      |> element("button[phx-click=\"block_user\"]")
+      |> render_click()
+
+      # Should redirect to /chat (welcome screen)
+      html = render(lv)
+      assert html =~ "Welcome to Slackex"
+
+      # Flash message should confirm the block
+      assert render(lv) =~ "has been blocked"
+
+      # Verify the block was actually created in the database
+      assert Chat.blocked?(alice.id, bob.id)
+    end
+
+    test "after blocking, DM sidebar no longer shows the blocked conversation", %{
+      conn: conn,
+      bob: bob,
+      dm: dm
+    } do
+      {:ok, lv, initial_html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Bob's name should be in the sidebar before blocking
+      expected_name = bob.display_name || bob.username
+      assert initial_html =~ expected_name
+
+      # Block the user
+      lv
+      |> element("button[phx-click=\"block_user\"]")
+      |> render_click()
+
+      # After redirect to /chat, the DM sidebar should no longer show the blocked conversation
+      sidebar_html = lv |> element("aside") |> render()
+      refute sidebar_html =~ expected_name
+    end
+  end
+
   describe "chat experience" do
     test "user sees their channels in sidebar", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")

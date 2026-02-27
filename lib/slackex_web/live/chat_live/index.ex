@@ -208,6 +208,28 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  def handle_event("block_user", _params, socket) do
+    user = socket.assigns.current_user
+    dm = socket.assigns.active_dm
+    other_id = if dm.user_a_id == user.id, do: dm.user_b_id, else: dm.user_a_id
+
+    case Chat.block_user(user.id, other_id) do
+      {:ok, _block} ->
+        dm_conversations =
+          Chat.list_user_dm_conversations(user.id)
+          |> Enum.reject(fn conv -> conv.other_user.id == other_id end)
+
+        {:noreply,
+         socket
+         |> assign(:dm_conversations, dm_conversations)
+         |> put_flash(:info, "User has been blocked")
+         |> push_patch(to: ~p"/chat")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not block user.")}
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # PubSub / Info handlers
   # ---------------------------------------------------------------------------
@@ -567,7 +589,19 @@ defmodule SlackexWeb.ChatLive.Index do
           <% end %>
         <% else %>
           <%= if @active_dm do %>
-            <.conversation_header title={@page_title} />
+            <.conversation_header title={@page_title}>
+              <:actions>
+                <%= if @active_dm.user_a_id != @active_dm.user_b_id do %>
+                  <button
+                    phx-click="block_user"
+                    data-confirm="Are you sure you want to block this user? You will no longer receive messages from them."
+                    class="btn btn-ghost btn-xs text-error"
+                  >
+                    Block
+                  </button>
+                <% end %>
+              </:actions>
+            </.conversation_header>
             <.message_stream streams={@streams} current_user_id={@current_user.id} />
             <.typing_indicator users={MapSet.to_list(@typing_users)} />
             <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
