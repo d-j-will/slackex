@@ -74,6 +74,14 @@ defmodule SlackexWeb.Router do
     delete "/device-tokens", DeviceTokenController, :delete
   end
 
+  scope "/", SlackexWeb do
+    pipe_through :browser
+
+    live_session :mockups, layout: false do
+      live "/ui-mockups", MockupLive.Index, :index
+    end
+  end
+
   if Application.compile_env(:slackex, :dev_routes) do
     scope "/dev" do
       pipe_through :browser

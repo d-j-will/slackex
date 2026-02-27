@@ -1,6 +1,7 @@
 defmodule Slackex.Chat.DMConversation do
   @moduledoc """
-  Direct message conversation schema with user ordering invariant (user_a_id < user_b_id).
+  Direct message conversation schema with user ordering invariant (user_a_id <= user_b_id).
+  Allows self-DMs (user_a_id == user_b_id) for personal notes.
   """
 
   use Ecto.Schema
@@ -24,8 +25,8 @@ defmodule Slackex.Chat.DMConversation do
   end
 
   @doc """
-  Ensures user_a_id < user_b_id to prevent duplicate DM conversations
-  with swapped user IDs.
+  Ensures user_a_id <= user_b_id to prevent duplicate DM conversations
+  with swapped user IDs. Allows user_a_id == user_b_id for self-DMs.
   """
   def normalize_user_order(changeset) do
     user_a_id = get_field(changeset, :user_a_id)
