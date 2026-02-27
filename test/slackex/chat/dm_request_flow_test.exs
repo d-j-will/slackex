@@ -8,23 +8,6 @@ defmodule Slackex.Chat.DMRequestFlowTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
-  defp insert_user_with_age(hours_ago) do
-    user = insert(:user)
-    past = DateTime.utc_now() |> DateTime.add(-hours_ago * 3600, :second) |> DateTime.truncate(:microsecond)
-
-    {1, _} =
-      Repo.update_all(
-        from(u in Slackex.Accounts.User, where: u.id == ^user.id),
-        set: [inserted_at: past]
-      )
-
-    %{user | inserted_at: past}
-  end
-
-  defp insert_user_with_age_days(days_ago) do
-    insert_user_with_age(days_ago * 24)
-  end
-
   defp subscribe_to_channel(user, channel) do
     insert(:subscription, %{user: user, channel: channel, role: "member"})
   end

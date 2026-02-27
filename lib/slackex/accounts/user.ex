@@ -6,6 +6,8 @@ defmodule Slackex.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @valid_dm_preferences ~w(anyone shared_channels nobody)
+
   schema "users" do
     field :username, :string
     field :display_name, :string
@@ -44,7 +46,7 @@ defmodule Slackex.Accounts.User do
   def dm_preference_changeset(user, attrs) do
     user
     |> cast(attrs, [:dm_preference])
-    |> validate_inclusion(:dm_preference, ["anyone", "shared_channels", "nobody"])
+    |> validate_inclusion(:dm_preference, @valid_dm_preferences)
   end
 
   @doc """

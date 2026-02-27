@@ -12,14 +12,19 @@ defmodule Slackex.Chat do
   alias Slackex.ReadRepo
   alias Slackex.Repo
 
+  # ---------------------------------------------------------------------------
+  # DM safety thresholds
+  # ---------------------------------------------------------------------------
+
   @min_account_age_hours 24
   @new_account_age_days 7
   @max_requests_per_hour 5
   @max_requests_per_day 20
   @max_pending_requests 10
-  @cooldown_strike_1_days 7
-  @cooldown_strike_2_days 30
-  @block_restriction_threshold 5
+  @cooldown_after_first_decline_days 7
+  @cooldown_after_second_decline_days 30
+  @auto_block_after_declines 3
+  @auto_restrict_block_threshold 5
 
   # ---------------------------------------------------------------------------
   # Channel operations
@@ -294,7 +299,7 @@ defmodule Slackex.Chat do
   Returns `{:error, changeset}` on validation failure.
   """
   def find_or_create_dm(user_a_id, user_b_id) do
-    {lower_id, higher_id} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
+    {lower_id, higher_id} = normalize_user_pair(user_a_id, user_b_id)
     is_self_dm = user_a_id == user_b_id
 
     if not is_self_dm and block_exists_between?(lower_id, higher_id) do
@@ -346,9 +351,9 @@ defmodule Slackex.Chat do
     2. Bidirectional block check
     3. dm_restricted check via user_trust_scores
     4. Shared channel gate for accounts < 7 days old
-    5. Hourly request rate limit (#{@max_requests_per_hour}/hour)
-    6. Daily request rate limit (#{@max_requests_per_day}/day)
-    7. Pending request count limit (max #{@max_pending_requests})
+    5. Hourly request rate limit (max #{@max_requests_per_hour}/hour)
+    6. Daily request rate limit (max #{@max_requests_per_day}/day)
+    7. Pending request count limit (max #{@max_pending_requests} pending)
     8. Recipient DM preference gate ("anyone"/"shared_channels"/"nobody")
     9. Existing DM conversation bypass (returns conversation directly)
 
@@ -394,15 +399,15 @@ defmodule Slackex.Chat do
   end
 
   defp check_account_age(sender_id) do
-    cutoff = DateTime.utc_now() |> DateTime.add(-@min_account_age_hours * 3600, :second)
+    cutoff = hours_ago(@min_account_age_hours)
 
-    account_old_enough =
+    account_meets_age_requirement =
       Repo.exists?(
         from u in User,
           where: u.id == ^sender_id and u.inserted_at <= ^cutoff
       )
 
-    if account_old_enough, do: :ok, else: {:error, :account_too_new}
+    if account_meets_age_requirement, do: :ok, else: {:error, :account_too_new}
   end
 
   defp check_not_blocked(sender_id, recipient_id) do
@@ -422,19 +427,20 @@ defmodule Slackex.Chat do
   end
 
   defp check_shared_channels_if_new(sender_id, recipient_id) do
-    cutoff = DateTime.utc_now() |> DateTime.add(-@new_account_age_days * 24 * 3600, :second)
+    cutoff = days_ago(@new_account_age_days)
 
-    account_mature =
+    account_past_new_period =
       Repo.exists?(
         from u in User,
           where: u.id == ^sender_id and u.inserted_at <= ^cutoff
       )
 
-    if account_mature do
+    if account_past_new_period do
       :ok
     else
-      has_shared = shared_channel_exists?(sender_id, recipient_id)
-      if has_shared, do: :ok, else: {:error, :no_shared_channels}
+      if shared_channel_exists?(sender_id, recipient_id),
+        do: :ok,
+        else: {:error, :no_shared_channels}
     end
   end
 
@@ -485,8 +491,7 @@ defmodule Slackex.Chat do
   end
 
   defp check_existing_conversation(sender_id, recipient_id) do
-    {lower_id, higher_id} =
-      if sender_id < recipient_id, do: {sender_id, recipient_id}, else: {recipient_id, sender_id}
+    {lower_id, higher_id} = normalize_user_pair(sender_id, recipient_id)
 
     case Repo.get_by(DMConversation, user_a_id: lower_id, user_b_id: higher_id) do
       nil -> :new
@@ -586,18 +591,13 @@ defmodule Slackex.Chat do
   end
 
   defp find_or_insert_dm_conversation(user_a_id, user_b_id) do
-    {lower_id, higher_id} =
-      if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
+    {lower_id, higher_id} = normalize_user_pair(user_a_id, user_b_id)
 
     case Repo.get_by(DMConversation, user_a_id: lower_id, user_b_id: higher_id) do
       nil ->
         %DMConversation{}
         |> DMConversation.changeset(%{user_a_id: lower_id, user_b_id: higher_id})
         |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_a_id, :user_b_id])
-        |> case do
-          {:ok, dm} -> {:ok, dm}
-          {:error, changeset} -> {:error, changeset}
-        end
 
       dm ->
         {:ok, dm}
@@ -641,7 +641,7 @@ defmodule Slackex.Chat do
 
       upsert_decline_count(request.sender_id)
 
-      if prior_decline_count >= 2 do
+      if prior_decline_count >= @auto_block_after_declines - 1 do
         block_user(recipient_id, request.sender_id)
       end
 
@@ -670,45 +670,38 @@ defmodule Slackex.Chat do
   end
 
   defp check_cooldown(sender_id, recipient_id) do
-    total_declines =
-      Repo.one(
-        from r in DMRequest,
-          where:
-            r.sender_id == ^sender_id and
-              r.recipient_id == ^recipient_id and
-              r.status == "declined",
-          select: count()
-      )
-
-    if total_declines == 0 do
-      :ok
-    else
-      most_recent_decline =
-        Repo.one(
-          from r in DMRequest,
-            where:
-              r.sender_id == ^sender_id and
-                r.recipient_id == ^recipient_id and
-                r.status == "declined",
-            order_by: [desc: r.responded_at],
-            limit: 1,
-            select: r.responded_at
-        )
-
-      cooldown_days =
-        if total_declines >= 2,
-          do: @cooldown_strike_2_days,
-          else: @cooldown_strike_1_days
-
-      cooldown_expiry =
-        DateTime.add(most_recent_decline, cooldown_days * 24 * 3600, :second)
-
-      if DateTime.compare(cooldown_expiry, DateTime.utc_now()) == :gt do
-        {:error, :cooldown_active}
-      else
+    case count_prior_declines(sender_id, recipient_id) do
+      0 ->
         :ok
-      end
+
+      decline_count ->
+        last_declined_at = most_recent_decline_timestamp(sender_id, recipient_id)
+
+        cooldown_days =
+          if decline_count >= 2,
+            do: @cooldown_after_second_decline_days,
+            else: @cooldown_after_first_decline_days
+
+        cooldown_expiry =
+          DateTime.add(last_declined_at, cooldown_days * 24 * 3600, :second)
+
+        if DateTime.compare(cooldown_expiry, DateTime.utc_now()) == :gt,
+          do: {:error, :cooldown_active},
+          else: :ok
     end
+  end
+
+  defp most_recent_decline_timestamp(sender_id, recipient_id) do
+    Repo.one(
+      from r in DMRequest,
+        where:
+          r.sender_id == ^sender_id and
+            r.recipient_id == ^recipient_id and
+            r.status == "declined",
+        order_by: [desc: r.responded_at],
+        limit: 1,
+        select: r.responded_at
+    )
   end
 
   @doc """
@@ -867,16 +860,17 @@ defmodule Slackex.Chat do
     maybe_apply_block_restriction(trust_score)
   end
 
-  defp maybe_apply_block_restriction(trust_score) do
-    if trust_score.block_count >= @block_restriction_threshold and not trust_score.dm_restricted do
-      trust_score
-      |> UserTrustScore.changeset(%{
-        dm_restricted: true,
-        dm_restricted_at: DateTime.utc_now()
-      })
-      |> Repo.update()
-    end
+  defp maybe_apply_block_restriction(%{block_count: count, dm_restricted: false} = trust_score)
+       when count >= @auto_restrict_block_threshold do
+    trust_score
+    |> UserTrustScore.changeset(%{
+      dm_restricted: true,
+      dm_restricted_at: DateTime.utc_now()
+    })
+    |> Repo.update()
   end
+
+  defp maybe_apply_block_restriction(_trust_score), do: :ok
 
   @doc """
   Unblocks a user. Removes the block from blocker to blocked.
@@ -932,4 +926,17 @@ defmodule Slackex.Chat do
         where: ub.blocker_id == ^user_id
     )
   end
+
+  # ---------------------------------------------------------------------------
+  # Shared helpers
+  # ---------------------------------------------------------------------------
+
+  defp normalize_user_pair(user_a_id, user_b_id) when user_a_id < user_b_id,
+    do: {user_a_id, user_b_id}
+
+  defp normalize_user_pair(user_a_id, user_b_id),
+    do: {user_b_id, user_a_id}
+
+  defp hours_ago(hours), do: DateTime.utc_now() |> DateTime.add(-hours * 3600, :second)
+  defp days_ago(days), do: hours_ago(days * 24)
 end

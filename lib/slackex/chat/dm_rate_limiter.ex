@@ -19,8 +19,8 @@ defmodule Slackex.Chat.DMRateLimiter do
   alias Slackex.Infrastructure.RateLimiter
 
   @table :dm_rate_limits
-  @rate 5
-  @per :hour
+  @dm_creation_rate 5
+  @dm_creation_per :hour
 
   @request_hourly_rate 5
   @request_hourly_per :hour
@@ -39,7 +39,7 @@ defmodule Slackex.Chat.DMRateLimiter do
   """
   @spec check(integer()) :: :ok | {:error, :rate_limited}
   def check(user_id) do
-    check_bucket(user_id, @rate, @per)
+    check_bucket(user_id, @dm_creation_rate, @dm_creation_per)
   end
 
   @doc """

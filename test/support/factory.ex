@@ -3,6 +3,8 @@ defmodule Slackex.Factory do
 
   use ExMachina.Ecto, repo: Slackex.Repo
 
+  import Ecto.Query, only: [from: 2]
+
   alias Slackex.Accounts.User
   alias Slackex.Chat.{Channel, DMConversation, DMRequest, Message, ReadCursor, Subscription}
   alias Slackex.Notifications.DeviceToken
@@ -43,12 +45,8 @@ defmodule Slackex.Factory do
   end
 
   def message_factory do
-    # Use a large monotonic integer as a valid bigint ID (not a real Snowflake,
-    # but valid for factory use where Snowflake GenServer is not started)
-    id = 1_000_000_000_000 + System.unique_integer([:positive, :monotonic])
-
     %Message{
-      id: id,
+      id: unique_bigint_id(),
       content: sequence(:message_content, &"Message content #{&1}"),
       sender: build(:user),
       channel: build(:channel),
@@ -72,10 +70,8 @@ defmodule Slackex.Factory do
   end
 
   def dm_request_factory do
-    id = 1_000_000_000_000 + System.unique_integer([:positive, :monotonic])
-
     %DMRequest{
-      id: id,
+      id: unique_bigint_id(),
       sender: build(:user),
       recipient: build(:user),
       preview_text: sequence(:preview_text, &"Hey, can we chat? #{&1}"),
@@ -106,5 +102,40 @@ defmodule Slackex.Factory do
   def with_subscription(channel, user, role \\ "member") do
     insert(:subscription, %{channel: channel, user: user, role: role})
     channel
+  end
+
+  @doc """
+  Inserts a user with `inserted_at` backdated by the given number of hours.
+  Useful for testing account-age gates in DM safety checks.
+  """
+  def insert_user_with_age(hours_ago) do
+    user = insert(:user)
+
+    past =
+      DateTime.utc_now()
+      |> DateTime.add(-hours_ago * 3600, :second)
+      |> DateTime.truncate(:microsecond)
+
+    {1, _} =
+      Slackex.Repo.update_all(
+        from(u in Slackex.Accounts.User, where: u.id == ^user.id),
+        set: [inserted_at: past]
+      )
+
+    %{user | inserted_at: past}
+  end
+
+  @doc """
+  Inserts a user with `inserted_at` backdated by the given number of days.
+  """
+  def insert_user_with_age_days(days_ago) do
+    insert_user_with_age(days_ago * 24)
+  end
+
+  # Generates a large monotonic integer suitable as a bigint ID.
+  # Not a real Snowflake, but valid for factory use where the Snowflake
+  # GenServer is not started.
+  defp unique_bigint_id do
+    1_000_000_000_000 + System.unique_integer([:positive, :monotonic])
   end
 end

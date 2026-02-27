@@ -335,7 +335,7 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def handle_info(:online_heartbeat, socket) do
     OnlineTracker.refresh(socket.assigns.current_user.id)
-    Process.send_after(self(), :online_heartbeat, 60_000)
+    Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
     {:noreply, socket}
   end
 
