@@ -26,6 +26,9 @@ defmodule Slackex.Chat do
   @auto_block_after_declines 3
   @auto_restrict_block_threshold 5
 
+  # Default message ID when no read cursor exists (counts all messages as unread)
+  @no_cursor_message_id 0
+
   # ---------------------------------------------------------------------------
   # Channel operations
   # ---------------------------------------------------------------------------
@@ -792,25 +795,7 @@ defmodule Slackex.Chat do
   Upserts the read cursor for a user/channel to the latest message ID.
   """
   def mark_as_read(user_id, channel_id) do
-    latest_id =
-      Repo.one(
-        from m in Message,
-          where: m.channel_id == ^channel_id,
-          select: max(m.id)
-      ) || 0
-
-    %ReadCursor{}
-    |> ReadCursor.changeset(%{
-      user_id: user_id,
-      channel_id: channel_id,
-      last_read_message_id: latest_id
-    })
-    |> Repo.insert(
-      on_conflict: {:replace, [:last_read_message_id, :updated_at]},
-      conflict_target: {:unsafe_fragment, "(user_id, channel_id) WHERE channel_id IS NOT NULL"}
-    )
-
-    :ok
+    upsert_read_cursor(user_id, :channel_id, channel_id)
   end
 
   @doc """
@@ -822,7 +807,7 @@ defmodule Slackex.Chat do
         from r in ReadCursor,
           where: r.user_id == ^user_id and r.channel_id == ^channel_id,
           select: r.last_read_message_id
-      ) || 0
+      ) || @no_cursor_message_id
 
     Repo.one(
       from m in Message,
@@ -835,25 +820,33 @@ defmodule Slackex.Chat do
   Upserts the read cursor for a user/DM conversation to the latest message ID.
   """
   def mark_dm_as_read(user_id, dm_conversation_id) do
-    latest_id =
-      Repo.one(
-        from m in Message,
-          where: m.dm_conversation_id == ^dm_conversation_id,
-          select: max(m.id)
-      ) || 0
+    upsert_read_cursor(user_id, :dm_conversation_id, dm_conversation_id)
+  end
+
+  defp upsert_read_cursor(user_id, target_field, target_id) do
+    latest_id = latest_message_id(target_field, target_id)
+
+    attrs =
+      %{user_id: user_id, last_read_message_id: latest_id}
+      |> Map.put(target_field, target_id)
 
     %ReadCursor{}
-    |> ReadCursor.changeset(%{
-      user_id: user_id,
-      dm_conversation_id: dm_conversation_id,
-      last_read_message_id: latest_id
-    })
+    |> ReadCursor.changeset(attrs)
     |> Repo.insert(
       on_conflict: {:replace, [:last_read_message_id, :updated_at]},
-      conflict_target: {:unsafe_fragment, "(user_id, dm_conversation_id) WHERE dm_conversation_id IS NOT NULL"}
+      conflict_target:
+        {:unsafe_fragment, "(user_id, #{target_field}) WHERE #{target_field} IS NOT NULL"}
     )
 
     :ok
+  end
+
+  defp latest_message_id(target_field, target_id) do
+    Repo.one(
+      from m in Message,
+        where: field(m, ^target_field) == ^target_id,
+        select: max(m.id)
+    ) || @no_cursor_message_id
   end
 
   @doc """
@@ -872,6 +865,8 @@ defmodule Slackex.Chat do
   end
 
   defp batch_channel_unread_counts(user_id) do
+    no_cursor = @no_cursor_message_id
+
     Repo.all(
       from s in Subscription,
         where: s.user_id == ^user_id,
@@ -879,7 +874,7 @@ defmodule Slackex.Chat do
           on: rc.user_id == ^user_id and rc.channel_id == s.channel_id,
         left_join: m in Message,
           on: m.channel_id == s.channel_id and
-              m.id > coalesce(rc.last_read_message_id, 0),
+              m.id > coalesce(rc.last_read_message_id, ^no_cursor),
         group_by: s.channel_id,
         select: {s.channel_id, count(m.id)}
     )
@@ -887,6 +882,8 @@ defmodule Slackex.Chat do
   end
 
   defp batch_dm_unread_counts(user_id) do
+    no_cursor = @no_cursor_message_id
+
     Repo.all(
       from d in DMConversation,
         where: d.user_a_id == ^user_id or d.user_b_id == ^user_id,
@@ -894,7 +891,7 @@ defmodule Slackex.Chat do
           on: rc.user_id == ^user_id and rc.dm_conversation_id == d.id,
         left_join: m in Message,
           on: m.dm_conversation_id == d.id and
-              m.id > coalesce(rc.last_read_message_id, 0),
+              m.id > coalesce(rc.last_read_message_id, ^no_cursor),
         group_by: d.id,
         select: {d.id, count(m.id)}
     )

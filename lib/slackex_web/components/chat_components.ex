@@ -71,12 +71,7 @@ defmodule SlackexWeb.ChatComponents do
     <li>
       <.link
         patch={~p"/chat/#{@channel.slug}"}
-        class={[
-          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
-          "hover:bg-base-300",
-          @active && "bg-base-300",
-          (@active || @unread_count > 0) && "font-semibold"
-        ]}
+        class={sidebar_item_classes(@active, @unread_count)}
       >
         <span class="text-base-content/50">#</span>
         <span class="truncate flex-1">{@channel.name}</span>
@@ -106,12 +101,7 @@ defmodule SlackexWeb.ChatComponents do
     <li>
       <.link
         patch={@dm_path}
-        class={[
-          "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
-          "hover:bg-base-300",
-          @active && "bg-base-300",
-          (@active || @unread_count > 0) && "font-semibold"
-        ]}
+        class={sidebar_item_classes(@active, @unread_count)}
       >
         <.avatar user={@dm.other_user} size="sm" online={@online} />
         <span class="truncate flex-1">{@display}</span>
@@ -119,6 +109,17 @@ defmodule SlackexWeb.ChatComponents do
       </.link>
     </li>
     """
+  end
+
+  # ────────────────────────── Shared Helpers ───────────────────────────────
+
+  defp sidebar_item_classes(active, unread_count) do
+    [
+      "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+      "hover:bg-base-300",
+      active && "bg-base-300",
+      (active || unread_count > 0) && "font-semibold"
+    ]
   end
 
   # ────────────────────────── Message Bubble ───────────────────────────────

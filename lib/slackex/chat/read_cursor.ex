@@ -32,14 +32,14 @@ defmodule Slackex.Chat.ReadCursor do
     channel_id = get_field(changeset, :channel_id)
     dm_conversation_id = get_field(changeset, :dm_conversation_id)
 
-    case {channel_id, dm_conversation_id} do
-      {nil, nil} ->
+    cond do
+      is_nil(channel_id) and is_nil(dm_conversation_id) ->
         add_error(changeset, :base, "must have either channel_id or dm_conversation_id")
 
-      {cid, did} when not is_nil(cid) and not is_nil(did) ->
+      not is_nil(channel_id) and not is_nil(dm_conversation_id) ->
         add_error(changeset, :base, "cannot have both channel_id and dm_conversation_id")
 
-      _ ->
+      true ->
         changeset
     end
   end

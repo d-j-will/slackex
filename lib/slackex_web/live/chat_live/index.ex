@@ -519,18 +519,12 @@ defmodule SlackexWeb.ChatLive.Index do
     messages = fetch_initial_messages(&Chat.list_messages/2, channel.id)
     Chat.mark_as_read(user.id, channel.id)
 
-    updated_channel_counts =
-      Map.put(socket.assigns.unread_counts.channel_counts, channel.id, 0)
-
-    updated_unread_counts =
-      Map.put(socket.assigns.unread_counts, :channel_counts, updated_channel_counts)
-
     socket
     |> assign(:active_channel, channel)
     |> assign(:can_send, can_send)
     |> assign(:user_role, user_role)
     |> assign(:page_title, "##{channel.name}")
-    |> assign(:unread_counts, updated_unread_counts)
+    |> reset_unread_count(:channel_counts, channel.id)
     |> assign_conversation_state(messages)
     |> assign(:sidebar_open, true)
   end
@@ -545,18 +539,12 @@ defmodule SlackexWeb.ChatLive.Index do
     messages = fetch_initial_messages(&Chat.list_dm_messages/2, dm.id)
     Chat.mark_dm_as_read(user.id, dm.id)
 
-    updated_dm_counts =
-      Map.put(socket.assigns.unread_counts.dm_counts, dm.id, 0)
-
-    updated_unread_counts =
-      Map.put(socket.assigns.unread_counts, :dm_counts, updated_dm_counts)
-
     socket
     |> assign(:active_dm, dm)
     |> assign(:active_channel, nil)
     |> assign(:can_send, true)
     |> assign(:page_title, other_user.display_name || other_user.username)
-    |> assign(:unread_counts, updated_unread_counts)
+    |> reset_unread_count(:dm_counts, dm.id)
     |> assign_conversation_state(messages)
   end
 
@@ -676,24 +664,27 @@ defmodule SlackexWeb.ChatLive.Index do
   defp message_for_active_conversation?(_envelope, _socket), do: false
 
   defp increment_unread_count(socket, %{target: %{type: :channel, id: channel_id}}) do
-    current_counts = socket.assigns.unread_counts
-    channel_counts = current_counts.channel_counts
-    new_count = Map.get(channel_counts, channel_id, 0) + 1
-    updated_channel_counts = Map.put(channel_counts, channel_id, new_count)
-    updated_unread_counts = Map.put(current_counts, :channel_counts, updated_channel_counts)
-    assign(socket, :unread_counts, updated_unread_counts)
+    update_unread_count(socket, :channel_counts, channel_id, &(&1 + 1))
   end
 
   defp increment_unread_count(socket, %{target: %{type: :dm, id: dm_id}}) do
-    current_counts = socket.assigns.unread_counts
-    dm_counts = current_counts.dm_counts
-    new_count = Map.get(dm_counts, dm_id, 0) + 1
-    updated_dm_counts = Map.put(dm_counts, dm_id, new_count)
-    updated_unread_counts = Map.put(current_counts, :dm_counts, updated_dm_counts)
-    assign(socket, :unread_counts, updated_unread_counts)
+    update_unread_count(socket, :dm_counts, dm_id, &(&1 + 1))
   end
 
   defp increment_unread_count(socket, _envelope), do: socket
+
+  defp reset_unread_count(socket, count_key, conversation_id) do
+    update_unread_count(socket, count_key, conversation_id, fn _current -> 0 end)
+  end
+
+  defp update_unread_count(socket, count_key, conversation_id, update_fn) do
+    unread_counts = socket.assigns.unread_counts
+    counts_map = Map.fetch!(unread_counts, count_key)
+    current = Map.get(counts_map, conversation_id, 0)
+    updated_counts = Map.put(counts_map, conversation_id, update_fn.(current))
+    updated_unread = Map.put(unread_counts, count_key, updated_counts)
+    assign(socket, :unread_counts, updated_unread)
+  end
 
   # ---------------------------------------------------------------------------
   # Template
