@@ -146,6 +146,45 @@ defmodule Slackex.Chat.UnreadCountsTest do
 
       assert Map.get(dm_counts, dm.id) == 1
     end
+
+    test "returns count 0 (not absent) for a channel with zero messages", %{
+      bob: bob,
+      channel_a: channel_a
+    } do
+      # No messages ever sent to channel_a
+      result = Chat.batch_unread_counts(bob.id)
+
+      assert %{channel_counts: channel_counts} = result
+      assert Map.has_key?(channel_counts, channel_a.id)
+      assert Map.get(channel_counts, channel_a.id) == 0
+    end
+
+    test "returns 0 for a channel after mark_as_read clears unreads", %{
+      alice: alice,
+      bob: bob,
+      channel_a: channel_a,
+      channel_b: channel_b
+    } do
+      # Bob marks channel_a as read
+      Chat.mark_as_read(bob.id, channel_a.id)
+
+      # Alice sends messages to both channels
+      {:ok, _} = Chat.send_message(channel_a.id, alice.id, "Msg A1")
+      {:ok, _} = Chat.send_message(channel_a.id, alice.id, "Msg A2")
+      {:ok, _} = Chat.send_message(channel_b.id, alice.id, "Msg B1")
+
+      # Verify bob has unreads
+      %{channel_counts: before} = Chat.batch_unread_counts(bob.id)
+      assert Map.get(before, channel_a.id) == 2
+
+      # Bob marks channel_a as read again
+      Chat.mark_as_read(bob.id, channel_a.id)
+
+      # Verify channel_a returns 0 while channel_b still has unreads
+      %{channel_counts: after_counts} = Chat.batch_unread_counts(bob.id)
+      assert Map.get(after_counts, channel_a.id) == 0
+      assert Map.get(after_counts, channel_b.id) == 1
+    end
   end
 
   describe "mark_dm_as_read/2" do
@@ -216,6 +255,18 @@ defmodule Slackex.Chat.UnreadCountsTest do
       # Channel unread count should remain unchanged (2 unread)
       %{channel_counts: channel_counts, dm_counts: dm_counts} = Chat.batch_unread_counts(bob.id)
       assert Map.get(channel_counts, channel.id) == 2
+      assert Map.get(dm_counts, dm.id) == 0
+    end
+
+    test "upserts cursor even when user has no messages in the DM", %{
+      bob: bob,
+      dm: dm
+    } do
+      # No messages sent at all -- bob marks the empty DM as read
+      :ok = Chat.mark_dm_as_read(bob.id, dm.id)
+
+      # Should still return 0 (cursor upserted successfully)
+      %{dm_counts: dm_counts} = Chat.batch_unread_counts(bob.id)
       assert Map.get(dm_counts, dm.id) == 0
     end
 
