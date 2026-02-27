@@ -41,6 +41,8 @@ defmodule Slackex.Chat do
   @auto_restrict_block_threshold 5
   @report_restrict_threshold 3
   @report_admin_flag_threshold 5
+  @velocity_signal_threshold 3
+  @velocity_window_hours 24
 
   # Default message ID when no read cursor exists (counts all messages as unread)
   @no_cursor_message_id 0
@@ -1059,6 +1061,7 @@ defmodule Slackex.Chat do
           block_user(reporter_id, reported_user_id)
           upsert_report_count(reported_user_id)
           check_report_thresholds(reported_user_id)
+          check_velocity(reported_user_id)
           {:ok, report}
 
         {:error, changeset} ->
@@ -1101,15 +1104,37 @@ defmodule Slackex.Chat do
   end
 
   defp count_distinct_reporters(reported_user_id) do
-    Repo.one(
-      from ar in AbuseReport,
-        where: ar.reported_user_id == ^reported_user_id,
-        select: count(ar.reporter_id, :distinct)
-    )
+    reporter_timestamps =
+      Repo.all(
+        from ar in AbuseReport,
+          where: ar.reported_user_id == ^reported_user_id,
+          group_by: ar.reporter_id,
+          select: {ar.reporter_id, min(ar.inserted_at)},
+          order_by: [asc: min(ar.inserted_at)]
+      )
+
+    dampen_reporter_clusters(reporter_timestamps)
   end
 
-  defp maybe_apply_report_restriction(reported_user_id) do
-    case Repo.get_by(UserTrustScore, user_id: reported_user_id) do
+  defp dampen_reporter_clusters([]), do: 0
+
+  defp dampen_reporter_clusters(reporter_timestamps) do
+    {count, _last_window_start} =
+      Enum.reduce(reporter_timestamps, {0, nil}, fn {_reporter_id, timestamp},
+                                                    {count, window_start} ->
+        if window_start == nil or
+             DateTime.diff(timestamp, window_start, :second) > 86_400 do
+          {count + 1, timestamp}
+        else
+          {count, window_start}
+        end
+      end)
+
+    count
+  end
+
+  defp maybe_apply_dm_restriction(user_id) do
+    case Repo.get_by(UserTrustScore, user_id: user_id) do
       %{dm_restricted: false} = trust_score ->
         trust_score
         |> UserTrustScore.changeset(%{
@@ -1118,9 +1143,22 @@ defmodule Slackex.Chat do
         })
         |> Repo.update()
 
+      nil ->
+        %UserTrustScore{user_id: user_id}
+        |> UserTrustScore.changeset(%{
+          user_id: user_id,
+          dm_restricted: true,
+          dm_restricted_at: DateTime.utc_now()
+        })
+        |> Repo.insert(on_conflict: :nothing, conflict_target: :user_id)
+
       _already_restricted ->
         :ok
     end
+  end
+
+  defp maybe_apply_report_restriction(reported_user_id) do
+    maybe_apply_dm_restriction(reported_user_id)
   end
 
   defp maybe_apply_admin_flag(reported_user_id) do
@@ -1136,6 +1174,45 @@ defmodule Slackex.Chat do
       _already_flagged ->
         :ok
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Velocity detection
+  # ---------------------------------------------------------------------------
+
+  defp check_velocity(user_id) do
+    signal_count = count_negative_signals_24h(user_id)
+
+    if signal_count >= @velocity_signal_threshold do
+      maybe_apply_dm_restriction(user_id)
+    end
+  end
+
+  defp count_negative_signals_24h(user_id) do
+    cutoff = hours_ago(@velocity_window_hours)
+
+    report_count =
+      Repo.one(
+        from ar in AbuseReport,
+          where: ar.reported_user_id == ^user_id and ar.inserted_at >= ^cutoff,
+          select: count()
+      )
+
+    block_count =
+      Repo.one(
+        from ub in UserBlock,
+          where: ub.blocked_id == ^user_id and ub.inserted_at >= ^cutoff,
+          select: count()
+      )
+
+    decline_count =
+      Repo.one(
+        from r in DMRequest,
+          where: r.sender_id == ^user_id and r.status == "declined" and r.responded_at >= ^cutoff,
+          select: count()
+      )
+
+    report_count + block_count + decline_count
   end
 
   # ---------------------------------------------------------------------------

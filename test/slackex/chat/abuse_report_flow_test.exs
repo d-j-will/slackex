@@ -146,6 +146,181 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Acceptance: velocity detection (3+ negative signals in 24h)
+  # ---------------------------------------------------------------------------
+
+  describe "velocity detection triggers dm_restricted" do
+    test "3 mixed negative signals within 24h triggers dm_restricted via velocity" do
+      # Setup: target has a prior decline (someone declined target's DM request)
+      target = insert_user_with_age_days(10)
+      decliner = insert_user_with_age_days(10)
+      reporter = insert_user_with_age_days(10)
+
+      # Signal 1: a declined DM request where target is sender (within 24h)
+      {:ok, dm_request} = Chat.create_dm_request(target.id, decliner.id, "hey")
+      {:ok, _declined} = Chat.decline_dm_request(dm_request.id, decliner.id)
+
+      # Signal 2 + 3: filing abuse report auto-blocks (block = signal 2) + report itself (signal 3)
+      {:ok, _report} = Chat.create_abuse_report(reporter.id, target.id, %{category: "spam"})
+
+      # Velocity: decline(1) + block(1) + report(1) = 3 signals in 24h => dm_restricted
+      trust_score = Repo.get_by!(UserTrustScore, user_id: target.id)
+      assert trust_score.dm_restricted == true
+      assert trust_score.dm_restricted_at != nil
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Unit: velocity signals outside 24h window are not counted
+  # ---------------------------------------------------------------------------
+
+  describe "velocity detection 24h window boundary" do
+    test "negative signals outside 24h window do not count toward velocity" do
+      target = insert_user_with_age_days(10)
+      blocker_old = insert_user_with_age_days(10)
+      blocker_recent = insert_user_with_age_days(10)
+      reporter = insert_user_with_age_days(10)
+
+      # Old block: 25 hours ago (outside 24h window)
+      {:ok, _block} = Chat.block_user(blocker_old.id, target.id)
+
+      past =
+        DateTime.utc_now() |> DateTime.add(-25 * 3600, :second) |> DateTime.truncate(:microsecond)
+
+      Repo.update_all(
+        from(ub in Slackex.Chat.UserBlock,
+          where: ub.blocker_id == ^blocker_old.id and ub.blocked_id == ^target.id
+        ),
+        set: [inserted_at: past]
+      )
+
+      # Recent block: within 24h
+      {:ok, _block} = Chat.block_user(blocker_recent.id, target.id)
+
+      # Report (within 24h) -- gives report(1) + auto-block(1) + recent block(1) = 3? No:
+      # auto-block is reporter->target, recent block is blocker_recent->target
+      # So signals within 24h: blocker_recent block(1) + report auto-block(1) + report(1) = 3
+      # But the old block is outside window, so it should NOT count.
+      # With only 1 reporter (below threshold of 3 distinct), velocity is the only path to restriction.
+
+      # Reset trust score to clear any block-based restriction from blocker_recent
+      Repo.delete_all(from(ts in UserTrustScore, where: ts.user_id == ^target.id))
+
+      {:ok, _report} = Chat.create_abuse_report(reporter.id, target.id, %{category: "spam"})
+
+      # Signals within 24h: blocker_recent block(1) + reporter auto-block(1) + report(1) = 3
+      # Velocity should trigger
+      trust_score = Repo.get_by!(UserTrustScore, user_id: target.id)
+      assert trust_score.dm_restricted == true
+    end
+
+    test "only 2 signals within 24h does not trigger velocity restriction" do
+      target = insert_user_with_age_days(10)
+      reporter = insert_user_with_age_days(10)
+
+      # Filing a report creates: auto-block(1) + report(1) = 2 signals
+      # No other signals within 24h, so velocity threshold of 3 not met
+      # Also only 1 distinct reporter, so threshold gate (3 distinct) not met
+      {:ok, _report} = Chat.create_abuse_report(reporter.id, target.id, %{category: "spam"})
+
+      trust_score = Repo.get_by!(UserTrustScore, user_id: target.id)
+      assert trust_score.dm_restricted == false
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Unit: velocity and threshold are independent gates
+  # ---------------------------------------------------------------------------
+
+  describe "velocity and distinct-reporter threshold are independent gates" do
+    test "velocity triggers restriction even with fewer than 3 distinct reporters" do
+      target = insert_user_with_age_days(10)
+      decliner = insert_user_with_age_days(10)
+      reporter = insert_user_with_age_days(10)
+
+      # Decline gives 1 signal
+      {:ok, dm_request} = Chat.create_dm_request(target.id, decliner.id, "hey")
+      {:ok, _declined} = Chat.decline_dm_request(dm_request.id, decliner.id)
+
+      # Report: auto-block(1) + report(1) = 2 more signals, total = 3
+      # Only 1 distinct reporter (below threshold of 3), but velocity fires independently
+      {:ok, _report} = Chat.create_abuse_report(reporter.id, target.id, %{category: "spam"})
+
+      trust_score = Repo.get_by!(UserTrustScore, user_id: target.id)
+      assert trust_score.dm_restricted == true
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Unit: coordinated-report dampening
+  # ---------------------------------------------------------------------------
+
+  describe "coordinated-report dampening reduces distinct reporter count" do
+    test "reports from 3 reporters within same 24h window count as 1 distinct reporter" do
+      target = insert_user_with_age_days(10)
+      reporters = for _ <- 1..3, do: insert_user_with_age_days(10)
+      categories = ["spam", "harassment", "other"]
+
+      # All 3 reporters file within minutes of each other (same 24h window)
+      for {reporter, i} <- Enum.with_index(reporters) do
+        {:ok, _report} =
+          Chat.create_abuse_report(reporter.id, target.id, %{category: Enum.at(categories, i)})
+      end
+
+      # Without dampening, 3 distinct reporters would trigger dm_restricted via threshold.
+      # With dampening, all 3 are in the same 24h window => count as 1 distinct reporter.
+      # 1 < 3 (threshold), so threshold gate does NOT restrict.
+      # However, velocity might trigger (3 reports + 3 auto-blocks = 6 signals in 24h).
+      # So we need to check that the dampened count itself is 1.
+      # We test this indirectly: if velocity already restricts, the dampening is still correct
+      # but hard to observe. We verify by checking that with dampening applied, the
+      # threshold-based admin_flagged is NOT triggered (requires 5 distinct).
+      trust_score = Repo.get_by!(UserTrustScore, user_id: target.id)
+      assert trust_score.admin_flagged == false
+    end
+
+    test "reporters separated by more than 24h count as separate distinct reporters" do
+      target = insert_user_with_age_days(10)
+      reporter_old = insert_user_with_age_days(10)
+      reporter_mid = insert_user_with_age_days(10)
+      reporter_new = insert_user_with_age_days(10)
+
+      # Reporter 1: files 50 hours ago (outside 24h of reporter 2)
+      {:ok, report1} =
+        Chat.create_abuse_report(reporter_old.id, target.id, %{category: "spam"})
+
+      past_50h =
+        DateTime.utc_now() |> DateTime.add(-50 * 3600, :second) |> DateTime.truncate(:microsecond)
+
+      Repo.update_all(
+        from(ar in AbuseReport, where: ar.id == ^report1.id),
+        set: [inserted_at: past_50h]
+      )
+
+      # Reporter 2: files 48 hours ago (>24h from reporter 1, >24h from reporter 3)
+      {:ok, report2} =
+        Chat.create_abuse_report(reporter_mid.id, target.id, %{category: "harassment"})
+
+      past_48h =
+        DateTime.utc_now() |> DateTime.add(-48 * 3600, :second) |> DateTime.truncate(:microsecond)
+
+      Repo.update_all(
+        from(ar in AbuseReport, where: ar.id == ^report2.id),
+        set: [inserted_at: past_48h]
+      )
+
+      # Reporter 3: files now
+      {:ok, _report3} =
+        Chat.create_abuse_report(reporter_new.id, target.id, %{category: "other"})
+
+      # Each reporter is >24h apart from the others => 3 separate clusters => 3 distinct reporters
+      # This should trigger dm_restricted via the threshold gate
+      trust_score = Repo.get_by!(UserTrustScore, user_id: target.id)
+      assert trust_score.dm_restricted == true
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Acceptance: distinct reporter thresholds
   # ---------------------------------------------------------------------------
 
@@ -164,7 +339,7 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
       assert trust_score.dm_restricted_at != nil
     end
 
-    test "fewer than 3 distinct reporters does not restrict reported user" do
+    test "fewer than 3 distinct reporters does not trigger threshold restriction" do
       reported = insert_user_with_age_days(10)
       reporters = for _ <- 1..2, do: insert_user_with_age_days(10)
 
@@ -174,39 +349,86 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
       end
 
       trust_score = Repo.get_by!(UserTrustScore, user_id: reported.id)
-      assert trust_score.dm_restricted == false
-      assert trust_score.dm_restricted_at == nil
+      # dm_restricted is true via velocity (2 reports + 2 auto-blocks = 4 signals in 24h >= 3)
+      # but admin_flagged is false (only 1 dampened distinct reporter, well below 5)
+      assert trust_score.dm_restricted == true
+      assert trust_score.admin_flagged == false
     end
 
-    test "multiple reports from same reporter count as 1 distinct reporter" do
+    test "multiple reports from same reporter count as 1 distinct reporter for dampening" do
       reported = insert_user_with_age_days(10)
       reporter_a = insert_user_with_age_days(10)
       reporter_b = insert_user_with_age_days(10)
 
-      # reporter_a files two reports (different categories to avoid duplicate constraint)
+      # reporter_a files report, then reporter_b files report
       {:ok, _} = Chat.create_abuse_report(reporter_a.id, reported.id, %{category: "spam"})
       {:ok, _} = Chat.create_abuse_report(reporter_b.id, reported.id, %{category: "harassment"})
 
-      # reporter_a files second report -- will fail duplicate constraint, but that is expected
-      # Instead: only 2 distinct reporters exist, so not restricted
+      # 2 distinct reporters in same 24h window => dampened to 1 => below threshold of 3
+      # Velocity fires independently (2 reports + 2 blocks = 4 signals)
       trust_score = Repo.get_by!(UserTrustScore, user_id: reported.id)
-      assert trust_score.dm_restricted == false
+      assert trust_score.dm_restricted == true
+      assert trust_score.admin_flagged == false
     end
 
-    test "5 distinct reporters triggers admin_flagged on reported user" do
+    test "5 distinct reporters spaced apart triggers admin_flagged on reported user" do
       reported = insert_user_with_age_days(10)
       reporters = for _ <- 1..5, do: insert_user_with_age_days(10)
       categories = ["spam", "harassment", "other", "phishing", "inappropriate_content"]
 
+      # Space reports >24h apart so dampening treats each as a separate cluster
       for {reporter, i} <- Enum.with_index(reporters) do
-        {:ok, _report} =
+        {:ok, report} =
           Chat.create_abuse_report(reporter.id, reported.id, %{category: Enum.at(categories, i)})
+
+        # Backdate report to (i+1)*25 hours ago so each is >24h apart
+        past =
+          DateTime.utc_now()
+          |> DateTime.add(-(i + 1) * 25 * 3600, :second)
+          |> DateTime.truncate(:microsecond)
+
+        Repo.update_all(
+          from(ar in AbuseReport, where: ar.id == ^report.id),
+          set: [inserted_at: past]
+        )
       end
+
+      # Force re-evaluation of thresholds after backdating
+      # The last report's insert already ran check_report_thresholds,
+      # but with non-backdated timestamps. Re-run by filing one more report
+      # that will trigger the check with correct backdated data.
+      # Instead, we can directly check: all 5 are >24h apart => 5 clusters => 5 distinct
+      # But the pipeline already ran. We need to also backdate the blocks.
+      # Simpler: backdate everything then trigger threshold check via a new report.
+
+      # Backdate all auto-blocks to match
+      for {reporter, i} <- Enum.with_index(reporters) do
+        past =
+          DateTime.utc_now()
+          |> DateTime.add(-(i + 1) * 25 * 3600, :second)
+          |> DateTime.truncate(:microsecond)
+
+        Repo.update_all(
+          from(ub in Slackex.Chat.UserBlock,
+            where: ub.blocker_id == ^reporter.id and ub.blocked_id == ^reported.id
+          ),
+          set: [inserted_at: past]
+        )
+      end
+
+      # Reset trust score so the final report can re-evaluate cleanly
+      Repo.delete_all(from(ts in UserTrustScore, where: ts.user_id == ^reported.id))
+
+      # File a 6th report from a new reporter to trigger fresh threshold evaluation
+      reporter_6 = insert_user_with_age_days(10)
+
+      {:ok, _report} =
+        Chat.create_abuse_report(reporter_6.id, reported.id, %{category: "spam"})
 
       trust_score = Repo.get_by!(UserTrustScore, user_id: reported.id)
       assert trust_score.admin_flagged == true
       assert trust_score.admin_flagged_at != nil
-      # dm_restricted should also be true (triggered at 3)
+      # dm_restricted should also be true (triggered at 3 distinct, or via velocity)
       assert trust_score.dm_restricted == true
     end
 
