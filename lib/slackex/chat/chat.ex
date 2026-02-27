@@ -17,6 +17,8 @@ defmodule Slackex.Chat do
   @max_requests_per_hour 5
   @max_requests_per_day 20
   @max_pending_requests 10
+  @cooldown_strike_1_days 7
+  @cooldown_strike_2_days 30
 
   # ---------------------------------------------------------------------------
   # Channel operations
@@ -372,6 +374,7 @@ defmodule Slackex.Chat do
     with :ok <- check_account_age(sender_id),
          :ok <- check_not_blocked(sender_id, recipient_id),
          :ok <- check_not_dm_restricted(sender_id),
+         :ok <- check_cooldown(sender_id, recipient_id),
          :ok <- check_shared_channels_if_new(sender_id, recipient_id),
          :ok <- check_request_rate_hourly(sender_id),
          :ok <- check_request_rate_daily(sender_id),
@@ -606,6 +609,105 @@ defmodule Slackex.Chat do
       "user:#{request.sender_id}",
       {:dm_request_accepted, request}
     )
+  end
+
+  @doc """
+  Declines a pending DM request. Only the request's recipient may decline.
+
+  Graduated enforcement based on prior declines between this sender-recipient pair:
+    - Strike 1 (first decline): 7-day cooldown enforced on next request attempt
+    - Strike 2 (second decline): 30-day cooldown enforced on next request attempt
+    - Strike 3+ (third+ decline): auto-blocks sender via Chat.block_user
+
+  Increments decline_count on the sender's user_trust_score (upserts if missing).
+  No PubSub broadcast to sender (silent enforcement).
+
+  Returns `{:ok, updated_request}` on success.
+  Returns `{:error, :not_found}` when the request doesn't exist, isn't pending,
+  or the caller is not the recipient.
+  """
+  def decline_dm_request(request_id, recipient_id) do
+    with {:ok, request} <- fetch_pending_request(request_id, recipient_id) do
+      prior_decline_count = count_prior_declines(request.sender_id, request.recipient_id)
+
+      {:ok, updated_request} =
+        request
+        |> DMRequest.changeset(%{
+          status: "declined",
+          responded_at: DateTime.utc_now()
+        })
+        |> Repo.update()
+
+      upsert_decline_count(request.sender_id)
+
+      if prior_decline_count >= 2 do
+        block_user(recipient_id, request.sender_id)
+      end
+
+      {:ok, updated_request}
+    end
+  end
+
+  defp count_prior_declines(sender_id, recipient_id) do
+    Repo.one(
+      from r in DMRequest,
+        where:
+          r.sender_id == ^sender_id and
+            r.recipient_id == ^recipient_id and
+            r.status == "declined",
+        select: count()
+    )
+  end
+
+  defp upsert_decline_count(user_id) do
+    %UserTrustScore{user_id: user_id}
+    |> UserTrustScore.changeset(%{user_id: user_id, decline_count: 1})
+    |> Repo.insert(
+      on_conflict: [inc: [decline_count: 1]],
+      conflict_target: :user_id
+    )
+  end
+
+  defp check_cooldown(sender_id, recipient_id) do
+    total_declines =
+      Repo.one(
+        from r in DMRequest,
+          where:
+            r.sender_id == ^sender_id and
+              r.recipient_id == ^recipient_id and
+              r.status == "declined",
+          select: count()
+      )
+
+    if total_declines == 0 do
+      :ok
+    else
+      most_recent_decline =
+        Repo.one(
+          from r in DMRequest,
+            where:
+              r.sender_id == ^sender_id and
+                r.recipient_id == ^recipient_id and
+                r.status == "declined",
+            order_by: [desc: r.responded_at],
+            limit: 1,
+            select: r.responded_at
+        )
+
+      cooldown_days =
+        if total_declines >= 2,
+          do: @cooldown_strike_2_days,
+          else: @cooldown_strike_1_days
+
+      cooldown_expiry =
+        DateTime.add(most_recent_decline, cooldown_days * 24 * 3600, :second)
+
+      if DateTime.compare(cooldown_expiry, DateTime.utc_now()) == :gt do
+        {:error, :cooldown_active}
+      else
+        :ok
+      end
+    end
   end
 
   @doc """

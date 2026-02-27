@@ -549,4 +549,237 @@ defmodule Slackex.Chat.DMRequestFlowTest do
       assert_receive {:dm_conversation_new, ^dm}
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: decline_dm_request/2 happy path
+  # ---------------------------------------------------------------------------
+
+  describe "decline_dm_request/2 happy path" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, request} =
+        Chat.create_dm_request(sender.id, recipient.id, "Want to chat?")
+
+      %{sender: sender, recipient: recipient, request: request}
+    end
+
+    test "updates request status to declined with responded_at", %{
+      recipient: recipient,
+      request: request
+    } do
+      assert {:ok, declined_request} = Chat.decline_dm_request(request.id, recipient.id)
+
+      assert declined_request.status == "declined"
+      assert declined_request.responded_at != nil
+    end
+
+    test "increments decline_count on sender user_trust_score (upserts if missing)", %{
+      sender: sender,
+      recipient: recipient,
+      request: request
+    } do
+      # No trust score exists yet for sender
+      assert is_nil(Repo.get_by(UserTrustScore, user_id: sender.id))
+
+      {:ok, _} = Chat.decline_dm_request(request.id, recipient.id)
+
+      trust_score = Repo.get_by!(UserTrustScore, user_id: sender.id)
+      assert trust_score.decline_count == 1
+    end
+
+    test "increments existing decline_count on sender user_trust_score", %{
+      sender: sender,
+      recipient: recipient,
+      request: request
+    } do
+      # Pre-existing trust score with decline_count = 3
+      %UserTrustScore{}
+      |> UserTrustScore.changeset(%{user_id: sender.id, decline_count: 3})
+      |> Repo.insert!()
+
+      {:ok, _} = Chat.decline_dm_request(request.id, recipient.id)
+
+      trust_score = Repo.get_by!(UserTrustScore, user_id: sender.id)
+      assert trust_score.decline_count == 4
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: decline_dm_request/2 not found / authorization
+  # ---------------------------------------------------------------------------
+
+  describe "decline_dm_request/2 not found and authorization" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "returns error for non-existent request" do
+      recipient = insert_user_with_age(48)
+      assert {:error, :not_found} = Chat.decline_dm_request(-1, recipient.id)
+    end
+
+    test "returns error when request is not pending (already accepted)" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, request} = Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+      {:ok, _} = Chat.accept_dm_request(request.id, recipient.id)
+
+      assert {:error, :not_found} = Chat.decline_dm_request(request.id, recipient.id)
+    end
+
+    test "returns error when caller is not the recipient" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+      other_user = insert_user_with_age(48)
+
+      {:ok, request} = Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+
+      assert {:error, :not_found} = Chat.decline_dm_request(request.id, other_user.id)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: decline_dm_request/2 no PubSub broadcast to sender
+  # ---------------------------------------------------------------------------
+
+  describe "decline_dm_request/2 no PubSub broadcast" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, request} =
+        Chat.create_dm_request(sender.id, recipient.id, "Hey!")
+
+      %{sender: sender, recipient: recipient, request: request}
+    end
+
+    test "does not broadcast any event to sender on decline", %{
+      sender: sender,
+      recipient: recipient,
+      request: request
+    } do
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{sender.id}")
+
+      {:ok, _} = Chat.decline_dm_request(request.id, recipient.id)
+
+      refute_receive {:dm_request_declined, _}
+      refute_receive {_, _}
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: graduated cooldown enforcement in create_dm_request
+  # ---------------------------------------------------------------------------
+
+  describe "create_dm_request/3 cooldown enforcement after decline" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "first decline enforces 7-day cooldown on new requests from same sender" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      # Create and decline first request
+      {:ok, request} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+      {:ok, _} = Chat.decline_dm_request(request.id, recipient.id)
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # New request from same sender to same recipient should be blocked by cooldown
+      assert {:error, :cooldown_active} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hi again")
+    end
+
+    test "second decline enforces 30-day cooldown on new requests from same sender" do
+      sender = insert_user_with_age_days(40)
+      recipient = insert_user_with_age(48)
+
+      # First request + decline
+      {:ok, req1} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+      {:ok, _} = Chat.decline_dm_request(req1.id, recipient.id)
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # Wait out the 7-day cooldown by backdating the first decline
+      Repo.update_all(
+        from(r in DMRequest,
+          where: r.id == ^req1.id
+        ),
+        set: [responded_at: DateTime.utc_now() |> DateTime.add(-8 * 24 * 3600, :second)]
+      )
+
+      # Second request + decline
+      {:ok, req2} = Chat.create_dm_request(sender.id, recipient.id, "Hi again")
+      {:ok, _} = Chat.decline_dm_request(req2.id, recipient.id)
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # Third request should be blocked by 30-day cooldown
+      assert {:error, :cooldown_active} =
+               Chat.create_dm_request(sender.id, recipient.id, "Please?")
+    end
+
+    test "third decline auto-blocks sender via Chat.block_user" do
+      sender = insert_user_with_age_days(40)
+      recipient = insert_user_with_age(48)
+
+      # First request + decline (backdate far enough to clear any cooldown)
+      {:ok, req1} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+      {:ok, _} = Chat.decline_dm_request(req1.id, recipient.id)
+
+      Repo.update_all(
+        from(r in DMRequest, where: r.id == ^req1.id),
+        set: [responded_at: DateTime.utc_now() |> DateTime.add(-60 * 24 * 3600, :second)]
+      )
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # Second request + decline (backdate past 30-day cooldown)
+      {:ok, req2} = Chat.create_dm_request(sender.id, recipient.id, "Hi again")
+      {:ok, _} = Chat.decline_dm_request(req2.id, recipient.id)
+
+      Repo.update_all(
+        from(r in DMRequest, where: r.id == ^req2.id),
+        set: [responded_at: DateTime.utc_now() |> DateTime.add(-31 * 24 * 3600, :second)]
+      )
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # Third request + decline should auto-block
+      {:ok, req3} = Chat.create_dm_request(sender.id, recipient.id, "Please?")
+      {:ok, _} = Chat.decline_dm_request(req3.id, recipient.id)
+
+      # Verify sender is now blocked by recipient
+      assert Chat.blocked?(recipient.id, sender.id)
+    end
+
+    test "cooldown expires and allows new request after 7-day period" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      # Create and decline first request
+      {:ok, request} = Chat.create_dm_request(sender.id, recipient.id, "Hi")
+      {:ok, _} = Chat.decline_dm_request(request.id, recipient.id)
+
+      # Backdate the decline to 8 days ago (past 7-day cooldown)
+      Repo.update_all(
+        from(r in DMRequest, where: r.id == ^request.id),
+        set: [responded_at: DateTime.utc_now() |> DateTime.add(-8 * 24 * 3600, :second)]
+      )
+
+      DMRateLimiter.reset_request_hourly(sender.id)
+
+      # New request should succeed now
+      assert {:ok, %DMRequest{status: "pending"}} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hi again")
+    end
+  end
 end
