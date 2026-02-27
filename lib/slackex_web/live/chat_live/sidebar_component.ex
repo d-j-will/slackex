@@ -115,6 +115,7 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
               :for={channel <- @channels}
               channel={channel}
               active={@active_channel != nil && @active_channel.id == channel.id}
+              unread_count={Map.get(@unread_counts.channel_counts, channel.id, 0)}
             />
           </ul>
 
@@ -222,6 +223,7 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
               :for={dm <- @dm_conversations}
               dm={dm}
               active={@active_dm != nil && @active_dm.id == dm.id}
+              unread_count={Map.get(@unread_counts.dm_counts, dm.id, 0)}
             />
           </ul>
 

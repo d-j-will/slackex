@@ -31,12 +31,15 @@ defmodule SlackexWeb.ChatLive.Index do
       Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
     end
 
+    unread_counts = Chat.batch_unread_counts(user.id)
+
     {:ok,
      socket
      |> assign(:channels, channels)
      |> assign(:dm_conversations, dm_conversations)
      |> assign(:dm_requests, dm_requests)
      |> assign(:dm_request_count, length(dm_requests))
+     |> assign(:unread_counts, unread_counts)
      |> assign(:active_channel, nil)
      |> assign(:active_dm, nil)
      |> assign(:can_send, false)
@@ -511,11 +514,18 @@ defmodule SlackexWeb.ChatLive.Index do
     messages = fetch_initial_messages(&Chat.list_messages/2, channel.id)
     Chat.mark_as_read(user.id, channel.id)
 
+    updated_channel_counts =
+      Map.put(socket.assigns.unread_counts.channel_counts, channel.id, 0)
+
+    updated_unread_counts =
+      Map.put(socket.assigns.unread_counts, :channel_counts, updated_channel_counts)
+
     socket
     |> assign(:active_channel, channel)
     |> assign(:can_send, can_send)
     |> assign(:user_role, user_role)
     |> assign(:page_title, "##{channel.name}")
+    |> assign(:unread_counts, updated_unread_counts)
     |> assign_conversation_state(messages)
     |> assign(:sidebar_open, true)
   end
@@ -528,12 +538,20 @@ defmodule SlackexWeb.ChatLive.Index do
 
     other_user = dm_other_user(dm, user.id)
     messages = fetch_initial_messages(&Chat.list_dm_messages/2, dm.id)
+    Chat.mark_dm_as_read(user.id, dm.id)
+
+    updated_dm_counts =
+      Map.put(socket.assigns.unread_counts.dm_counts, dm.id, 0)
+
+    updated_unread_counts =
+      Map.put(socket.assigns.unread_counts, :dm_counts, updated_dm_counts)
 
     socket
     |> assign(:active_dm, dm)
     |> assign(:active_channel, nil)
     |> assign(:can_send, true)
     |> assign(:page_title, other_user.display_name || other_user.username)
+    |> assign(:unread_counts, updated_unread_counts)
     |> assign_conversation_state(messages)
   end
 
@@ -669,6 +687,7 @@ defmodule SlackexWeb.ChatLive.Index do
           current_user={@current_user}
           dm_requests={@dm_requests}
           dm_request_count={@dm_request_count}
+          unread_counts={@unread_counts}
         />
       </div>
 
