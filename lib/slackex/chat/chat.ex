@@ -285,6 +285,18 @@ defmodule Slackex.Chat do
   def find_or_create_dm(user_a_id, user_b_id) do
     {a, b} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
 
+    if user_a_id != user_b_id and block_exists_between?(a, b) do
+      {:error, :blocked}
+    else
+      find_or_create_dm_record(a, b)
+    end
+  end
+
+  defp block_exists_between?(user_a_id, user_b_id) do
+    blocked?(user_a_id, user_b_id) or blocked?(user_b_id, user_a_id)
+  end
+
+  defp find_or_create_dm_record(a, b) do
     case Repo.get_by(DMConversation, user_a_id: a, user_b_id: b) do
       nil ->
         %DMConversation{}
@@ -453,6 +465,26 @@ defmodule Slackex.Chat do
     Repo.exists?(
       from ub in UserBlock,
         where: ub.blocker_id == ^blocker_id and ub.blocked_id == ^blocked_id
+    )
+  end
+
+  @doc """
+  Returns a list of user IDs involved in blocks with the given user (both directions).
+  Includes users the given user has blocked and users who have blocked the given user.
+  Used for filtering search results.
+  """
+  def list_blocked_user_ids(user_id) do
+    Repo.all(
+      from ub in UserBlock,
+        where: ub.blocker_id == ^user_id or ub.blocked_id == ^user_id,
+        select:
+          fragment(
+            "CASE WHEN ? = ? THEN ? ELSE ? END",
+            ub.blocker_id,
+            ^user_id,
+            ub.blocked_id,
+            ub.blocker_id
+          )
     )
   end
 

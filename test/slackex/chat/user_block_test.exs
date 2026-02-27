@@ -155,6 +155,92 @@ defmodule Slackex.Chat.UserBlockTest do
     end
   end
 
+  describe "Chat.find_or_create_dm/2 block enforcement" do
+    test "returns {:error, :blocked} when blocker tries to DM blocked user" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      {:ok, _} = Chat.block_user(blocker.id, blocked.id)
+
+      assert {:error, :blocked} = Chat.find_or_create_dm(blocker.id, blocked.id)
+    end
+
+    test "returns {:error, :blocked} when blocked user tries to DM blocker (bidirectional)" do
+      blocker = insert(:user)
+      blocked = insert(:user)
+
+      {:ok, _} = Chat.block_user(blocker.id, blocked.id)
+
+      assert {:error, :blocked} = Chat.find_or_create_dm(blocked.id, blocker.id)
+    end
+
+    test "self-DMs are exempt from block checks" do
+      user = insert(:user)
+
+      # Self-DM should always work regardless of any block state
+      assert {:ok, dm} = Chat.find_or_create_dm(user.id, user.id)
+      assert dm.user_a_id == user.id
+      assert dm.user_b_id == user.id
+    end
+
+    test "DM creation works when no block exists" do
+      user_a = insert(:user)
+      user_b = insert(:user)
+
+      assert {:ok, dm} = Chat.find_or_create_dm(user_a.id, user_b.id)
+      assert dm.user_a_id == min(user_a.id, user_b.id)
+      assert dm.user_b_id == max(user_a.id, user_b.id)
+    end
+  end
+
+  describe "Chat.list_blocked_user_ids/1" do
+    test "returns IDs of users the given user has blocked" do
+      user = insert(:user)
+      blocked_1 = insert(:user)
+      blocked_2 = insert(:user)
+
+      {:ok, _} = Chat.block_user(user.id, blocked_1.id)
+      {:ok, _} = Chat.block_user(user.id, blocked_2.id)
+
+      ids = Chat.list_blocked_user_ids(user.id)
+
+      assert blocked_1.id in ids
+      assert blocked_2.id in ids
+    end
+
+    test "returns IDs of users who have blocked the given user" do
+      user = insert(:user)
+      blocker = insert(:user)
+
+      {:ok, _} = Chat.block_user(blocker.id, user.id)
+
+      ids = Chat.list_blocked_user_ids(user.id)
+
+      assert blocker.id in ids
+    end
+
+    test "returns IDs from both directions combined" do
+      user = insert(:user)
+      blocked_by_user = insert(:user)
+      blocked_user = insert(:user)
+
+      {:ok, _} = Chat.block_user(user.id, blocked_by_user.id)
+      {:ok, _} = Chat.block_user(blocked_user.id, user.id)
+
+      ids = Chat.list_blocked_user_ids(user.id)
+
+      assert blocked_by_user.id in ids
+      assert blocked_user.id in ids
+      assert length(ids) == 2
+    end
+
+    test "returns empty list when no blocks exist" do
+      user = insert(:user)
+
+      assert Chat.list_blocked_user_ids(user.id) == []
+    end
+  end
+
   describe "Chat.list_blocked_users/1" do
     test "returns all blocks created by the user" do
       blocker = insert(:user)
