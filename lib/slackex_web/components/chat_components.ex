@@ -305,6 +305,79 @@ defmodule SlackexWeb.ChatComponents do
     """
   end
 
+  # ────────────────────────── Report Modal ─────────────────────────────────
+
+  @doc "Renders a modal for reporting a user with category selection and description."
+  attr :show, :boolean, default: false
+  attr :report_form, :any, required: true
+
+  def report_modal(assigns) do
+    ~H"""
+    <div :if={@show} id="report-modal" phx-window-keydown="close_report_modal" phx-key="Escape">
+      <div class="fixed inset-0 z-40 bg-black/50" phx-click="close_report_modal" />
+      <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
+        <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-md">
+          <div class="p-4 border-b border-base-300 flex items-center justify-between">
+            <h3 class="font-bold text-lg">Report User</h3>
+            <button
+              type="button"
+              phx-click="close_report_modal"
+              class="btn btn-ghost btn-sm btn-square"
+              aria-label="Close"
+            >
+              <span class="hero-x-mark size-5" />
+            </button>
+          </div>
+          <.form for={@report_form} id="report-form" phx-submit="submit_report" class="p-4 space-y-4">
+            <div class="space-y-2">
+              <label class="font-medium text-sm">Category</label>
+              <div class="space-y-1">
+                <label
+                  :for={cat <- ~w(spam harassment inappropriate_content phishing other)}
+                  class="flex items-center gap-2 cursor-pointer"
+                >
+                  <input
+                    type="radio"
+                    name="report[category]"
+                    value={cat}
+                    class="radio radio-sm radio-primary"
+                    required
+                  />
+                  <span class="text-sm">{category_label(cat)}</span>
+                </label>
+              </div>
+            </div>
+            <div>
+              <label class="font-medium text-sm" for="report-description">
+                Description (optional)
+              </label>
+              <textarea
+                name="report[description]"
+                id="report-description"
+                class="textarea textarea-bordered w-full mt-1"
+                rows="3"
+                placeholder="Provide additional details..."
+              />
+            </div>
+            <div class="flex justify-end gap-2">
+              <button type="button" phx-click="close_report_modal" class="btn btn-ghost btn-sm">
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-error btn-sm">Submit Report</button>
+            </div>
+          </.form>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp category_label("spam"), do: "Spam"
+  defp category_label("harassment"), do: "Harassment"
+  defp category_label("inappropriate_content"), do: "Inappropriate Content"
+  defp category_label("phishing"), do: "Phishing"
+  defp category_label("other"), do: "Other"
+
   # ────────────────────────── Unread Badge ─────────────────────────────────
 
   @doc "Renders a small badge with an unread message count."

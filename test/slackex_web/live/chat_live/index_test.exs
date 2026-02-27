@@ -218,6 +218,131 @@ defmodule SlackexWeb.ChatLive.IndexTest do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Acceptance: Report button in DM header
+  # ---------------------------------------------------------------------------
+
+  describe "report button visibility" do
+    setup %{user: user} do
+      import Ecto.Query
+
+      # Backdate user to satisfy 7-day account age requirement
+      past =
+        DateTime.utc_now()
+        |> DateTime.add(-8 * 24 * 3600, :second)
+        |> DateTime.truncate(:microsecond)
+
+      Slackex.Repo.update_all(
+        from(u in Slackex.Accounts.User, where: u.id == ^user.id),
+        set: [inserted_at: past]
+      )
+
+      other = insert_user_with_age_days(10)
+      {:ok, dm} = Chat.find_or_create_dm(user.id, other.id)
+      %{other: other, dm: dm}
+    end
+
+    test "report button visible in DM header next to block button", %{conn: conn, dm: dm} do
+      {:ok, _view, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      assert html =~ "Report"
+      assert html =~ "Block"
+    end
+
+    test "report button not visible for self-DMs", %{conn: conn, user: user} do
+      {:ok, self_dm} = Chat.find_or_create_dm(user.id, user.id)
+      {:ok, _view, html} = live(conn, ~p"/chat/dm/#{self_dm.id}")
+
+      refute html =~ "Report"
+      refute html =~ "Block"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Unit: Report modal open/close/submit
+  # ---------------------------------------------------------------------------
+
+  describe "report modal" do
+    setup %{user: user} do
+      import Ecto.Query
+
+      # Backdate user to satisfy 7-day account age requirement
+      past =
+        DateTime.utc_now()
+        |> DateTime.add(-8 * 24 * 3600, :second)
+        |> DateTime.truncate(:microsecond)
+
+      Slackex.Repo.update_all(
+        from(u in Slackex.Accounts.User, where: u.id == ^user.id),
+        set: [inserted_at: past]
+      )
+
+      other = insert_user_with_age_days(10)
+      {:ok, dm} = Chat.find_or_create_dm(user.id, other.id)
+      %{other: other, dm: dm}
+    end
+
+    test "open_report_modal shows modal with 5 categories", %{conn: conn, dm: dm} do
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      html = render_click(view, "open_report_modal")
+
+      assert html =~ "Report User"
+      assert html =~ "Spam"
+      assert html =~ "Harassment"
+      assert html =~ "Inappropriate Content"
+      assert html =~ "Phishing"
+      assert html =~ "Other"
+      assert html =~ "Description (optional)"
+    end
+
+    test "close_report_modal hides modal", %{conn: conn, dm: dm} do
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      render_click(view, "open_report_modal")
+      html = render_click(view, "close_report_modal")
+
+      refute html =~ "Report User"
+    end
+
+    test "submit_report creates report and shows confirmation flash", %{conn: conn, dm: dm} do
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      render_click(view, "open_report_modal")
+
+      html =
+        render_submit(view, "submit_report", %{
+          "report" => %{"category" => "spam", "description" => "Sending ads"}
+        })
+
+      assert html =~ "Report submitted"
+      refute html =~ "Report User"
+    end
+
+    test "duplicate open report shows error flash", %{
+      conn: conn,
+      user: user,
+      other: other,
+      dm: dm
+    } do
+      # Create an existing open report first
+      {:ok, _report} =
+        Chat.create_abuse_report(user.id, other.id, %{category: "spam", dm_conversation_id: dm.id})
+
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      render_click(view, "open_report_modal")
+
+      html =
+        render_submit(view, "submit_report", %{
+          "report" => %{"category" => "harassment", "description" => ""}
+        })
+
+      assert html =~ "already have an open report"
+      refute html =~ "Report User"
+    end
+  end
+
   describe "terminate" do
     test "marks user offline when view terminates", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, ~p"/chat")

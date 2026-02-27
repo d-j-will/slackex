@@ -50,6 +50,8 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:sidebar_open, true)
      |> assign(:oldest_message_id, nil)
      |> assign(:has_more_messages, false)
+     |> assign(:show_report_modal, false)
+     |> assign(:report_form, to_form(%{}, as: :report))
      |> stream(:messages, [])}
   end
 
@@ -298,6 +300,52 @@ defmodule SlackexWeb.ChatLive.Index do
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not block user.")}
+    end
+  end
+
+  def handle_event("open_report_modal", _params, socket) do
+    {:noreply, assign(socket, :show_report_modal, true)}
+  end
+
+  def handle_event("close_report_modal", _params, socket) do
+    {:noreply, assign(socket, :show_report_modal, false)}
+  end
+
+  def handle_event("submit_report", %{"report" => report_params}, socket) do
+    user = socket.assigns.current_user
+    dm = socket.assigns.active_dm
+    other_id = if dm.user_a_id == user.id, do: dm.user_b_id, else: dm.user_a_id
+
+    attrs = %{
+      category: report_params["category"],
+      description: report_params["description"],
+      dm_conversation_id: dm.id
+    }
+
+    case Chat.create_abuse_report(user.id, other_id, attrs) do
+      {:ok, _report} ->
+        {:noreply,
+         socket
+         |> assign(:show_report_modal, false)
+         |> put_flash(:info, "Report submitted. Thank you for helping keep the community safe.")}
+
+      {:error, %Ecto.Changeset{} = _changeset} ->
+        {:noreply,
+         socket
+         |> assign(:show_report_modal, false)
+         |> put_flash(:error, "You already have an open report for this user.")}
+
+      {:error, :account_too_new} ->
+        {:noreply,
+         socket
+         |> assign(:show_report_modal, false)
+         |> put_flash(:error, "Your account must be at least 7 days old to report users.")}
+
+      {:error, :dm_restricted} ->
+        {:noreply,
+         socket
+         |> assign(:show_report_modal, false)
+         |> put_flash(:error, "You are unable to submit reports at this time.")}
     end
   end
 
@@ -761,6 +809,12 @@ defmodule SlackexWeb.ChatLive.Index do
               <:actions>
                 <%= if @active_dm.user_a_id != @active_dm.user_b_id do %>
                   <button
+                    phx-click="open_report_modal"
+                    class="btn btn-ghost btn-xs text-warning"
+                  >
+                    Report
+                  </button>
+                  <button
                     phx-click="block_user"
                     data-confirm="Are you sure you want to block this user? You will no longer receive messages from them."
                     class="btn btn-ghost btn-xs text-error"
@@ -809,6 +863,8 @@ defmodule SlackexWeb.ChatLive.Index do
       id="browse-channels-modal"
       current_user={@current_user}
     />
+
+    <.report_modal show={@show_report_modal} report_form={@report_form} />
     """
   end
 end
