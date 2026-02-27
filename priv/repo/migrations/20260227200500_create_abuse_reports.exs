@@ -22,8 +22,8 @@ defmodule Slackex.Repo.Migrations.CreateAbuseReports do
     create index(:abuse_reports, [:dm_conversation_id])
 
     create unique_index(:abuse_reports, [:reporter_id, :reported_user_id],
-      where: "status = 'open'",
-      name: :abuse_reports_reporter_reported_open_idx
-    )
+             where: "status = 'open'",
+             name: :abuse_reports_reporter_reported_open_idx
+           )
   end
 end
