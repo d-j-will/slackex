@@ -119,5 +119,32 @@ events:
   s: EXECUTED
   sid: 03-01
   t: '2026-02-27T23:41:10Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-02-27T23:42:48Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-02-27T23:47:15Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-02-27T23:49:48Z'
+- d: 'NOT_APPLICABLE: no pure domain functions to unit test; all behaviors are integration-level
+    (vault config swap, Ecto migrator, mix task orchestration) covered by acceptance
+    tests'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 03-02
+  t: '2026-02-27T23:49:57Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-02-27T23:52:41Z'
 project_id: encryption-at-rest
 schema_version: '3.0'

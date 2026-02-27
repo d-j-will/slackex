@@ -30,10 +30,23 @@ if config_env() == :prod do
       Generate a 32-byte key with: :crypto.strong_rand_bytes(32) |> Base.encode64()
       """
 
-  config :slackex, Slackex.Vault,
-    ciphers: [
-      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(cloak_key)}
-    ]
+  primary_cipher =
+    {:default, {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(cloak_key)}}
+
+  ciphers =
+    case System.get_env("CLOAK_RETIRED_KEY") do
+      nil ->
+        [primary_cipher]
+
+      retired_key ->
+        [
+          primary_cipher,
+          {:retired,
+           {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1.retired", key: Base.decode64!(retired_key)}}
+        ]
+    end
+
+  config :slackex, Slackex.Vault, ciphers: ciphers
 
   hmac_secret =
     System.get_env("CLOAK_HMAC_SECRET") ||
