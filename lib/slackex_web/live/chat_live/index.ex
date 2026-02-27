@@ -14,6 +14,10 @@ defmodule SlackexWeb.ChatLive.Index do
 
   import SlackexWeb.ChatComponents
 
+  @message_page_size 50
+  @heartbeat_interval_ms 60_000
+  @typing_timeout_ms 3_000
+
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
@@ -23,7 +27,7 @@ defmodule SlackexWeb.ChatLive.Index do
     if connected?(socket) do
       Messaging.subscribe_user(user.id)
       OnlineTracker.mark_online(user.id)
-      Process.send_after(self(), :online_heartbeat, 60_000)
+      Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
     end
 
     {:ok,
@@ -252,7 +256,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
     if payload.user_id != user.id do
       typing_users = MapSet.put(socket.assigns.typing_users, payload.username)
-      Process.send_after(self(), {:clear_typing, payload.username}, 3_000)
+      Process.send_after(self(), {:clear_typing, payload.username}, @typing_timeout_ms)
       {:noreply, assign(socket, :typing_users, typing_users)}
     else
       {:noreply, socket}
@@ -328,8 +332,6 @@ defmodule SlackexWeb.ChatLive.Index do
   defp enter_modal(socket, page_title) do
     socket
     |> leave_conversation()
-    |> assign(:active_channel, nil)
-    |> assign(:active_dm, nil)
     |> assign(:page_title, page_title)
   end
 
@@ -343,7 +345,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   defp load_older_messages(socket, list_fn, conversation_id, oldest_id) do
     conversation_id
-    |> list_fn.(before: oldest_id, limit: 50)
+    |> list_fn.(before: oldest_id, limit: @message_page_size)
     |> Enum.reverse()
     |> prepend_older_messages(socket)
   end
@@ -362,7 +364,7 @@ defmodule SlackexWeb.ChatLive.Index do
         stream_insert(acc, :messages, msg, at: 0)
       end)
       |> assign(:oldest_message_id, new_oldest)
-      |> assign(:has_more_messages, length(messages) >= 50)
+      |> assign(:has_more_messages, length(messages) >= @message_page_size)
 
     {:noreply, socket}
   end
@@ -423,7 +425,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   defp fetch_initial_messages(list_fn, conversation_id) do
     conversation_id
-    |> list_fn.(limit: 50)
+    |> list_fn.(limit: @message_page_size)
     |> Enum.reverse()
   end
 
@@ -434,7 +436,7 @@ defmodule SlackexWeb.ChatLive.Index do
     socket
     |> assign(:typing_users, MapSet.new())
     |> assign(:oldest_message_id, oldest_message_id(messages))
-    |> assign(:has_more_messages, length(messages) >= 50)
+    |> assign(:has_more_messages, length(messages) >= @message_page_size)
     |> stream(:messages, messages, reset: true)
   end
 

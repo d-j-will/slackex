@@ -117,8 +117,8 @@ defmodule Slackex.Chat.DMRateLimiterTest do
       end
 
       # user_a should be rate-limited
-      blocked_other = insert(:user)
-      assert {:error, :rate_limited} = Chat.find_or_create_dm(user_a.id, blocked_other.id)
+      another_user = insert(:user)
+      assert {:error, :rate_limited} = Chat.find_or_create_dm(user_a.id, another_user.id)
 
       # user_b should still be allowed to create new DMs
       yet_another = insert(:user)

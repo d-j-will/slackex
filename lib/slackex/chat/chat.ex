@@ -174,9 +174,8 @@ defmodule Slackex.Chat do
   sanitizes HTML, generates Snowflake ID, broadcasts via PubSub.
   """
   def send_message(channel_id, sender_id, content) do
-    role = get_role(sender_id, channel_id)
-
-    if Permissions.can?(role, :send_message) do
+    with role <- get_role(sender_id, channel_id),
+         true <- Permissions.can?(role, :send_message) do
       id = Snowflake.generate()
       sanitized = HtmlSanitizeEx.strip_tags(content)
 
@@ -188,15 +187,12 @@ defmodule Slackex.Chat do
         channel_id: channel_id
       })
       |> Repo.insert()
-      |> case do
-        {:ok, message} ->
-          {:ok, Repo.preload(message, :sender)}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
+      |> then(fn
+        {:ok, message} -> {:ok, Repo.preload(message, :sender)}
+        {:error, changeset} -> {:error, changeset}
+      end)
     else
-      {:error, :unauthorized}
+      false -> {:error, :unauthorized}
     end
   end
 
@@ -283,14 +279,13 @@ defmodule Slackex.Chat do
   Finds or creates a DM conversation between two users. Normalizes user order.
   """
   def find_or_create_dm(user_a_id, user_b_id) do
-    {a, b} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
+    {lower_id, higher_id} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
     is_self_dm = user_a_id == user_b_id
 
-    if not is_self_dm and block_exists_between?(a, b) do
+    if not is_self_dm and block_exists_between?(lower_id, higher_id) do
       {:error, :blocked}
     else
-      initiator_id = user_a_id
-      find_or_create_dm_record(a, b, initiator_id, is_self_dm)
+      find_or_create_dm_record(lower_id, higher_id, user_a_id, is_self_dm)
     end
   end
 
@@ -298,12 +293,12 @@ defmodule Slackex.Chat do
     blocked?(user_a_id, user_b_id) or blocked?(user_b_id, user_a_id)
   end
 
-  defp find_or_create_dm_record(a, b, initiator_id, is_self_dm) do
-    case Repo.get_by(DMConversation, user_a_id: a, user_b_id: b) do
+  defp find_or_create_dm_record(lower_id, higher_id, initiator_id, is_self_dm) do
+    case Repo.get_by(DMConversation, user_a_id: lower_id, user_b_id: higher_id) do
       nil ->
         with :ok <- check_rate_limit(initiator_id, is_self_dm) do
           %DMConversation{}
-          |> DMConversation.changeset(%{user_a_id: a, user_b_id: b})
+          |> DMConversation.changeset(%{user_a_id: lower_id, user_b_id: higher_id})
           |> Repo.insert()
           |> tap(fn
             {:ok, dm} -> broadcast_new_dm(dm)
@@ -330,7 +325,7 @@ defmodule Slackex.Chat do
   def send_dm(dm_id, sender_id, content) do
     dm = Repo.get!(DMConversation, dm_id)
 
-    if sender_id == dm.user_a_id or sender_id == dm.user_b_id do
+    with :ok <- verify_dm_participant(dm, sender_id) do
       id = Snowflake.generate()
       sanitized = HtmlSanitizeEx.strip_tags(content)
 
@@ -343,19 +338,16 @@ defmodule Slackex.Chat do
       }))
       |> Multi.update(:dm, Ecto.Changeset.change(dm, updated_at: DateTime.utc_now()))
       |> Repo.transaction()
-      |> case do
-        {:ok, %{message: message}} ->
-          {:ok, Repo.preload(message, :sender)}
-
-        {:error, :message, changeset, _} ->
-          {:error, changeset}
-
-        {:error, :dm, changeset, _} ->
-          {:error, changeset}
-      end
-    else
-      {:error, :unauthorized}
+      |> then(fn
+        {:ok, %{message: message}} -> {:ok, Repo.preload(message, :sender)}
+        {:error, :message, changeset, _} -> {:error, changeset}
+        {:error, :dm, changeset, _} -> {:error, changeset}
+      end)
     end
+  end
+
+  defp verify_dm_participant(dm, sender_id) do
+    if sender_id in [dm.user_a_id, dm.user_b_id], do: :ok, else: {:error, :unauthorized}
   end
 
   @doc """
