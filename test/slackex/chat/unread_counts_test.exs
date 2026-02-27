@@ -148,4 +148,96 @@ defmodule Slackex.Chat.UnreadCountsTest do
     end
   end
 
+  describe "mark_dm_as_read/2" do
+    setup do
+      alice = insert(:user)
+      bob = insert(:user)
+
+      {:ok, dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      # Also create a channel to test no regression on channel mark_as_read
+      {:ok, channel} = Chat.create_channel(alice.id, %{name: "Regression Channel"})
+      Chat.join_channel(bob.id, channel.id)
+
+      %{alice: alice, bob: bob, dm: dm, channel: channel}
+    end
+
+    test "marking DM as read zeros batch_unread_counts for that DM", %{
+      alice: alice,
+      bob: bob,
+      dm: dm
+    } do
+      # Alice sends several DM messages
+      {:ok, _} = Chat.send_dm(dm.id, alice.id, "Hello")
+      {:ok, _} = Chat.send_dm(dm.id, alice.id, "Are you there?")
+      {:ok, _} = Chat.send_dm(dm.id, alice.id, "Important update")
+
+      # Verify bob has 3 unread before marking
+      %{dm_counts: before_counts} = Chat.batch_unread_counts(bob.id)
+      assert Map.get(before_counts, dm.id) == 3
+
+      # Bob enters the DM conversation -- mark as read
+      :ok = Chat.mark_dm_as_read(bob.id, dm.id)
+
+      # Verify batch_unread_counts now returns 0 for that DM
+      %{dm_counts: after_counts} = Chat.batch_unread_counts(bob.id)
+      assert Map.get(after_counts, dm.id) == 0
+    end
+
+    test "upserts read cursor idempotently on repeated calls", %{
+      alice: alice,
+      bob: bob,
+      dm: dm
+    } do
+      {:ok, _} = Chat.send_dm(dm.id, alice.id, "First message")
+
+      # Mark as read twice -- second call should not raise or create duplicates
+      :ok = Chat.mark_dm_as_read(bob.id, dm.id)
+      :ok = Chat.mark_dm_as_read(bob.id, dm.id)
+
+      %{dm_counts: dm_counts} = Chat.batch_unread_counts(bob.id)
+      assert Map.get(dm_counts, dm.id) == 0
+    end
+
+    test "mark_dm_as_read does not affect channel read cursors (no regression)", %{
+      alice: alice,
+      bob: bob,
+      dm: dm,
+      channel: channel
+    } do
+      # Send messages to both channel and DM
+      {:ok, _} = Chat.send_message(channel.id, alice.id, "Channel message 1")
+      {:ok, _} = Chat.send_message(channel.id, alice.id, "Channel message 2")
+      {:ok, _} = Chat.send_dm(dm.id, alice.id, "DM message")
+
+      # Mark only the DM as read
+      :ok = Chat.mark_dm_as_read(bob.id, dm.id)
+
+      # Channel unread count should remain unchanged (2 unread)
+      %{channel_counts: channel_counts, dm_counts: dm_counts} = Chat.batch_unread_counts(bob.id)
+      assert Map.get(channel_counts, channel.id) == 2
+      assert Map.get(dm_counts, dm.id) == 0
+    end
+
+    test "channel mark_as_read does not affect DM read cursors (no regression)", %{
+      alice: alice,
+      bob: bob,
+      dm: dm,
+      channel: channel
+    } do
+      # Send messages to both channel and DM
+      {:ok, _} = Chat.send_message(channel.id, alice.id, "Channel msg")
+      {:ok, _} = Chat.send_dm(dm.id, alice.id, "DM msg 1")
+      {:ok, _} = Chat.send_dm(dm.id, alice.id, "DM msg 2")
+
+      # Mark only the channel as read
+      :ok = Chat.mark_as_read(bob.id, channel.id)
+
+      # DM unread count should remain unchanged (2 unread)
+      %{channel_counts: channel_counts, dm_counts: dm_counts} = Chat.batch_unread_counts(bob.id)
+      assert Map.get(channel_counts, channel.id) == 0
+      assert Map.get(dm_counts, dm.id) == 2
+    end
+  end
+
 end
