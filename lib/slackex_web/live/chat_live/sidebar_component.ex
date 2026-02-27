@@ -21,7 +21,8 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
     {:ok,
      socket
      |> assign(:channels_expanded, true)
-     |> assign(:dms_expanded, true)}
+     |> assign(:dms_expanded, true)
+     |> assign(:requests_expanded, true)}
   end
 
   @impl true
@@ -36,6 +37,17 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
 
   def handle_event("toggle_section", %{"section" => "dms"}, socket) do
     {:noreply, assign(socket, :dms_expanded, !socket.assigns.dms_expanded)}
+  end
+
+  def handle_event("toggle_section", %{"section" => "requests"}, socket) do
+    {:noreply, assign(socket, :requests_expanded, !socket.assigns.requests_expanded)}
+  end
+
+  defp truncate_preview(nil, _max_length), do: ""
+  defp truncate_preview(text, max_length) when byte_size(text) <= max_length, do: text
+
+  defp truncate_preview(text, max_length) do
+    String.slice(text, 0, max_length) <> "..."
   end
 
   @impl true
@@ -112,6 +124,73 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
           >
             No channels yet.
           </p>
+        </div>
+
+        <%!-- Message Requests section --%>
+        <div :if={@dm_request_count > 0}>
+          <button
+            phx-click="toggle_section"
+            phx-value-section="requests"
+            phx-target={@myself}
+            class="flex items-center justify-between w-full px-2 py-1 text-xs font-semibold uppercase tracking-wider text-base-content/60 hover:text-base-content"
+          >
+            <span class="flex items-center gap-2">
+              Message Requests
+              <span class="badge badge-warning badge-sm min-w-5 h-5">
+                {@dm_request_count}
+              </span>
+            </span>
+            <svg
+              class={["w-3 h-3 transition-transform", !@requests_expanded && "-rotate-90"]}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          <ul :if={@requests_expanded} class="mt-1 space-y-1">
+            <li :for={request <- @dm_requests} class="px-2 py-1.5 rounded-lg bg-base-300/50">
+              <div class="flex items-center gap-2 mb-1">
+                <.avatar user={request.sender} size="sm" />
+                <span class="text-sm font-medium truncate">
+                  {request.sender.display_name || request.sender.username}
+                </span>
+              </div>
+              <p class="text-xs text-base-content/60 mb-2 line-clamp-2">
+                {truncate_preview(request.preview_text, 100)}
+              </p>
+              <div class="flex gap-1">
+                <button
+                  phx-click="accept_request"
+                  phx-value-id={request.id}
+                  class="btn btn-success btn-xs flex-1"
+                >
+                  Accept
+                </button>
+                <button
+                  phx-click="decline_request"
+                  phx-value-id={request.id}
+                  class="btn btn-ghost btn-xs flex-1"
+                >
+                  Decline
+                </button>
+                <button
+                  phx-click="block_request_sender"
+                  phx-value-id={request.id}
+                  class="btn btn-error btn-xs"
+                >
+                  Block
+                </button>
+              </div>
+            </li>
+          </ul>
         </div>
 
         <%!-- Direct Messages section --%>

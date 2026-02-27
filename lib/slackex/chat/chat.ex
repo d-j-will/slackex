@@ -711,6 +711,19 @@ defmodule Slackex.Chat do
   end
 
   @doc """
+  Lists pending DM requests for a user, ordered by most recent first.
+  Preloads the sender association for display purposes.
+  """
+  def list_pending_requests_for_user(user_id) do
+    from(r in DMRequest,
+      where: r.recipient_id == ^user_id and r.status == "pending",
+      order_by: [desc: r.inserted_at],
+      preload: [:sender]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Sends a DM. Verifies sender is a participant. Sanitizes content. Broadcasts.
   """
   def send_dm(dm_id, sender_id, content) do

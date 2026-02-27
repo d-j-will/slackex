@@ -181,6 +181,38 @@ defmodule Slackex.Chat.DMRequestTest do
                errors_on(changeset)
     end
 
+    test "list_pending_requests_for_user returns pending requests with sender preloaded" do
+      recipient = insert(:user)
+      sender1 = insert(:user, username: "list_sender1", display_name: "List Sender One")
+      sender2 = insert(:user, username: "list_sender2", display_name: "List Sender Two")
+      other_user = insert(:user)
+
+      # Pending requests to recipient
+      insert(:dm_request, sender: sender1, recipient: recipient, preview_text: "Hello from 1")
+      insert(:dm_request, sender: sender2, recipient: recipient, preview_text: "Hello from 2")
+
+      # Declined request to recipient (should NOT appear)
+      insert(:dm_request,
+        sender: insert(:user),
+        recipient: recipient,
+        status: "declined",
+        preview_text: "Declined"
+      )
+
+      # Pending request to another user (should NOT appear)
+      insert(:dm_request, sender: insert(:user), recipient: other_user, preview_text: "Not mine")
+
+      results = Slackex.Chat.list_pending_requests_for_user(recipient.id)
+
+      assert length(results) == 2
+      # Ordered by most recent first
+      [first, second] = results
+      assert first.sender.username in ["list_sender1", "list_sender2"]
+      assert second.sender.username in ["list_sender1", "list_sender2"]
+      # Sender should be preloaded
+      assert first.sender.display_name != nil
+    end
+
     test "accepted request allows a new pending request for same pair" do
       sender = insert(:user)
       recipient = insert(:user)

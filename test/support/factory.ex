@@ -4,7 +4,7 @@ defmodule Slackex.Factory do
   use ExMachina.Ecto, repo: Slackex.Repo
 
   alias Slackex.Accounts.User
-  alias Slackex.Chat.{Channel, DMConversation, Message, ReadCursor, Subscription}
+  alias Slackex.Chat.{Channel, DMConversation, DMRequest, Message, ReadCursor, Subscription}
   alias Slackex.Notifications.DeviceToken
 
   def user_factory do
@@ -68,6 +68,18 @@ defmodule Slackex.Factory do
       user_b: b,
       user_a_id: a.id,
       user_b_id: b.id
+    }
+  end
+
+  def dm_request_factory do
+    id = 1_000_000_000_000 + System.unique_integer([:positive, :monotonic])
+
+    %DMRequest{
+      id: id,
+      sender: build(:user),
+      recipient: build(:user),
+      preview_text: sequence(:preview_text, &"Hey, can we chat? #{&1}"),
+      status: "pending"
     }
   end
 

@@ -23,6 +23,7 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
     channels = Chat.list_user_channels(user.id)
     dm_conversations = Chat.list_user_dm_conversations(user.id)
+    dm_requests = Chat.list_pending_requests_for_user(user.id)
 
     if connected?(socket) do
       Messaging.subscribe_user(user.id)
@@ -34,6 +35,8 @@ defmodule SlackexWeb.ChatLive.Index do
      socket
      |> assign(:channels, channels)
      |> assign(:dm_conversations, dm_conversations)
+     |> assign(:dm_requests, dm_requests)
+     |> assign(:dm_request_count, length(dm_requests))
      |> assign(:active_channel, nil)
      |> assign(:active_dm, nil)
      |> assign(:can_send, false)
@@ -212,6 +215,66 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  def handle_event("accept_request", %{"id" => request_id}, socket) do
+    user = socket.assigns.current_user
+    request_id = String.to_integer(request_id)
+
+    case Chat.accept_dm_request(request_id, user.id) do
+      {:ok, %{dm_conversation: dm}} ->
+        dm_requests = remove_request(socket.assigns.dm_requests, request_id)
+        dm_conversations = Chat.list_user_dm_conversations(user.id)
+
+        {:noreply,
+         socket
+         |> assign(:dm_requests, dm_requests)
+         |> assign(:dm_request_count, length(dm_requests))
+         |> assign(:dm_conversations, dm_conversations)
+         |> push_patch(to: ~p"/chat/dm/#{dm.id}")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not accept request.")}
+    end
+  end
+
+  def handle_event("decline_request", %{"id" => request_id}, socket) do
+    user = socket.assigns.current_user
+    request_id = String.to_integer(request_id)
+
+    case Chat.decline_dm_request(request_id, user.id) do
+      {:ok, _request} ->
+        dm_requests = remove_request(socket.assigns.dm_requests, request_id)
+
+        {:noreply,
+         socket
+         |> assign(:dm_requests, dm_requests)
+         |> assign(:dm_request_count, length(dm_requests))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not decline request.")}
+    end
+  end
+
+  def handle_event("block_request_sender", %{"id" => request_id}, socket) do
+    user = socket.assigns.current_user
+    request_id = String.to_integer(request_id)
+
+    request = Enum.find(socket.assigns.dm_requests, &(&1.id == request_id))
+
+    if request do
+      Chat.decline_dm_request(request_id, user.id)
+      Chat.block_user(user.id, request.sender_id)
+
+      dm_requests = remove_request(socket.assigns.dm_requests, request_id)
+
+      {:noreply,
+       socket
+       |> assign(:dm_requests, dm_requests)
+       |> assign(:dm_request_count, length(dm_requests))}
+    else
+      {:noreply, put_flash(socket, :error, "Request not found.")}
+    end
+  end
+
   def handle_event("block_user", _params, socket) do
     user = socket.assigns.current_user
     dm = socket.assigns.active_dm
@@ -328,6 +391,10 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp remove_request(requests, request_id) do
+    Enum.reject(requests, &(&1.id == request_id))
+  end
 
   defp enter_modal(socket, page_title) do
     socket
@@ -553,6 +620,8 @@ defmodule SlackexWeb.ChatLive.Index do
           dm_conversations={@dm_conversations}
           active_dm={@active_dm}
           current_user={@current_user}
+          dm_requests={@dm_requests}
+          dm_request_count={@dm_request_count}
         />
       </div>
 

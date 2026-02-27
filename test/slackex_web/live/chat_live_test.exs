@@ -1256,4 +1256,125 @@ defmodule SlackexWeb.ChatLiveTest do
       refute html =~ "message[content]"
     end
   end
+
+  describe "message requests sidebar section" do
+    setup %{alice: alice} do
+      # Create senders with pending DM requests to alice
+      sender1 = insert(:user, username: "req_sender1", display_name: "Request Sender One")
+      sender2 = insert(:user, username: "req_sender2", display_name: "Request Sender Two")
+
+      req1 =
+        insert(:dm_request,
+          sender: sender1,
+          recipient: alice,
+          preview_text: "Hey Alice, I would love to discuss the project with you!",
+          status: "pending"
+        )
+
+      req2 =
+        insert(:dm_request,
+          sender: sender2,
+          recipient: alice,
+          preview_text: String.duplicate("A", 150),
+          status: "pending"
+        )
+
+      %{sender1: sender1, sender2: sender2, req1: req1, req2: req2}
+    end
+
+    test "sidebar shows Message Requests section with pending request count badge", %{
+      conn: conn
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ "Message Requests"
+      # Badge showing count of 2 pending requests
+      assert html =~ "2"
+    end
+
+    test "request shows sender display name and truncated preview text", %{
+      conn: conn,
+      sender1: sender1
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ sender1.display_name
+      # Preview text should be truncated to 100 chars
+      assert html =~ "Hey Alice, I would love to discuss the project with you!"
+      # The 150-char preview should be truncated
+      assert html =~ String.slice(String.duplicate("A", 150), 0, 100)
+    end
+
+    test "accept button triggers accept flow and navigates to DM conversation", %{
+      conn: conn,
+      req1: req1,
+      sender1: sender1
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv
+      |> element("[phx-click=\"accept_request\"][phx-value-id=\"#{req1.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      # Should navigate to the new DM conversation
+      expected_name = sender1.display_name || sender1.username
+      assert html =~ expected_name
+      # Badge count should decrease (1 request remaining)
+      assert html =~ "1"
+    end
+
+    test "decline button removes request from list without notification", %{
+      conn: conn,
+      req1: req1,
+      sender1: sender1
+    } do
+      {:ok, lv, html} = live(conn, ~p"/chat")
+
+      # Sender1 visible initially
+      assert html =~ sender1.display_name
+
+      lv
+      |> element("[phx-click=\"decline_request\"][phx-value-id=\"#{req1.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      # Sender1's request should be gone
+      refute html =~ sender1.display_name
+      # Count badge should now show 1
+      assert html =~ "1"
+    end
+
+    test "block button blocks sender and removes request from list", %{
+      conn: conn,
+      alice: alice,
+      req1: req1,
+      sender1: sender1
+    } do
+      {:ok, lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ sender1.display_name
+
+      lv
+      |> element("[phx-click=\"block_request_sender\"][phx-value-id=\"#{req1.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      # Request should be removed
+      refute html =~ sender1.display_name
+
+      # Sender should be blocked in the database
+      assert Chat.blocked?(alice.id, sender1.id)
+    end
+
+    test "sidebar hides Message Requests section when no pending requests", %{conn: _conn} do
+      # Log in as bob who has no pending requests
+      bob = insert(:user, username: "bob_no_req")
+      bob_conn = build_conn() |> log_in_user(bob)
+
+      {:ok, _lv, html} = live(bob_conn, ~p"/chat")
+
+      refute html =~ "Message Requests"
+    end
+  end
 end
