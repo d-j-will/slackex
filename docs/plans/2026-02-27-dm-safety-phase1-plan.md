@@ -2,9 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Make cross-user DMs visible in the recipient's sidebar in real-time, order DMs by last activity, and add user blocking.
+**Goal:** Make cross-user DMs visible in the recipient's sidebar in real-time, order DMs by last activity, add user blocking, and rate-limit DM creation to prevent spam floods.
 
-**Architecture:** Fix the missing PubSub notification path so recipients learn about new DM conversations, add `updated_at` to `dm_conversations` for activity-based ordering, and introduce a `user_blocks` table with enforcement in DM creation and user search.
+**Architecture:** Fix the missing PubSub notification path so recipients learn about new DM conversations, add `updated_at` to `dm_conversations` for activity-based ordering, introduce a `user_blocks` table with enforcement in DM creation and user search, and add rate limiting on DM creation using the existing `RateLimiter` infrastructure.
+
+**Research validation:** `docs/research/dm-safety-system-design-validation.md` — two critical gaps (rate limiting, account age) identified and folded into design.
 
 **Tech Stack:** Elixir, Phoenix LiveView, Ecto, PubSub, ExMachina (test factories), PostgreSQL
 
@@ -729,7 +731,218 @@ git commit -m "feat: enforce user blocks in DM creation (bidirectional)"
 
 ---
 
-## Task 7: Add block UI to DM conversation header
+## Task 7: Rate-limit DM creation
+
+**Files:**
+- Create: `lib/slackex/chat/dm_rate_limiter.ex`
+- Modify: `lib/slackex/chat/chat.ex` (function: `find_or_create_dm`)
+- Test: `test/slackex/chat/dm_rate_limiter_test.exs`
+
+This uses an ETS-backed approach to track per-user DM creation rates. The existing `RateLimiter` in `lib/slackex/infrastructure/rate_limiter.ex` is a pure functional token bucket — we'll use the same algorithm but store state in ETS so it persists across calls without a GenServer per user.
+
+**Step 1: Write the failing tests**
+
+Create `test/slackex/chat/dm_rate_limiter_test.exs`:
+
+```elixir
+defmodule Slackex.Chat.DMRateLimiterTest do
+  use Slackex.DataCase, async: false
+
+  alias Slackex.Chat.DMRateLimiter
+
+  setup do
+    # Reset ETS state between tests
+    DMRateLimiter.reset()
+    :ok
+  end
+
+  describe "check_rate/1" do
+    test "allows DM creation under the hourly limit" do
+      user_id = 1
+
+      for _ <- 1..5 do
+        assert :ok = DMRateLimiter.check_rate(user_id)
+      end
+    end
+
+    test "rejects DM creation over the hourly limit" do
+      user_id = 2
+
+      for _ <- 1..5 do
+        assert :ok = DMRateLimiter.check_rate(user_id)
+      end
+
+      assert {:error, :rate_limited} = DMRateLimiter.check_rate(user_id)
+    end
+
+    test "different users have independent limits" do
+      for _ <- 1..5 do
+        assert :ok = DMRateLimiter.check_rate(1)
+      end
+
+      # User 2 should still be allowed
+      assert :ok = DMRateLimiter.check_rate(2)
+    end
+  end
+end
+```
+
+**Step 2: Run test to verify it fails**
+
+```bash
+mix test test/slackex/chat/dm_rate_limiter_test.exs -v
+```
+
+Expected: FAIL — module doesn't exist.
+
+**Step 3: Implement the rate limiter**
+
+Create `lib/slackex/chat/dm_rate_limiter.ex`:
+
+```elixir
+defmodule Slackex.Chat.DMRateLimiter do
+  @moduledoc """
+  Rate limiter for DM creation. Tracks per-user DM creation rates
+  using ETS-backed token buckets.
+
+  Limits:
+  - 5 new DM conversations per hour per user
+  - 20 new DM conversations per day per user
+  """
+
+  alias Slackex.Infrastructure.RateLimiter
+
+  @table :dm_rate_limiters
+  @hourly_limit 5
+  @daily_limit 20
+
+  def start_link(_opts \\ []) do
+    :ets.new(@table, [:set, :public, :named_table])
+    :ok
+  end
+
+  @doc "Check if a user is within DM creation rate limits."
+  def check_rate(user_id) do
+    hourly_key = {:hourly, user_id}
+    daily_key = {:daily, user_id}
+
+    hourly = get_or_create(hourly_key, rate: @hourly_limit, per: :hour)
+    daily = get_or_create(daily_key, rate: @daily_limit, per: :hour)
+
+    with {:ok, new_hourly} <- RateLimiter.check(hourly),
+         {:ok, new_daily} <- RateLimiter.check(daily) do
+      :ets.insert(@table, {hourly_key, new_hourly})
+      :ets.insert(@table, {daily_key, new_daily})
+      :ok
+    else
+      {:error, :rate_limited} -> {:error, :rate_limited}
+    end
+  end
+
+  @doc "Reset all rate limiter state. Used in tests."
+  def reset do
+    if :ets.whereis(@table) != :undefined do
+      :ets.delete_all_objects(@table)
+    else
+      :ets.new(@table, [:set, :public, :named_table])
+    end
+
+    :ok
+  end
+
+  defp get_or_create(key, opts) do
+    case :ets.lookup(@table, key) do
+      [{^key, limiter}] -> limiter
+      [] ->
+        limiter = RateLimiter.new(opts)
+        :ets.insert(@table, {key, limiter})
+        limiter
+    end
+  end
+end
+```
+
+**Step 4: Initialize ETS in application.ex**
+
+Add to `lib/slackex/application.ex` in the `start/2` function, before the supervisor children:
+
+```elixir
+Slackex.Chat.DMRateLimiter.start_link()
+```
+
+**Step 5: Run test to verify it passes**
+
+```bash
+mix test test/slackex/chat/dm_rate_limiter_test.exs -v
+```
+
+Expected: All PASS.
+
+**Step 6: Wire rate limiter into `find_or_create_dm`**
+
+In `lib/slackex/chat/chat.ex`, update `find_or_create_dm` to check rate limits before creating a new conversation (add after the block check, before the `Repo.get_by`):
+
+```elixir
+def find_or_create_dm(user_a_id, user_b_id) do
+  {a, b} = if user_a_id < user_b_id, do: {user_a_id, user_b_id}, else: {user_b_id, user_a_id}
+
+  if user_a_id != user_b_id and (blocked?(user_a_id, user_b_id) or blocked?(user_b_id, user_a_id)) do
+    {:error, :blocked}
+  else
+    case Repo.get_by(DMConversation, user_a_id: a, user_b_id: b) do
+      nil ->
+        # Rate limit only applies when creating NEW conversations
+        case DMRateLimiter.check_rate(user_a_id) do
+          :ok ->
+            result =
+              %DMConversation{}
+              |> DMConversation.changeset(%{user_a_id: a, user_b_id: b})
+              |> Repo.insert()
+
+            case result do
+              {:ok, dm} ->
+                broadcast_new_dm(dm)
+                {:ok, dm}
+
+              error ->
+                error
+            end
+
+          {:error, :rate_limited} ->
+            {:error, :rate_limited}
+        end
+
+      dm ->
+        {:ok, dm}
+    end
+  end
+end
+```
+
+Add the alias at the top of the module:
+
+```elixir
+alias Slackex.Chat.DMRateLimiter
+```
+
+**Step 7: Run full test suite**
+
+```bash
+mix test
+```
+
+Expected: All tests pass.
+
+**Step 8: Commit**
+
+```bash
+git add lib/slackex/chat/dm_rate_limiter.ex test/slackex/chat/dm_rate_limiter_test.exs lib/slackex/chat/chat.ex lib/slackex/application.ex
+git commit -m "feat: rate-limit DM creation (5/hour per user) to prevent spam floods"
+```
+
+---
+
+## Task 8: Add block UI to DM conversation header
 
 **Files:**
 - Modify: `lib/slackex_web/live/chat_live/index.ex` (add `handle_event` for block, add `handle_info` for block confirmation)
@@ -812,7 +1025,7 @@ git commit -m "feat: add block button to DM conversation header"
 
 ---
 
-## Task 8: Filter blocked users from new DM user search
+## Task 9: Filter blocked users from new DM user search
 
 **Files:**
 - Modify: `lib/slackex_web/live/chat_live/new_dm_modal.ex` (filter search results)
@@ -877,7 +1090,7 @@ git commit -m "feat: filter blocked users from DM search results"
 
 ---
 
-## Task 9: Add factory and update test helpers
+## Task 10: Add factory and update test helpers
 
 **Files:**
 - Modify: `test/support/factory.ex`
@@ -907,7 +1120,7 @@ git commit -m "test: add user_block factory"
 
 ---
 
-## Task 10: Final integration verification
+## Task 11: Final integration verification
 
 **Step 1: Run full test suite**
 

@@ -18,6 +18,8 @@ Direct messages currently have two issues:
 - **Silent enforcement:** Bad actors are never told they've been declined or blocked (prevents retaliation).
 - **Evidence preservation:** Messages and metadata are retained for moderation, never deleted on block.
 - **Extensible schema:** Tables and fields support future features (multi-tenant trust, IP-based ban evasion, admin dashboard) without schema rewrites.
+- **Rate-limited by default:** DM requests are rate-limited to prevent spam floods before trust scores can react.
+- **Account maturity gates:** New accounts face restrictions to counter Sybil attacks (create-ban-recreate cycles).
 
 ## Data Model
 
@@ -93,17 +95,24 @@ Unique partial constraint: `(sender_id, recipient_id)` where `status = 'pending'
 | Global block threshold | 5 distinct users | `dm_restricted = true` |
 | Global report threshold | 3 distinct users | `dm_restricted = true` |
 | Report escalation threshold | 5 distinct users | Flag for admin review |
+| DM request rate limit | 5/hour, 20/day | Per-sender cap on new DM requests |
+| Max pending requests | 10 | Per-sender cap on unresolved pending requests |
+| Account age for DM requests | 24 hours | Minimum account age to send DM requests |
+| New account DM restriction | 7 days | Accounts < 7 days old restricted to shared-channel DMs only |
 
 ## DM Request/Accept Flow
 
 ### Initiation (User A → User B)
 
 Pre-flight checks (in order):
-1. Is User A blocked by User B? → "Cannot message this user"
-2. Is User A's DM restricted? → "Your DM ability is suspended"
-3. Does User B's `dm_preference` allow contact from User A? → Check rules below
-4. Is there an existing accepted DM conversation? → Send directly (no request needed)
-5. Otherwise → Create `dm_request` with `status = "pending"`
+1. Is User A's account < 24 hours old? → "Your account is too new to send DM requests"
+2. Is User A blocked by User B? → "Cannot message this user"
+3. Is User A's DM restricted? → "Your DM ability is suspended"
+4. Has User A hit rate limits? (5/hour, 20/day, or 10 pending) → "You're sending too many requests. Please try later."
+5. Is User A's account < 7 days old and they share no channels with B? → "New accounts can only DM users in shared channels"
+6. Does User B's `dm_preference` allow contact from User A? → Check rules below
+7. Is there an existing accepted DM conversation? → Send directly (no request needed)
+8. Otherwise → Create `dm_request` with `status = "pending"`
 
 ### Privacy check (`dm_preference`)
 - `"anyone"` → Allowed
@@ -202,8 +211,9 @@ Sidebar gains a "Message Requests" section:
 - Add `user_blocks` table + schema + context functions
 - Block UI from DM conversation (kebab menu → Block)
 - Block enforcement: filter blocked users from DM creation and user search
+- Rate limit DM creation: max 5 new DMs/hour, 20/day per sender (reuses existing ChannelServer rate limiter pattern)
 
-**Deliverable:** Cross-user DMs work. Users can block each other.
+**Deliverable:** Cross-user DMs work. Users can block each other. Basic rate limiting prevents spam floods.
 
 ### Phase 2: DM Request/Accept Flow
 - Add `dm_requests` table + schema
@@ -214,8 +224,10 @@ Sidebar gains a "Message Requests" section:
 - Graduated enforcement on decline (3-strike → auto-block)
 - Global trust threshold: auto-restrict DM when `block_count >= 5`
 - Real-time PubSub for DM requests
+- DM request rate limits: max 10 pending, 5 new/hour, 20/day per sender
+- Account age gate: < 24 hours → no DM requests; < 7 days → shared-channel DMs only
 
-**Deliverable:** First contact requires consent. Repeat offenders face graduated enforcement.
+**Deliverable:** First contact requires consent. Repeat offenders face graduated enforcement. Sybil attack vector closed.
 
 ### Phase 3: Reporting & Trust Escalation
 - Add `abuse_reports` table + schema
