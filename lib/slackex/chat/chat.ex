@@ -43,6 +43,7 @@ defmodule Slackex.Chat do
   @report_admin_flag_threshold 5
   @velocity_signal_threshold 3
   @velocity_window_hours 24
+  @dampening_window_seconds 86_400
 
   # Default message ID when no read cursor exists (counts all messages as unread)
   @no_cursor_message_id 0
@@ -1095,7 +1096,7 @@ defmodule Slackex.Chat do
     distinct_count = count_distinct_reporters(reported_user_id)
 
     if distinct_count >= @report_restrict_threshold do
-      maybe_apply_report_restriction(reported_user_id)
+      maybe_apply_dm_restriction(reported_user_id)
     end
 
     if distinct_count >= @report_admin_flag_threshold do
@@ -1116,14 +1117,16 @@ defmodule Slackex.Chat do
     dampen_reporter_clusters(reporter_timestamps)
   end
 
+  # Counts distinct reporter clusters by grouping reporters whose first report
+  # falls within the same 24-hour window. This dampens coordinated reporting:
+  # multiple reporters filing within a single window count as one cluster.
   defp dampen_reporter_clusters([]), do: 0
 
-  defp dampen_reporter_clusters(reporter_timestamps) do
-    {count, _last_window_start} =
-      Enum.reduce(reporter_timestamps, {0, nil}, fn {_reporter_id, timestamp},
-                                                    {count, window_start} ->
-        if window_start == nil or
-             DateTime.diff(timestamp, window_start, :second) > 86_400 do
+  defp dampen_reporter_clusters([{_first_reporter, first_timestamp} | rest]) do
+    {count, _window_start} =
+      Enum.reduce(rest, {1, first_timestamp}, fn {_reporter_id, timestamp},
+                                                 {count, window_start} ->
+        if DateTime.diff(timestamp, window_start, :second) > @dampening_window_seconds do
           {count + 1, timestamp}
         else
           {count, window_start}
@@ -1155,10 +1158,6 @@ defmodule Slackex.Chat do
       _already_restricted ->
         :ok
     end
-  end
-
-  defp maybe_apply_report_restriction(reported_user_id) do
-    maybe_apply_dm_restriction(reported_user_id)
   end
 
   defp maybe_apply_admin_flag(reported_user_id) do

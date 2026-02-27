@@ -285,7 +285,7 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_event("block_user", _params, socket) do
     user = socket.assigns.current_user
     dm = socket.assigns.active_dm
-    other_id = if dm.user_a_id == user.id, do: dm.user_b_id, else: dm.user_a_id
+    other_id = dm_other_user_id(dm, user.id)
 
     case Chat.block_user(user.id, other_id) do
       {:ok, _block} ->
@@ -328,7 +328,7 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_event("submit_report", %{"report" => report_params}, socket) do
     user = socket.assigns.current_user
     dm = socket.assigns.active_dm
-    other_id = if dm.user_a_id == user.id, do: dm.user_b_id, else: dm.user_a_id
+    other_id = dm_other_user_id(dm, user.id)
 
     attrs = %{
       category: report_params["category"],
@@ -341,29 +341,25 @@ defmodule SlackexWeb.ChatLive.Index do
       {:ok, _report} ->
         {:noreply,
          socket
-         |> assign(:show_report_modal, false)
-         |> assign(:report_message_id, nil)
+         |> dismiss_report_modal()
          |> put_flash(:info, "Report submitted. Thank you for helping keep the community safe.")}
 
       {:error, %Ecto.Changeset{} = _changeset} ->
         {:noreply,
          socket
-         |> assign(:show_report_modal, false)
-         |> assign(:report_message_id, nil)
+         |> dismiss_report_modal()
          |> put_flash(:error, "You already have an open report for this user.")}
 
       {:error, :account_too_new} ->
         {:noreply,
          socket
-         |> assign(:show_report_modal, false)
-         |> assign(:report_message_id, nil)
+         |> dismiss_report_modal()
          |> put_flash(:error, "Your account must be at least 7 days old to report users.")}
 
       {:error, :dm_restricted} ->
         {:noreply,
          socket
-         |> assign(:show_report_modal, false)
-         |> assign(:report_message_id, nil)
+         |> dismiss_report_modal()
          |> put_flash(:error, "You are unable to submit reports at this time.")}
     end
   end
@@ -520,6 +516,16 @@ defmodule SlackexWeb.ChatLive.Index do
 
   defp remove_request(requests, request_id) do
     Enum.reject(requests, &(&1.id == request_id))
+  end
+
+  defp dismiss_report_modal(socket) do
+    socket
+    |> assign(:show_report_modal, false)
+    |> assign(:report_message_id, nil)
+  end
+
+  defp dm_other_user_id(dm, current_user_id) do
+    if dm.user_a_id == current_user_id, do: dm.user_b_id, else: dm.user_a_id
   end
 
   defp enter_modal(socket, page_title) do
