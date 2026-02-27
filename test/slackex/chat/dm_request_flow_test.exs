@@ -2,7 +2,7 @@ defmodule Slackex.Chat.DMRequestFlowTest do
   use Slackex.DataCase, async: false
 
   alias Slackex.Chat
-  alias Slackex.Chat.{DMRateLimiter, DMRequest, UserTrustScore}
+  alias Slackex.Chat.{DMConversation, DMRateLimiter, DMRequest, UserTrustScore}
 
   # ---------------------------------------------------------------------------
   # Helpers
@@ -268,6 +268,132 @@ defmodule Slackex.Chat.DMRequestFlowTest do
 
       # Even with many pending requests, self-DM should work
       assert {:ok, _dm} = Chat.create_dm_request(sender.id, sender.id, "Note")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: DM preference gate
+  # ---------------------------------------------------------------------------
+
+  describe "create_dm_request/3 dm_preference gate" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "dm_preference 'anyone' allows all senders" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+      Repo.update!(Ecto.Changeset.change(recipient, dm_preference: "anyone"))
+
+      assert {:ok, %DMRequest{status: "pending"}} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+    end
+
+    test "dm_preference 'shared_channels' allows sender with common channel" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+      Repo.update!(Ecto.Changeset.change(recipient, dm_preference: "shared_channels"))
+
+      channel = insert(:channel)
+      subscribe_to_channel(sender, channel)
+      subscribe_to_channel(recipient, channel)
+
+      assert {:ok, %DMRequest{status: "pending"}} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+    end
+
+    test "dm_preference 'shared_channels' rejects sender without common channel" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+      Repo.update!(Ecto.Changeset.change(recipient, dm_preference: "shared_channels"))
+
+      assert {:error, :dm_preference_rejected} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+    end
+
+    test "dm_preference 'nobody' rejects all new requests" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+      Repo.update!(Ecto.Changeset.change(recipient, dm_preference: "nobody"))
+
+      assert {:error, :dm_preference_rejected} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: existing conversation bypass
+  # ---------------------------------------------------------------------------
+
+  describe "create_dm_request/3 existing conversation bypass" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "returns existing DM conversation instead of creating a request" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      # Create an accepted DM conversation between these users
+      {:ok, existing_dm} = Chat.find_or_create_dm(sender.id, recipient.id)
+
+      # Now create_dm_request should bypass and return the existing conversation
+      assert {:ok, %DMConversation{} = dm} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hello again!")
+
+      assert dm.id == existing_dm.id
+    end
+
+    test "bypass works regardless of user order" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      # Create DM with reversed user order
+      {:ok, existing_dm} = Chat.find_or_create_dm(recipient.id, sender.id)
+
+      assert {:ok, %DMConversation{} = dm} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hello!")
+
+      assert dm.id == existing_dm.id
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: PubSub broadcast on new request
+  # ---------------------------------------------------------------------------
+
+  describe "create_dm_request/3 PubSub broadcast" do
+    setup do
+      :ets.delete_all_objects(:dm_rate_limits)
+      :ok
+    end
+
+    test "broadcasts dm_request_new to recipient user topic" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{recipient.id}")
+
+      assert {:ok, %DMRequest{} = request} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hey there!")
+
+      assert_receive {:dm_request_new, ^request}
+    end
+
+    test "does not broadcast when existing conversation bypasses request creation" do
+      sender = insert_user_with_age_days(10)
+      recipient = insert_user_with_age(48)
+
+      {:ok, _existing_dm} = Chat.find_or_create_dm(sender.id, recipient.id)
+
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "user:#{recipient.id}")
+
+      assert {:ok, %DMConversation{}} =
+               Chat.create_dm_request(sender.id, recipient.id, "Hello again!")
+
+      refute_receive {:dm_request_new, _}
     end
   end
 end
