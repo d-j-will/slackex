@@ -290,5 +290,4 @@ defmodule Slackex.Chat.UnreadCountsTest do
       assert Map.get(dm_counts, dm.id) == 2
     end
   end
-
 end

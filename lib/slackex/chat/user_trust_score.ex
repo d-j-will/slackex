@@ -21,8 +21,14 @@ defmodule Slackex.Chat.UserTrustScore do
     timestamps(type: :utc_datetime_usec)
   end
 
-  @castable_fields [:user_id, :decline_count, :block_count, :report_count,
-                     :dm_restricted, :dm_restricted_at]
+  @castable_fields [
+    :user_id,
+    :decline_count,
+    :block_count,
+    :report_count,
+    :dm_restricted,
+    :dm_restricted_at
+  ]
 
   @doc """
   Validates a user trust score changeset.

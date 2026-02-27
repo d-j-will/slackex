@@ -23,6 +23,7 @@ defmodule Slackex.Chat.UserBlockTest do
       changeset = UserBlock.changeset(%UserBlock{}, %{})
 
       refute changeset.valid?
+
       assert %{blocker_id: ["can't be blank"], blocked_id: ["can't be blank"]} =
                errors_on(changeset)
     end

@@ -20,22 +20,22 @@ defmodule Slackex.Repo.Migrations.AddDmConversationIdToReadCursors do
 
     # Exactly one of channel_id or dm_conversation_id must be non-null
     create constraint(:read_cursors, :channel_or_dm_exclusive,
-      check: """
-      (channel_id IS NOT NULL AND dm_conversation_id IS NULL) OR
-      (channel_id IS NULL AND dm_conversation_id IS NOT NULL)
-      """
-    )
+             check: """
+             (channel_id IS NOT NULL AND dm_conversation_id IS NULL) OR
+             (channel_id IS NULL AND dm_conversation_id IS NOT NULL)
+             """
+           )
 
     # New composite primary key -- use a unique index instead since Ecto
     # doesn't support multi-column PKs with nullable columns easily
     create unique_index(:read_cursors, [:user_id, :channel_id],
-      where: "channel_id IS NOT NULL",
-      name: :read_cursors_user_channel_unique
-    )
+             where: "channel_id IS NOT NULL",
+             name: :read_cursors_user_channel_unique
+           )
 
     create unique_index(:read_cursors, [:user_id, :dm_conversation_id],
-      where: "dm_conversation_id IS NOT NULL",
-      name: :read_cursors_user_dm_unique
-    )
+             where: "dm_conversation_id IS NOT NULL",
+             name: :read_cursors_user_dm_unique
+           )
   end
 end

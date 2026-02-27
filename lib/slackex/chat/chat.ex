@@ -7,7 +7,20 @@ defmodule Slackex.Chat do
 
   alias Ecto.Multi
   alias Slackex.Accounts.User
-  alias Slackex.Chat.{Channel, DMConversation, DMRateLimiter, DMRequest, Message, Permissions, ReadCursor, Subscription, UserBlock, UserTrustScore}
+
+  alias Slackex.Chat.{
+    Channel,
+    DMConversation,
+    DMRateLimiter,
+    DMRequest,
+    Message,
+    Permissions,
+    ReadCursor,
+    Subscription,
+    UserBlock,
+    UserTrustScore
+  }
+
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.ReadRepo
   alias Slackex.Repo
@@ -486,12 +499,16 @@ defmodule Slackex.Chat do
       ) || "anyone"
 
     case preference do
-      "anyone" -> :ok
+      "anyone" ->
+        :ok
+
       "shared_channels" ->
         if shared_channel_exists?(sender_id, recipient_id),
           do: :ok,
           else: {:error, :dm_preference_rejected}
-      "nobody" -> {:error, :dm_preference_rejected}
+
+      "nobody" ->
+        {:error, :dm_preference_rejected}
     end
   end
 
@@ -733,12 +750,15 @@ defmodule Slackex.Chat do
       sanitized = HtmlSanitizeEx.strip_tags(content)
 
       Multi.new()
-      |> Multi.insert(:message, Message.changeset(%Message{}, %{
-        id: id,
-        content: sanitized,
-        sender_id: sender_id,
-        dm_conversation_id: dm_id
-      }))
+      |> Multi.insert(
+        :message,
+        Message.changeset(%Message{}, %{
+          id: id,
+          content: sanitized,
+          sender_id: sender_id,
+          dm_conversation_id: dm_id
+        })
+      )
       |> Multi.update(:dm, Ecto.Changeset.change(dm, updated_at: DateTime.utc_now()))
       |> Repo.transaction()
       |> then(fn
@@ -871,10 +891,11 @@ defmodule Slackex.Chat do
       from s in Subscription,
         where: s.user_id == ^user_id,
         left_join: rc in ReadCursor,
-          on: rc.user_id == ^user_id and rc.channel_id == s.channel_id,
+        on: rc.user_id == ^user_id and rc.channel_id == s.channel_id,
         left_join: m in Message,
-          on: m.channel_id == s.channel_id and
-              m.id > coalesce(rc.last_read_message_id, ^no_cursor),
+        on:
+          m.channel_id == s.channel_id and
+            m.id > coalesce(rc.last_read_message_id, ^no_cursor),
         group_by: s.channel_id,
         select: {s.channel_id, count(m.id)}
     )
@@ -888,10 +909,11 @@ defmodule Slackex.Chat do
       from d in DMConversation,
         where: d.user_a_id == ^user_id or d.user_b_id == ^user_id,
         left_join: rc in ReadCursor,
-          on: rc.user_id == ^user_id and rc.dm_conversation_id == d.id,
+        on: rc.user_id == ^user_id and rc.dm_conversation_id == d.id,
         left_join: m in Message,
-          on: m.dm_conversation_id == d.id and
-              m.id > coalesce(rc.last_read_message_id, ^no_cursor),
+        on:
+          m.dm_conversation_id == d.id and
+            m.id > coalesce(rc.last_read_message_id, ^no_cursor),
         group_by: d.id,
         select: {d.id, count(m.id)}
     )

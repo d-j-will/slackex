@@ -70,7 +70,12 @@ defmodule SlackexWeb.ChatLive.CreateChannelModal do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="create-channel-modal" phx-window-keydown="close_modal" phx-key="Escape" phx-target={@myself}>
+    <div
+      id="create-channel-modal"
+      phx-window-keydown="close_modal"
+      phx-key="Escape"
+      phx-target={@myself}
+    >
       <div
         id="create-channel-modal-backdrop"
         class="fixed inset-0 z-40 bg-black/50"

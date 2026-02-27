@@ -149,7 +149,11 @@ defmodule Slackex.AccountsTest do
     end
 
     test "returns only id, username, display_name, and avatar_url fields" do
-      insert(:user, username: "johndoe", display_name: "John Doe", avatar_url: "https://example.com/avatar.png")
+      insert(:user,
+        username: "johndoe",
+        display_name: "John Doe",
+        avatar_url: "https://example.com/avatar.png"
+      )
 
       [result | _] = Accounts.search_users("john")
 

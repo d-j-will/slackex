@@ -19,8 +19,8 @@ defmodule Slackex.Repo.Migrations.CreateDmRequests do
     create index(:dm_requests, [:dm_conversation_id])
 
     create unique_index(:dm_requests, [:sender_id, :recipient_id],
-      where: "status = 'pending'",
-      name: :dm_requests_sender_recipient_pending_idx
-    )
+             where: "status = 'pending'",
+             name: :dm_requests_sender_recipient_pending_idx
+           )
   end
 end

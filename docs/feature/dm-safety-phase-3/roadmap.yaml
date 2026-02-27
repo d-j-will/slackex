@@ -1,0 +1,158 @@
+roadmap:
+  project_id: dm-safety-phase-3
+  created_at: '2026-02-27T20:04:49Z'
+  total_steps: 6
+  phases: 3
+  phase_dependencies:
+    '02': ['01']
+    '03': ['01']
+phases:
+- id: '01'
+  name: 'Schema and report creation'
+  steps:
+  - id: 01-01
+    name: 'abuse_reports table and AbuseReport schema'
+    description: >
+      Migration for abuse_reports table with Snowflake PK, reporter_id, reported_user_id,
+      dm_conversation_id (nullable), message_id (nullable), category enum, description text,
+      status enum, metadata JSONB, timestamps. Ecto schema with changeset validation.
+      Unique partial index on (reporter_id, reported_user_id) WHERE status = 'open' for de-duplication.
+    time_estimate: 45min
+    dependencies: []
+    files_to_modify:
+    - 'priv/repo/migrations/*_create_abuse_reports.exs (CREATE)'
+    - 'lib/slackex/chat/abuse_report.ex (CREATE)'
+    - 'test/slackex/chat/abuse_report_test.exs (CREATE)'
+    criteria:
+      - 'abuse_reports table exists with all specified columns and correct types'
+      - 'Category validates inclusion in spam, harassment, inappropriate_content, phishing, other'
+      - 'Status validates inclusion in open, reviewed, actioned, dismissed'
+      - 'Only one open report per reporter-reported pair (unique constraint rejects duplicates)'
+      - 'Nullable dm_conversation_id and message_id allow user-level reports without message context'
+  - id: 01-02
+    name: 'Report submission with auto-block and trust score'
+    description: >
+      Chat context function to create a report: validates reporter account age >= 7 days,
+      rejects dm_restricted reporters, inserts AbuseReport, auto-blocks reported user
+      (unidirectional via existing block_user/2), upserts report_count on reported user trust score.
+      PubSub not needed (no real-time report notifications to reporter).
+    time_estimate: 60min
+    dependencies: ['01-01']
+    files_to_modify:
+    - 'lib/slackex/chat/chat.ex (MODIFY - add create_abuse_report/3)'
+    - 'test/slackex/chat/abuse_report_flow_test.exs (CREATE)'
+    criteria:
+      - 'Chat.create_abuse_report/3 accepts (reporter_id, reported_user_id, attrs) and returns {:ok, abuse_report} or {:error, reason}'
+      - 'Report created with status open and all fields persisted correctly'
+      - 'Reporter with account under 7 days receives rejection error'
+      - 'Reporter who is dm_restricted receives rejection error'
+      - 'Reporter blocks reported user (unidirectional via existing block_user/2)'
+      - 'Reported user trust score report_count incremented by 1 (upserted if missing)'
+- id: '02'
+  name: 'Auto-escalation and enforcement'
+  steps:
+  - id: 02-01
+    name: 'Distinct reporter thresholds with admin flagging'
+    description: >
+      After report_count upsert, check distinct reporter count for reported user.
+      At >= 3 distinct reporters, set dm_restricted = true on user_trust_scores.
+      At >= 5 distinct reporters, set admin_flagged = true. Migration adds admin_flagged
+      boolean and admin_flagged_at to user_trust_scores.
+    time_estimate: 60min
+    dependencies: ['01-02']
+    files_to_modify:
+    - 'lib/slackex/chat/chat.ex (MODIFY - threshold checks after report_count upsert)'
+    - 'lib/slackex/chat/user_trust_score.ex (MODIFY - admin_flagged field)'
+    - 'priv/repo/migrations/*_add_admin_flagged_to_user_trust_scores.exs (CREATE)'
+    - 'test/slackex/chat/abuse_report_flow_test.exs (MODIFY)'
+    criteria:
+      - 'Migration adds admin_flagged boolean (default false) and admin_flagged_at nullable utc_datetime_usec to user_trust_scores'
+      - 'User with reports from 3+ distinct reporters has dm_restricted set to true'
+      - 'User with reports from fewer than 3 distinct reporters is not restricted'
+      - 'Multiple reports from same reporter count as 1 distinct reporter'
+      - 'dm_restricted_at timestamp set when restriction triggers'
+      - 'User with reports from 5+ distinct reporters has admin_flagged set to true'
+      - 'User below 5 distinct reporters is not admin-flagged'
+  - id: 02-02
+    name: 'Velocity detection and coordinated-report dampening'
+    description: >
+      Independent gate from distinct-reporter thresholds. Velocity check: 3+ negative
+      signals (reports + blocks + declines) against a user within 24h triggers immediate
+      dm_restricted. Coordinated-report dampening: reports from 2+ reporters within same
+      24h window count as 1 distinct reporter for threshold math in 02-01.
+    time_estimate: 60min
+    dependencies: ['02-01']
+    files_to_modify:
+    - 'lib/slackex/chat/chat.ex (MODIFY - velocity detection logic)'
+    - 'test/slackex/chat/abuse_report_flow_test.exs (MODIFY)'
+    criteria:
+      - 'Velocity restriction and distinct-reporter restriction are independent gates; both can trigger dm_restricted separately'
+      - '3+ negative signals (any mix of reports, blocks, declines) within 24h triggers dm_restricted'
+      - 'Reports from 2+ reporters within same 24h window count as 1 distinct reporter for thresholds'
+      - 'Negative signals outside the 24h window are counted individually as normal'
+      - 'Velocity restriction sets dm_restricted_at timestamp'
+- id: '03'
+  name: 'Report UI'
+  steps:
+  - id: 03-01
+    name: 'Report button and modal in DM header'
+    description: >
+      Add Report button next to existing Block button in DM conversation header.
+      Opens modal with category radio selection (5 categories) and optional
+      description textarea. Submit calls report context function. Shows
+      confirmation flash on success, error flash on failure.
+    time_estimate: 45min
+    dependencies: ['01-02']
+    files_to_modify:
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - report event handler + modal)'
+    - 'lib/slackex_web/components/chat_components.ex (MODIFY - report modal component)'
+    - 'test/slackex_web/live/chat_live/index_test.exs (MODIFY)'
+    criteria:
+      - 'Report button visible in DM header next to Block button (not shown for self-DMs)'
+      - 'Modal presents 5 category options and optional description field'
+      - 'Report event handler calls Chat.create_abuse_report/3'
+      - 'Successful submission shows confirmation flash message'
+      - 'Duplicate open report shows appropriate error to reporter'
+  - id: 03-02
+    name: 'Report button on individual messages'
+    description: >
+      Add report action to message context menu (hover/right-click on message).
+      Pre-fills dm_conversation_id and message_id from the selected message.
+      Reuses same report modal component from 03-01 with pre-populated fields.
+    time_estimate: 30min
+    dependencies: ['03-01', '01-01']
+    files_to_modify:
+    - 'lib/slackex_web/components/chat_components.ex (MODIFY - message action menu)'
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - message report handler)'
+    - 'test/slackex_web/live/chat_live/index_test.exs (MODIFY)'
+    criteria:
+      - 'Report option appears in message action menu for DM messages from other users'
+      - 'Report from message context pre-fills conversation and message reference'
+      - 'Report option not shown on own messages'
+      - 'Successful submission shows confirmation flash message'
+implementation_scope:
+  source_directories:
+  - lib/slackex/chat/
+  - lib/slackex_web/live/chat_live/
+  - lib/slackex_web/components/
+  - priv/repo/migrations/
+  test_directories:
+  - test/slackex/chat/
+  - test/slackex_web/live/chat_live/
+  excluded_patterns:
+  - _build/**
+  - deps/**
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-02-27T20:40:00Z'
+  review_iterations: 2
+  defects_addressed:
+  - 'D1: Added files_to_modify to all steps'
+  - 'D2: Added phase_dependencies section'
+  - 'D3: Merged threshold and admin flag steps into single 02-01'
+  - 'D4: Clarified velocity detection as independent gate'
+  - 'D5: Clarified unidirectional auto-block'
+  - 'D6: Added function signatures and entry points'
+  - 'D7: Updated 03-02 dependencies to include 01-01'
+  - 'D8: Specified admin_flagged migration defaults'

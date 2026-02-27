@@ -31,7 +31,14 @@ defmodule Slackex.Chat.DMRequest do
   """
   def changeset(dm_request, attrs) do
     dm_request
-    |> cast(attrs, [:sender_id, :recipient_id, :preview_text, :status, :dm_conversation_id, :responded_at])
+    |> cast(attrs, [
+      :sender_id,
+      :recipient_id,
+      :preview_text,
+      :status,
+      :dm_conversation_id,
+      :responded_at
+    ])
     |> validate_required([:sender_id, :recipient_id])
     |> validate_length(:preview_text, max: 500)
     |> validate_inclusion(:status, @valid_statuses)

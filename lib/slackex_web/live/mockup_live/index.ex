@@ -265,12 +265,16 @@ defmodule SlackexWeb.MockupLive.Index do
           <div class="aurora-channel text-white/50 text-sm">
             <span class="text-white/25">#</span> random
           </div>
-          <p class="text-[10px] uppercase tracking-widest text-white/25 px-3 mb-2 mt-6">Direct Messages</p>
+          <p class="text-[10px] uppercase tracking-widest text-white/25 px-3 mb-2 mt-6">
+            Direct Messages
+          </p>
           <div class="aurora-channel text-white/50 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-emerald-400"></div> Luna
+            <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+            Luna
           </div>
           <div class="aurora-channel text-white/50 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-white/20"></div> Atlas
+            <div class="w-2 h-2 rounded-full bg-white/20"></div>
+            Atlas
           </div>
         </div>
       </div>
@@ -286,23 +290,34 @@ defmodule SlackexWeb.MockupLive.Index do
         <%!-- Messages --%>
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="aurora-msg p-4 flex gap-3">
-            <div class="aurora-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold">L</div>
+            <div class="aurora-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold">
+              L
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-purple-200">Luna</span>
                 <span class="text-[10px] text-white/20">2:34 PM</span>
               </div>
-              <p class="text-sm text-white/70 mt-1">Has anyone seen the new gradient animations? They remind me of the actual northern lights!</p>
+              <p class="text-sm text-white/70 mt-1">
+                Has anyone seen the new gradient animations? They remind me of the actual northern lights!
+              </p>
             </div>
           </div>
           <div class="aurora-msg p-4 flex gap-3">
-            <div class="aurora-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold" style="background: linear-gradient(135deg, #50c8b4, #7850dc);">A</div>
+            <div
+              class="aurora-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold"
+              style="background: linear-gradient(135deg, #50c8b4, #7850dc);"
+            >
+              A
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-teal-200">Atlas</span>
                 <span class="text-[10px] text-white/20">2:36 PM</span>
               </div>
-              <p class="text-sm text-white/70 mt-1">Absolutely! The way the colors shift and blend is mesmerizing. Nature is the best designer.</p>
+              <p class="text-sm text-white/70 mt-1">
+                Absolutely! The way the colors shift and blend is mesmerizing. Nature is the best designer.
+              </p>
               <div class="mt-2 flex gap-1">
                 <span class="text-xs bg-white/5 border border-white/10 rounded-full px-2 py-0.5 cursor-pointer hover:bg-white/10 transition">
                   ✨ 3
@@ -314,13 +329,20 @@ defmodule SlackexWeb.MockupLive.Index do
             </div>
           </div>
           <div class="aurora-msg p-4 flex gap-3">
-            <div class="aurora-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold" style="background: linear-gradient(135deg, #c864b4, #7850dc);">S</div>
+            <div
+              class="aurora-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold"
+              style="background: linear-gradient(135deg, #c864b4, #7850dc);"
+            >
+              S
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-pink-200">Stella</span>
                 <span class="text-[10px] text-white/20">2:38 PM</span>
               </div>
-              <p class="text-sm text-white/70 mt-1">I just pushed a new theme to the repo. It uses layered radial gradients with slow drift animations. Check it out and let me know what you think!</p>
+              <p class="text-sm text-white/70 mt-1">
+                I just pushed a new theme to the repo. It uses layered radial gradients with slow drift animations. Check it out and let me know what you think!
+              </p>
             </div>
           </div>
         </div>
@@ -453,13 +475,18 @@ defmodule SlackexWeb.MockupLive.Index do
       <%!-- Sidebar --%>
       <div class="synth-sidebar w-64 flex flex-col py-4 relative z-10">
         <div class="px-4 mb-6">
-          <h2 class="text-xl font-bold text-fuchsia-400 synth-neon" style="font-family: 'Courier New', monospace;">
+          <h2
+            class="text-xl font-bold text-fuchsia-400 synth-neon"
+            style="font-family: 'Courier New', monospace;"
+          >
             SYNTH//CHAT
           </h2>
           <p class="text-[10px] text-fuchsia-400/30 font-mono mt-1">SYS.ONLINE // v2.077</p>
         </div>
         <div class="px-3 space-y-0.5 flex-1">
-          <p class="text-[10px] uppercase tracking-[0.3em] text-fuchsia-500/30 px-3 mb-2 font-mono">&gt; Channels</p>
+          <p class="text-[10px] uppercase tracking-[0.3em] text-fuchsia-500/30 px-3 mb-2 font-mono">
+            &gt; Channels
+          </p>
           <div class="synth-channel active text-fuchsia-300 text-sm">
             // neon-lounge
           </div>
@@ -472,12 +499,16 @@ defmodule SlackexWeb.MockupLive.Index do
           <div class="synth-channel text-white/40 text-sm">
             // arcade
           </div>
-          <p class="text-[10px] uppercase tracking-[0.3em] text-cyan-500/30 px-3 mb-2 mt-6 font-mono">&gt; Direct</p>
+          <p class="text-[10px] uppercase tracking-[0.3em] text-cyan-500/30 px-3 mb-2 mt-6 font-mono">
+            &gt; Direct
+          </p>
           <div class="synth-channel text-white/40 text-sm flex items-center gap-2">
-            <div class="w-1.5 h-1.5 bg-cyan-400 shadow-[0_0_6px_rgba(0,255,255,0.6)]"></div> Nyx
+            <div class="w-1.5 h-1.5 bg-cyan-400 shadow-[0_0_6px_rgba(0,255,255,0.6)]"></div>
+            Nyx
           </div>
           <div class="synth-channel text-white/40 text-sm flex items-center gap-2">
-            <div class="w-1.5 h-1.5 bg-fuchsia-400 shadow-[0_0_6px_rgba(255,0,255,0.6)]"></div> Chrome
+            <div class="w-1.5 h-1.5 bg-fuchsia-400 shadow-[0_0_6px_rgba(255,0,255,0.6)]"></div>
+            Chrome
           </div>
         </div>
       </div>
@@ -486,41 +517,61 @@ defmodule SlackexWeb.MockupLive.Index do
       <div class="flex-1 flex flex-col relative z-10">
         <div class="px-6 py-3 border-b border-fuchsia-500/10 bg-black/20">
           <h3 class="font-mono font-bold text-fuchsia-300">// neon-lounge</h3>
-          <p class="text-[10px] text-fuchsia-400/30 font-mono">3 users online &mdash; uptime: 23:47:12</p>
+          <p class="text-[10px] text-fuchsia-400/30 font-mono">
+            3 users online &mdash; uptime: 23:47:12
+          </p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           <div class="synth-msg flex gap-3">
-            <div class="synth-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-fuchsia-950 text-fuchsia-300 font-mono">N</div>
+            <div class="synth-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-fuchsia-950 text-fuchsia-300 font-mono">
+              N
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-bold text-sm text-fuchsia-300 font-mono">Nyx</span>
                 <span class="text-[10px] text-white/15 font-mono">23:14</span>
               </div>
-              <p class="text-sm text-white/60 mt-1 font-mono">Just finished the new shader. The grid reflections look insane at 120fps.</p>
+              <p class="text-sm text-white/60 mt-1 font-mono">
+                Just finished the new shader. The grid reflections look insane at 120fps.
+              </p>
             </div>
           </div>
           <div class="synth-msg flex gap-3">
-            <div class="synth-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-cyan-950 text-cyan-300 font-mono" style="border-color: #00ffff;">C</div>
+            <div
+              class="synth-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-cyan-950 text-cyan-300 font-mono"
+              style="border-color: #00ffff;"
+            >
+              C
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-bold text-sm text-cyan-300 font-mono">Chrome</span>
                 <span class="text-[10px] text-white/15 font-mono">23:15</span>
               </div>
-              <p class="text-sm text-white/60 mt-1 font-mono">Send me the link. I want to hook it into the audio visualizer.</p>
+              <p class="text-sm text-white/60 mt-1 font-mono">
+                Send me the link. I want to hook it into the audio visualizer.
+              </p>
               <div class="mt-2 inline-block bg-fuchsia-500/10 border border-fuchsia-500/20 rounded px-3 py-1.5 text-xs text-fuchsia-300/80 font-mono">
                 shader_v3.glsl &mdash; 2.4kb
               </div>
             </div>
           </div>
           <div class="synth-msg flex gap-3">
-            <div class="synth-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-purple-950 text-purple-300 font-mono" style="border-color: #a855f7;">R</div>
+            <div
+              class="synth-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-purple-950 text-purple-300 font-mono"
+              style="border-color: #a855f7;"
+            >
+              R
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-bold text-sm text-purple-300 font-mono">Raze</span>
                 <span class="text-[10px] text-white/15 font-mono">23:17</span>
               </div>
-              <p class="text-sm text-white/60 mt-1 font-mono">The vaporwave aesthetic is alive and well. This is art. 🎨</p>
+              <p class="text-sm text-white/60 mt-1 font-mono">
+                The vaporwave aesthetic is alive and well. This is art. 🎨
+              </p>
             </div>
           </div>
         </div>
@@ -660,10 +711,12 @@ defmodule SlackexWeb.MockupLive.Index do
           </div>
           <p class="text-[10px] uppercase tracking-widest text-white/20 px-3 mb-2 mt-6">Whispers</p>
           <div class="glass-channel text-white/50 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-green-400"></div> Willow
+            <div class="w-2 h-2 rounded-full bg-green-400"></div>
+            Willow
           </div>
           <div class="glass-channel text-white/50 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-green-400"></div> Fern
+            <div class="w-2 h-2 rounded-full bg-green-400"></div>
+            Fern
           </div>
         </div>
       </div>
@@ -677,23 +730,34 @@ defmodule SlackexWeb.MockupLive.Index do
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="glass-msg p-4 flex gap-3">
-            <div class="garden-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm">🌸</div>
+            <div class="garden-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm">
+              🌸
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-green-200">Willow</span>
                 <span class="text-[10px] text-white/20">10:22 AM</span>
               </div>
-              <p class="text-sm text-white/70 mt-1">Good morning! The new terrarium designs are looking absolutely stunning. The glass layers create such beautiful depth.</p>
+              <p class="text-sm text-white/70 mt-1">
+                Good morning! The new terrarium designs are looking absolutely stunning. The glass layers create such beautiful depth.
+              </p>
             </div>
           </div>
           <div class="glass-msg p-4 flex gap-3">
-            <div class="garden-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm" style="background: linear-gradient(135deg, rgba(200,180,100,0.4), rgba(160,140,60,0.4));">🌾</div>
+            <div
+              class="garden-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm"
+              style="background: linear-gradient(135deg, rgba(200,180,100,0.4), rgba(160,140,60,0.4));"
+            >
+              🌾
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-yellow-200">Fern</span>
                 <span class="text-[10px] text-white/20">10:25 AM</span>
               </div>
-              <p class="text-sm text-white/70 mt-1">Thanks! I was inspired by morning dew on leaves. Each panel is like a dewdrop catching the light at different angles.</p>
+              <p class="text-sm text-white/70 mt-1">
+                Thanks! I was inspired by morning dew on leaves. Each panel is like a dewdrop catching the light at different angles.
+              </p>
               <div class="mt-3 glass-panel p-3 text-xs text-white/50">
                 <p class="text-white/70 font-medium mb-1">🖼 terrarium-v3.fig</p>
                 <p>Updated 2 minutes ago &middot; 3 variants</p>
@@ -701,13 +765,20 @@ defmodule SlackexWeb.MockupLive.Index do
             </div>
           </div>
           <div class="glass-msg p-4 flex gap-3">
-            <div class="garden-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm" style="background: linear-gradient(135deg, rgba(100,180,200,0.4), rgba(60,140,160,0.4));">🌊</div>
+            <div
+              class="garden-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm"
+              style="background: linear-gradient(135deg, rgba(100,180,200,0.4), rgba(60,140,160,0.4));"
+            >
+              🌊
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-cyan-200">Brook</span>
                 <span class="text-[10px] text-white/20">10:28 AM</span>
               </div>
-              <p class="text-sm text-white/70 mt-1">The blur effects are chef's kiss. It really feels like looking through frosted glass on a spring morning. Can we add a subtle parallax scroll?</p>
+              <p class="text-sm text-white/70 mt-1">
+                The blur effects are chef's kiss. It really feels like looking through frosted glass on a spring morning. Can we add a subtle parallax scroll?
+              </p>
             </div>
           </div>
         </div>
@@ -824,7 +895,9 @@ defmodule SlackexWeb.MockupLive.Index do
           <p class="text-xs text-gray-400 mt-1">Sweet conversations await</p>
         </div>
         <div class="px-3 space-y-1 flex-1">
-          <p class="text-[10px] uppercase tracking-widest text-pink-300 px-3 mb-2 font-bold">Channels</p>
+          <p class="text-[10px] uppercase tracking-widest text-pink-300 px-3 mb-2 font-bold">
+            Channels
+          </p>
           <div class="candy-channel active text-gray-700 text-sm">
             🍭 fun-zone
           </div>
@@ -837,7 +910,9 @@ defmodule SlackexWeb.MockupLive.Index do
           <div class="candy-channel text-gray-400 text-sm">
             🎮 game-room
           </div>
-          <p class="text-[10px] uppercase tracking-widest text-purple-300 px-3 mb-2 mt-6 font-bold">Friends</p>
+          <p class="text-[10px] uppercase tracking-widest text-purple-300 px-3 mb-2 mt-6 font-bold">
+            Friends
+          </p>
           <div class="candy-channel text-gray-400 text-sm flex items-center gap-2">
             <div class="w-2.5 h-2.5 rounded-full bg-green-400 border-2 border-white"></div>
             <span>Poppy</span>
@@ -859,13 +934,20 @@ defmodule SlackexWeb.MockupLive.Index do
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="candy-msg p-4 flex gap-3">
-            <div class="candy-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-bold bg-pink-50 text-pink-500" style="border-color: #ff82b4;">P</div>
+            <div
+              class="candy-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-bold bg-pink-50 text-pink-500"
+              style="border-color: #ff82b4;"
+            >
+              P
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-bold text-sm text-pink-500">Poppy</span>
                 <span class="text-[10px] text-gray-300">3:45 PM</span>
               </div>
-              <p class="text-sm text-gray-600 mt-1">Hey everyone! I just made the most adorable loading animation! It's a little bouncing cupcake! 🧁</p>
+              <p class="text-sm text-gray-600 mt-1">
+                Hey everyone! I just made the most adorable loading animation! It's a little bouncing cupcake! 🧁
+              </p>
               <div class="mt-2 flex gap-1">
                 <span class="text-xs bg-pink-50 border border-pink-100 rounded-full px-2.5 py-1 cursor-pointer hover:bg-pink-100 transition font-medium">
                   🎉 5
@@ -877,23 +959,37 @@ defmodule SlackexWeb.MockupLive.Index do
             </div>
           </div>
           <div class="candy-msg p-4 flex gap-3">
-            <div class="candy-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-bold bg-blue-50 text-blue-500" style="border-color: #82b4ff;">B</div>
+            <div
+              class="candy-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-bold bg-blue-50 text-blue-500"
+              style="border-color: #82b4ff;"
+            >
+              B
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-bold text-sm text-blue-500">Biscuit</span>
                 <span class="text-[10px] text-gray-300">3:47 PM</span>
               </div>
-              <p class="text-sm text-gray-600 mt-1">OMG that's so cute!! Can you share the CodePen? I need this in my life right now!</p>
+              <p class="text-sm text-gray-600 mt-1">
+                OMG that's so cute!! Can you share the CodePen? I need this in my life right now!
+              </p>
             </div>
           </div>
           <div class="candy-msg p-4 flex gap-3">
-            <div class="candy-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-bold bg-yellow-50 text-yellow-600" style="border-color: #ffd700;">M</div>
+            <div
+              class="candy-avatar w-10 h-10 flex-shrink-0 flex items-center justify-center text-sm font-bold bg-yellow-50 text-yellow-600"
+              style="border-color: #ffd700;"
+            >
+              M
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-bold text-sm text-yellow-600">Maple</span>
                 <span class="text-[10px] text-gray-300">3:49 PM</span>
               </div>
-              <p class="text-sm text-gray-600 mt-1">The color palette for this whole app is so satisfying. It's like being inside a box of macarons!</p>
+              <p class="text-sm text-gray-600 mt-1">
+                The color palette for this whole app is so satisfying. It's like being inside a box of macarons!
+              </p>
               <div class="mt-2 flex gap-1.5">
                 <div class="w-6 h-6 rounded-full bg-pink-300 shadow-sm"></div>
                 <div class="w-6 h-6 rounded-full bg-purple-300 shadow-sm"></div>
@@ -1037,7 +1133,9 @@ defmodule SlackexWeb.MockupLive.Index do
           <p class="text-xs text-white/20 mt-1">Signals from the deep</p>
         </div>
         <div class="px-3 space-y-1 flex-1">
-          <p class="text-[10px] uppercase tracking-[0.2em] text-indigo-400/30 px-3 mb-2">Frequencies</p>
+          <p class="text-[10px] uppercase tracking-[0.2em] text-indigo-400/30 px-3 mb-2">
+            Frequencies
+          </p>
           <div class="cosmic-channel active text-white/80 text-sm">
             <span class="text-indigo-400/50">&#x2726;</span> nebula-core
           </div>
@@ -1050,12 +1148,16 @@ defmodule SlackexWeb.MockupLive.Index do
           <div class="cosmic-channel text-white/35 text-sm">
             <span class="text-indigo-400/30">&#x2726;</span> star-forge
           </div>
-          <p class="text-[10px] uppercase tracking-[0.2em] text-indigo-400/30 px-3 mb-2 mt-6">Signals</p>
+          <p class="text-[10px] uppercase tracking-[0.2em] text-indigo-400/30 px-3 mb-2 mt-6">
+            Signals
+          </p>
           <div class="cosmic-channel text-white/35 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-indigo-400/60"></div> Orion
+            <div class="w-2 h-2 rounded-full bg-indigo-400/60"></div>
+            Orion
           </div>
           <div class="cosmic-channel text-white/35 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-blue-400/60"></div> Vega
+            <div class="w-2 h-2 rounded-full bg-blue-400/60"></div>
+            Vega
           </div>
         </div>
       </div>
@@ -1063,42 +1165,56 @@ defmodule SlackexWeb.MockupLive.Index do
       <%!-- Main --%>
       <div class="flex-1 flex flex-col relative z-10">
         <div class="px-6 py-3 border-b border-indigo-500/5 bg-black/10">
-          <h3 class="font-semibold text-white/80"><span class="text-indigo-400/50">&#x2726;</span> nebula-core</h3>
+          <h3 class="font-semibold text-white/80">
+            <span class="text-indigo-400/50">&#x2726;</span> nebula-core
+          </h3>
           <p class="text-xs text-white/20">Transmitting across the void</p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="cosmic-msg p-4 flex gap-3">
-            <div class="cosmic-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-indigo-950 text-indigo-300 rounded-full">O</div>
+            <div class="cosmic-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-indigo-950 text-indigo-300 rounded-full">
+              O
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-indigo-300">Orion</span>
                 <span class="text-[10px] text-white/15">cycle 847.3</span>
               </div>
-              <p class="text-sm text-white/50 mt-1">The latest deep-field scan returned some extraordinary data. We're seeing patterns in the background radiation that suggest... structure.</p>
+              <p class="text-sm text-white/50 mt-1">
+                The latest deep-field scan returned some extraordinary data. We're seeing patterns in the background radiation that suggest... structure.
+              </p>
             </div>
           </div>
           <div class="cosmic-msg p-4 flex gap-3">
-            <div class="cosmic-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-blue-950 text-blue-300 rounded-full">V</div>
+            <div class="cosmic-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-blue-950 text-blue-300 rounded-full">
+              V
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-blue-300">Vega</span>
                 <span class="text-[10px] text-white/15">cycle 847.3</span>
               </div>
-              <p class="text-sm text-white/50 mt-1">Confirmed on our end. The harmonic resonance at the 400nm band is unlike anything in the archives. It's almost... musical.</p>
+              <p class="text-sm text-white/50 mt-1">
+                Confirmed on our end. The harmonic resonance at the 400nm band is unlike anything in the archives. It's almost... musical.
+              </p>
               <div class="mt-2 inline-flex items-center gap-2 bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2 text-xs text-indigo-300/60">
                 <span>&#x266B;</span> spectral-analysis-847.wav &mdash; 1.2MB
               </div>
             </div>
           </div>
           <div class="cosmic-msg p-4 flex gap-3">
-            <div class="cosmic-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-purple-950 text-purple-300 rounded-full">N</div>
+            <div class="cosmic-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-purple-950 text-purple-300 rounded-full">
+              N
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
                 <span class="font-semibold text-sm text-purple-300">Nova</span>
                 <span class="text-[10px] text-white/15">cycle 847.4</span>
               </div>
-              <p class="text-sm text-white/50 mt-1">I've overlaid the signal on the known pulsar map. There are correlations we didn't expect. Sharing the visualization now...</p>
+              <p class="text-sm text-white/50 mt-1">
+                I've overlaid the signal on the known pulsar map. There are correlations we didn't expect. Sharing the visualization now...
+              </p>
               <div class="mt-3 h-16 rounded-lg bg-gradient-to-r from-indigo-500/5 via-purple-500/10 to-blue-500/5 border border-indigo-500/10 flex items-center justify-center">
                 <div class="flex gap-[2px] items-end h-8">
                   <div class="w-1 bg-indigo-400/40 rounded-full" style="height: 30%;"></div>
@@ -1229,7 +1345,9 @@ defmodule SlackexWeb.MockupLive.Index do
           <h2 class="text-xl font-bold text-amber-200/90" style="font-family: Georgia, serif;">
             &#x2726; Arabesque
           </h2>
-          <p class="text-[10px] text-amber-200/25 mt-1" style="font-family: Georgia, serif;">Where patterns meet purpose</p>
+          <p class="text-[10px] text-amber-200/25 mt-1" style="font-family: Georgia, serif;">
+            Where patterns meet purpose
+          </p>
         </div>
         <div class="arabesque-ornament mb-3">&#x2726; &#x2727; &#x2726;</div>
         <div class="px-3 space-y-1 flex-1">
@@ -1249,10 +1367,12 @@ defmodule SlackexWeb.MockupLive.Index do
           <div class="arabesque-divider mt-5 mb-3"></div>
           <p class="text-[10px] uppercase tracking-[0.2em] text-teal-300/25 px-3 mb-2">Whispers</p>
           <div class="arabesque-channel text-white/35 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-teal-400/60"></div> Layla
+            <div class="w-2 h-2 rounded-full bg-teal-400/60"></div>
+            Layla
           </div>
           <div class="arabesque-channel text-white/35 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-amber-400/60"></div> Karim
+            <div class="w-2 h-2 rounded-full bg-amber-400/60"></div>
+            Karim
           </div>
         </div>
       </div>
@@ -1263,28 +1383,48 @@ defmodule SlackexWeb.MockupLive.Index do
           <h3 class="font-semibold text-amber-100/80" style="font-family: Georgia, serif;">
             <span class="arabesque-star">&#x2726;</span> the-courtyard
           </h3>
-          <p class="text-[10px] text-amber-200/25" style="font-family: Georgia, serif;">Where all paths converge beneath the stars</p>
+          <p class="text-[10px] text-amber-200/25" style="font-family: Georgia, serif;">
+            Where all paths converge beneath the stars
+          </p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="arabesque-msg p-4 flex gap-3">
-            <div class="arabesque-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-amber-950/80 text-amber-200">L</div>
+            <div class="arabesque-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-amber-950/80 text-amber-200">
+              L
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm text-amber-200" style="font-family: Georgia, serif;">Layla</span>
+                <span
+                  class="font-semibold text-sm text-amber-200"
+                  style="font-family: Georgia, serif;"
+                >
+                  Layla
+                </span>
                 <span class="text-[10px] text-white/15">sunset hour</span>
               </div>
-              <p class="text-sm text-white/55 mt-1">Have you seen the new geometric tiling generator? It creates perfect 8-fold symmetry patterns. The mathematics behind Islamic art never ceases to amaze me.</p>
+              <p class="text-sm text-white/55 mt-1">
+                Have you seen the new geometric tiling generator? It creates perfect 8-fold symmetry patterns. The mathematics behind Islamic art never ceases to amaze me.
+              </p>
             </div>
           </div>
           <div class="arabesque-msg p-4 flex gap-3">
-            <div class="arabesque-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-teal-950/80 text-teal-200" style="border-color: rgba(0,180,180,0.3);">K</div>
+            <div
+              class="arabesque-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-teal-950/80 text-teal-200"
+              style="border-color: rgba(0,180,180,0.3);"
+            >
+              K
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm text-teal-200" style="font-family: Georgia, serif;">Karim</span>
+                <span class="font-semibold text-sm text-teal-200" style="font-family: Georgia, serif;">
+                  Karim
+                </span>
                 <span class="text-[10px] text-white/15">sunset hour</span>
               </div>
-              <p class="text-sm text-white/55 mt-1">The way a single motif tessellates into infinity... it's a meditation on the infinite nature of creation. Each tile is simple, but together they form something transcendent.</p>
+              <p class="text-sm text-white/55 mt-1">
+                The way a single motif tessellates into infinity... it's a meditation on the infinite nature of creation. Each tile is simple, but together they form something transcendent.
+              </p>
               <div class="mt-2 flex gap-1">
                 <span class="text-xs bg-amber-500/5 border border-amber-500/10 rounded-full px-2.5 py-0.5 cursor-pointer hover:bg-amber-500/10 transition text-amber-200/50">
                   &#x2726; 4
@@ -1293,20 +1433,34 @@ defmodule SlackexWeb.MockupLive.Index do
             </div>
           </div>
           <div class="arabesque-msg p-4 flex gap-3">
-            <div class="arabesque-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-indigo-950/80 text-indigo-200" style="border-color: rgba(120,120,200,0.3);">Z</div>
+            <div
+              class="arabesque-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-indigo-950/80 text-indigo-200"
+              style="border-color: rgba(120,120,200,0.3);"
+            >
+              Z
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm text-indigo-200" style="font-family: Georgia, serif;">Zara</span>
+                <span
+                  class="font-semibold text-sm text-indigo-200"
+                  style="font-family: Georgia, serif;"
+                >
+                  Zara
+                </span>
                 <span class="text-[10px] text-white/15">evening hour</span>
               </div>
-              <p class="text-sm text-white/55 mt-1">I've been studying the zellige work in Fez. The artisans cut each piece by hand &mdash; no two tiles are perfectly identical, yet the whole is flawlessly harmonious. There's a lesson there for how we build software.</p>
+              <p class="text-sm text-white/55 mt-1">
+                I've been studying the zellige work in Fez. The artisans cut each piece by hand &mdash; no two tiles are perfectly identical, yet the whole is flawlessly harmonious. There's a lesson there for how we build software.
+              </p>
             </div>
           </div>
         </div>
 
         <div class="px-6 py-4">
           <div class="arabesque-input flex items-center px-4 py-3">
-            <span class="text-amber-200/20 text-sm" style="font-family: Georgia, serif;">Speak to the courtyard...</span>
+            <span class="text-amber-200/20 text-sm" style="font-family: Georgia, serif;">
+              Speak to the courtyard...
+            </span>
             <div class="ml-auto flex gap-3 text-amber-200/15">
               <span class="cursor-pointer hover:text-amber-200/30 transition">&#x2726;</span>
               <span class="cursor-pointer hover:text-amber-200/30 transition">&#x263E;</span>
@@ -1400,10 +1554,15 @@ defmodule SlackexWeb.MockupLive.Index do
       <%!-- Sidebar --%>
       <div class="ukiyoe-sidebar w-64 flex flex-col py-4 relative z-10">
         <div class="px-4 mb-6">
-          <h2 class="text-xl font-bold ukiyoe-ink" style="font-family: Georgia, serif; letter-spacing: 0.05em;">
+          <h2
+            class="text-xl font-bold ukiyoe-ink"
+            style="font-family: Georgia, serif; letter-spacing: 0.05em;"
+          >
             浮世絵
           </h2>
-          <p class="text-[11px] text-stone-500 mt-1" style="font-family: Georgia, serif;">Pictures of the floating world</p>
+          <p class="text-[11px] text-stone-500 mt-1" style="font-family: Georgia, serif;">
+            Pictures of the floating world
+          </p>
         </div>
         <div class="px-3 space-y-1 flex-1">
           <p class="text-[10px] uppercase tracking-[0.2em] text-stone-400 px-3 mb-2">Rooms</p>
@@ -1422,10 +1581,12 @@ defmodule SlackexWeb.MockupLive.Index do
           <div class="h-px bg-stone-300/40 my-5"></div>
           <p class="text-[10px] uppercase tracking-[0.2em] text-stone-400 px-3 mb-2">Letters</p>
           <div class="ukiyoe-channel text-stone-500 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-sm bg-green-700/50"></div> Hana
+            <div class="w-2 h-2 rounded-sm bg-green-700/50"></div>
+            Hana
           </div>
           <div class="ukiyoe-channel text-stone-500 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-sm bg-stone-400/40"></div> Ren
+            <div class="w-2 h-2 rounded-sm bg-stone-400/40"></div>
+            Ren
           </div>
         </div>
       </div>
@@ -1436,28 +1597,45 @@ defmodule SlackexWeb.MockupLive.Index do
           <h3 class="font-semibold ukiyoe-ink" style="font-family: Georgia, serif;">
             <span class="ukiyoe-vermillion">&#x25CF;</span> tokaido-road
           </h3>
-          <p class="text-[11px] text-stone-400" style="font-family: Georgia, serif;">Fifty-three stations of contemplation</p>
+          <p class="text-[11px] text-stone-400" style="font-family: Georgia, serif;">
+            Fifty-three stations of contemplation
+          </p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="ukiyoe-msg p-4 flex gap-3">
-            <div class="ukiyoe-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-indigo-50 ukiyoe-accent">H</div>
+            <div class="ukiyoe-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-indigo-50 ukiyoe-accent">
+              H
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm ukiyoe-accent" style="font-family: Georgia, serif;">Hana</span>
+                <span class="font-semibold text-sm ukiyoe-accent" style="font-family: Georgia, serif;">
+                  Hana
+                </span>
                 <span class="text-[10px] text-stone-400">morning bell</span>
               </div>
-              <p class="text-sm text-stone-600 mt-1">The cherry blossoms outside the studio window are at their peak today. Mono no aware &mdash; the beauty is more poignant because it is fleeting.</p>
+              <p class="text-sm text-stone-600 mt-1">
+                The cherry blossoms outside the studio window are at their peak today. Mono no aware &mdash; the beauty is more poignant because it is fleeting.
+              </p>
             </div>
           </div>
           <div class="ukiyoe-msg p-4 flex gap-3">
-            <div class="ukiyoe-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-red-50 ukiyoe-vermillion">R</div>
+            <div class="ukiyoe-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-red-50 ukiyoe-vermillion">
+              R
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm ukiyoe-vermillion" style="font-family: Georgia, serif;">Ren</span>
+                <span
+                  class="font-semibold text-sm ukiyoe-vermillion"
+                  style="font-family: Georgia, serif;"
+                >
+                  Ren
+                </span>
                 <span class="text-[10px] text-stone-400">morning bell</span>
               </div>
-              <p class="text-sm text-stone-600 mt-1">I finished the new print series last night. 36 views, each one capturing the same mountain from a different perspective. Hokusai would understand &mdash; the subject never changes, but our perception of it is infinite.</p>
+              <p class="text-sm text-stone-600 mt-1">
+                I finished the new print series last night. 36 views, each one capturing the same mountain from a different perspective. Hokusai would understand &mdash; the subject never changes, but our perception of it is infinite.
+              </p>
               <div class="mt-3 rounded bg-stone-100 border border-stone-200 p-3 text-xs text-stone-500">
                 <p class="text-stone-600 font-medium">fujisan-series-36.png</p>
                 <p class="mt-0.5">Woodblock print &middot; 2400 &times; 3600</p>
@@ -1465,20 +1643,28 @@ defmodule SlackexWeb.MockupLive.Index do
             </div>
           </div>
           <div class="ukiyoe-msg p-4 flex gap-3">
-            <div class="ukiyoe-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-stone-100 ukiyoe-ink">S</div>
+            <div class="ukiyoe-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-stone-100 ukiyoe-ink">
+              S
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm ukiyoe-ink" style="font-family: Georgia, serif;">Sen</span>
+                <span class="font-semibold text-sm ukiyoe-ink" style="font-family: Georgia, serif;">
+                  Sen
+                </span>
                 <span class="text-[10px] text-stone-400">midday</span>
               </div>
-              <p class="text-sm text-stone-600 mt-1">In wabi-sabi there is no need for perfection. The crack in the bowl is where the light enters. I think our best work comes from embracing that.</p>
+              <p class="text-sm text-stone-600 mt-1">
+                In wabi-sabi there is no need for perfection. The crack in the bowl is where the light enters. I think our best work comes from embracing that.
+              </p>
             </div>
           </div>
         </div>
 
         <div class="px-6 py-4">
           <div class="ukiyoe-input flex items-center px-4 py-3">
-            <span class="text-stone-400 text-sm" style="font-family: Georgia, serif;">Write along the road...</span>
+            <span class="text-stone-400 text-sm" style="font-family: Georgia, serif;">
+              Write along the road...
+            </span>
             <div class="ml-auto flex gap-2 text-stone-400/50">
               <span class="cursor-pointer hover:text-stone-500 transition">&#x7B46;</span>
               <span class="cursor-pointer hover:text-stone-500 transition">&#x2609;</span>
@@ -1588,12 +1774,19 @@ defmodule SlackexWeb.MockupLive.Index do
             <h2 class="text-xl font-bold shanshui-ink" style="font-family: Georgia, serif;">
               山水
             </h2>
-            <p class="text-[11px] text-stone-400 mt-0.5" style="font-family: Georgia, serif;">Mountain and water</p>
+            <p class="text-[11px] text-stone-400 mt-0.5" style="font-family: Georgia, serif;">
+              Mountain and water
+            </p>
           </div>
           <span class="shanshui-seal ml-auto">&#x5370;</span>
         </div>
         <div class="px-3 space-y-1 flex-1">
-          <p class="text-[10px] tracking-[0.15em] text-stone-400 px-3 mb-2" style="font-family: Georgia, serif;">Pavilions</p>
+          <p
+            class="text-[10px] tracking-[0.15em] text-stone-400 px-3 mb-2"
+            style="font-family: Georgia, serif;"
+          >
+            Pavilions
+          </p>
           <div class="shanshui-channel active shanshui-ink text-sm">
             &#x5C71; cloud-pavilion
           </div>
@@ -1607,12 +1800,19 @@ defmodule SlackexWeb.MockupLive.Index do
             &#x6708; moon-gate
           </div>
           <div class="h-px bg-stone-200 my-5"></div>
-          <p class="text-[10px] tracking-[0.15em] text-stone-400 px-3 mb-2" style="font-family: Georgia, serif;">Correspondences</p>
+          <p
+            class="text-[10px] tracking-[0.15em] text-stone-400 px-3 mb-2"
+            style="font-family: Georgia, serif;"
+          >
+            Correspondences
+          </p>
           <div class="shanshui-channel text-stone-400 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-emerald-600/50"></div> Wei
+            <div class="w-2 h-2 rounded-full bg-emerald-600/50"></div>
+            Wei
           </div>
           <div class="shanshui-channel text-stone-400 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-stone-400/40"></div> Mei
+            <div class="w-2 h-2 rounded-full bg-stone-400/40"></div>
+            Mei
           </div>
         </div>
       </div>
@@ -1623,30 +1823,46 @@ defmodule SlackexWeb.MockupLive.Index do
           <h3 class="font-semibold shanshui-ink" style="font-family: Georgia, serif;">
             &#x5C71; cloud-pavilion
           </h3>
-          <p class="text-[11px] text-stone-400" style="font-family: Georgia, serif;">High above the mist, clarity finds us</p>
+          <p class="text-[11px] text-stone-400" style="font-family: Georgia, serif;">
+            High above the mist, clarity finds us
+          </p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="shanshui-msg p-4 flex gap-3">
-            <div class="shanshui-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-stone-100 shanshui-ink">W</div>
+            <div class="shanshui-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-stone-100 shanshui-ink">
+              W
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm shanshui-ink" style="font-family: Georgia, serif;">Wei</span>
+                <span class="font-semibold text-sm shanshui-ink" style="font-family: Georgia, serif;">
+                  Wei
+                </span>
                 <span class="text-[10px] text-stone-400">hour of the dragon</span>
               </div>
-              <p class="text-sm text-stone-500 mt-1">The new ink wash algorithm produces strokes that thin and thicken based on velocity, just like a real brush on rice paper. The empty space is as expressive as the marks themselves.</p>
+              <p class="text-sm text-stone-500 mt-1">
+                The new ink wash algorithm produces strokes that thin and thicken based on velocity, just like a real brush on rice paper. The empty space is as expressive as the marks themselves.
+              </p>
             </div>
           </div>
           <div class="shanshui-msg p-4 flex gap-3">
-            <div class="shanshui-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-red-50 shanshui-red">M</div>
+            <div class="shanshui-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-red-50 shanshui-red">
+              M
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm shanshui-red" style="font-family: Georgia, serif;">Mei</span>
+                <span class="font-semibold text-sm shanshui-red" style="font-family: Georgia, serif;">
+                  Mei
+                </span>
                 <span class="text-[10px] text-stone-400">hour of the dragon</span>
               </div>
-              <p class="text-sm text-stone-500 mt-1">Beautiful. In shan shui, we paint the essence, not the appearance. Three strokes suggest a mountain &mdash; the viewer's mind completes the landscape. Our interfaces should trust users the same way.</p>
+              <p class="text-sm text-stone-500 mt-1">
+                Beautiful. In shan shui, we paint the essence, not the appearance. Three strokes suggest a mountain &mdash; the viewer's mind completes the landscape. Our interfaces should trust users the same way.
+              </p>
               <div class="mt-3 rounded bg-stone-50 border border-stone-200 p-3 flex items-center gap-3">
-                <div class="w-12 h-12 bg-gradient-to-b from-stone-200 to-stone-100 rounded flex items-center justify-center text-stone-400 text-2xl">&#x5C71;</div>
+                <div class="w-12 h-12 bg-gradient-to-b from-stone-200 to-stone-100 rounded flex items-center justify-center text-stone-400 text-2xl">
+                  &#x5C71;
+                </div>
                 <div class="text-xs text-stone-500">
                   <p class="text-stone-600 font-medium">landscape-study-17.ink</p>
                   <p>Digital ink wash &middot; 4 layers</p>
@@ -1655,20 +1871,31 @@ defmodule SlackexWeb.MockupLive.Index do
             </div>
           </div>
           <div class="shanshui-msg p-4 flex gap-3">
-            <div class="shanshui-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-emerald-50 text-emerald-800">L</div>
+            <div class="shanshui-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-emerald-50 text-emerald-800">
+              L
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm text-emerald-800" style="font-family: Georgia, serif;">Lin</span>
+                <span
+                  class="font-semibold text-sm text-emerald-800"
+                  style="font-family: Georgia, serif;"
+                >
+                  Lin
+                </span>
                 <span class="text-[10px] text-stone-400">hour of the serpent</span>
               </div>
-              <p class="text-sm text-stone-500 mt-1">The porcelain palette &mdash; cobalt on white &mdash; has endured for a thousand years. There is wisdom in restraint. Sometimes two colors are all you need.</p>
+              <p class="text-sm text-stone-500 mt-1">
+                The porcelain palette &mdash; cobalt on white &mdash; has endured for a thousand years. There is wisdom in restraint. Sometimes two colors are all you need.
+              </p>
             </div>
           </div>
         </div>
 
         <div class="px-6 py-4">
           <div class="shanshui-input flex items-center px-4 py-3">
-            <span class="text-stone-400 text-sm" style="font-family: Georgia, serif;">Inscribe your thoughts...</span>
+            <span class="text-stone-400 text-sm" style="font-family: Georgia, serif;">
+              Inscribe your thoughts...
+            </span>
             <div class="ml-auto flex gap-2 text-stone-400/50">
               <span class="cursor-pointer hover:text-stone-600 transition">&#x7B46;</span>
               <span class="shanshui-seal cursor-pointer" style="font-size: 7px;">&#x5370;</span>
@@ -1790,10 +2017,26 @@ defmodule SlackexWeb.MockupLive.Index do
     </style>
     <div class="pojagi-bg rounded-2xl h-[calc(100vh-6rem)] flex overflow-hidden shadow-xl border border-stone-200/50">
       <%!-- Translucent patchwork overlays --%>
-      <div class="pojagi-patch" style="top: 5%; left: 60%; width: 15%; height: 20%; background: rgba(200,60,60,0.08);"></div>
-      <div class="pojagi-patch" style="top: 25%; left: 75%; width: 20%; height: 15%; background: rgba(50,80,160,0.08);"></div>
-      <div class="pojagi-patch" style="top: 60%; left: 55%; width: 18%; height: 25%; background: rgba(200,180,40,0.06);"></div>
-      <div class="pojagi-patch" style="top: 45%; left: 80%; width: 12%; height: 20%; background: rgba(40,120,60,0.07);"></div>
+      <div
+        class="pojagi-patch"
+        style="top: 5%; left: 60%; width: 15%; height: 20%; background: rgba(200,60,60,0.08);"
+      >
+      </div>
+      <div
+        class="pojagi-patch"
+        style="top: 25%; left: 75%; width: 20%; height: 15%; background: rgba(50,80,160,0.08);"
+      >
+      </div>
+      <div
+        class="pojagi-patch"
+        style="top: 60%; left: 55%; width: 18%; height: 25%; background: rgba(200,180,40,0.06);"
+      >
+      </div>
+      <div
+        class="pojagi-patch"
+        style="top: 45%; left: 80%; width: 12%; height: 20%; background: rgba(40,120,60,0.07);"
+      >
+      </div>
 
       <%!-- Sidebar --%>
       <div class="pojagi-sidebar w-64 flex flex-col py-4 relative z-10">
@@ -1801,7 +2044,9 @@ defmodule SlackexWeb.MockupLive.Index do
           <h2 class="text-xl font-bold text-stone-700" style="font-family: Georgia, serif;">
             보자기
           </h2>
-          <p class="text-[11px] text-stone-400 mt-1" style="font-family: Georgia, serif;">Light through layered cloth</p>
+          <p class="text-[11px] text-stone-400 mt-1" style="font-family: Georgia, serif;">
+            Light through layered cloth
+          </p>
           <div class="pojagi-obangsaek mt-2">
             <span style="background: #c83c3c;"></span>
             <span style="background: #3250a0;"></span>
@@ -1811,7 +2056,9 @@ defmodule SlackexWeb.MockupLive.Index do
           </div>
         </div>
         <div class="px-3 space-y-1 flex-1">
-          <p class="text-[10px] uppercase tracking-[0.15em] text-stone-400 px-3 mb-2 font-medium">Rooms</p>
+          <p class="text-[10px] uppercase tracking-[0.15em] text-stone-400 px-3 mb-2 font-medium">
+            Rooms
+          </p>
           <div class="pojagi-channel active text-stone-700 text-sm font-medium">
             &#x25A0; weaving-circle
           </div>
@@ -1825,12 +2072,16 @@ defmodule SlackexWeb.MockupLive.Index do
             &#x25A1; hanbok-draping
           </div>
           <div class="h-px bg-stone-200/60 my-5"></div>
-          <p class="text-[10px] uppercase tracking-[0.15em] text-stone-400 px-3 mb-2 font-medium">Messages</p>
+          <p class="text-[10px] uppercase tracking-[0.15em] text-stone-400 px-3 mb-2 font-medium">
+            Messages
+          </p>
           <div class="pojagi-channel text-stone-400 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-sm bg-green-600/60"></div> Soo-jin
+            <div class="w-2 h-2 rounded-sm bg-green-600/60"></div>
+            Soo-jin
           </div>
           <div class="pojagi-channel text-stone-400 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-sm bg-stone-300"></div> Min-ho
+            <div class="w-2 h-2 rounded-sm bg-stone-300"></div>
+            Min-ho
           </div>
         </div>
       </div>
@@ -1841,52 +2092,117 @@ defmodule SlackexWeb.MockupLive.Index do
           <h3 class="font-semibold text-stone-700" style="font-family: Georgia, serif;">
             &#x25A0; weaving-circle
           </h3>
-          <p class="text-[11px] text-stone-400" style="font-family: Georgia, serif;">Many pieces, one cloth &mdash; many voices, one conversation</p>
+          <p class="text-[11px] text-stone-400" style="font-family: Georgia, serif;">
+            Many pieces, one cloth &mdash; many voices, one conversation
+          </p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="pojagi-msg p-4 flex gap-3">
-            <div class="pojagi-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-red-50 text-red-700" style="border-color: #c83c3c;">S</div>
+            <div
+              class="pojagi-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-red-50 text-red-700"
+              style="border-color: #c83c3c;"
+            >
+              S
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm" style="color: #c83c3c; font-family: Georgia, serif;">Soo-jin</span>
+                <span
+                  class="font-semibold text-sm"
+                  style="color: #c83c3c; font-family: Georgia, serif;"
+                >
+                  Soo-jin
+                </span>
                 <span class="text-[10px] text-stone-400">afternoon</span>
               </div>
-              <p class="text-sm text-stone-600 mt-1">I've been experimenting with layering translucent color panels &mdash; inspired by how pojagi catches afternoon light. Each layer is simple, but the overlapping creates depths neither layer has alone.</p>
+              <p class="text-sm text-stone-600 mt-1">
+                I've been experimenting with layering translucent color panels &mdash; inspired by how pojagi catches afternoon light. Each layer is simple, but the overlapping creates depths neither layer has alone.
+              </p>
             </div>
           </div>
           <div class="pojagi-msg p-4 flex gap-3">
-            <div class="pojagi-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-blue-50 text-blue-700" style="border-color: #3250a0;">M</div>
+            <div
+              class="pojagi-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-blue-50 text-blue-700"
+              style="border-color: #3250a0;"
+            >
+              M
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm" style="color: #3250a0; font-family: Georgia, serif;">Min-ho</span>
+                <span
+                  class="font-semibold text-sm"
+                  style="color: #3250a0; font-family: Georgia, serif;"
+                >
+                  Min-ho
+                </span>
                 <span class="text-[10px] text-stone-400">afternoon</span>
               </div>
-              <p class="text-sm text-stone-600 mt-1">That's exactly the obangsaek philosophy &mdash; the five cardinal colors represent the elements in balance. Red for fire, blue for water, yellow for earth, green for wood, black for metal. Harmony through diversity.</p>
+              <p class="text-sm text-stone-600 mt-1">
+                That's exactly the obangsaek philosophy &mdash; the five cardinal colors represent the elements in balance. Red for fire, blue for water, yellow for earth, green for wood, black for metal. Harmony through diversity.
+              </p>
               <div class="mt-2 pojagi-obangsaek">
-                <span style="background: #c83c3c; width: 24px; height: 24px; border-radius: 4px;" class="flex items-center justify-center text-white text-[8px]">&#x706B;</span>
-                <span style="background: #3250a0; width: 24px; height: 24px; border-radius: 4px;" class="flex items-center justify-center text-white text-[8px]">&#x6C34;</span>
-                <span style="background: #c8b428; width: 24px; height: 24px; border-radius: 4px;" class="flex items-center justify-center text-white text-[8px]">&#x571F;</span>
-                <span style="background: #287840; width: 24px; height: 24px; border-radius: 4px;" class="flex items-center justify-center text-white text-[8px]">&#x6728;</span>
-                <span style="background: #2a2a2a; width: 24px; height: 24px; border-radius: 4px;" class="flex items-center justify-center text-white text-[8px]">&#x91D1;</span>
+                <span
+                  style="background: #c83c3c; width: 24px; height: 24px; border-radius: 4px;"
+                  class="flex items-center justify-center text-white text-[8px]"
+                >
+                  &#x706B;
+                </span>
+                <span
+                  style="background: #3250a0; width: 24px; height: 24px; border-radius: 4px;"
+                  class="flex items-center justify-center text-white text-[8px]"
+                >
+                  &#x6C34;
+                </span>
+                <span
+                  style="background: #c8b428; width: 24px; height: 24px; border-radius: 4px;"
+                  class="flex items-center justify-center text-white text-[8px]"
+                >
+                  &#x571F;
+                </span>
+                <span
+                  style="background: #287840; width: 24px; height: 24px; border-radius: 4px;"
+                  class="flex items-center justify-center text-white text-[8px]"
+                >
+                  &#x6728;
+                </span>
+                <span
+                  style="background: #2a2a2a; width: 24px; height: 24px; border-radius: 4px;"
+                  class="flex items-center justify-center text-white text-[8px]"
+                >
+                  &#x91D1;
+                </span>
               </div>
             </div>
           </div>
           <div class="pojagi-msg p-4 flex gap-3">
-            <div class="pojagi-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-green-50 text-green-700" style="border-color: #287840;">J</div>
+            <div
+              class="pojagi-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-green-50 text-green-700"
+              style="border-color: #287840;"
+            >
+              J
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm" style="color: #287840; font-family: Georgia, serif;">Ji-yeon</span>
+                <span
+                  class="font-semibold text-sm"
+                  style="color: #287840; font-family: Georgia, serif;"
+                >
+                  Ji-yeon
+                </span>
                 <span class="text-[10px] text-stone-400">late afternoon</span>
               </div>
-              <p class="text-sm text-stone-600 mt-1">The most moving thing about pojagi is that it was originally made from scraps &mdash; nothing wasted, everything repurposed into something beautiful. A philosophy for sustainable design.</p>
+              <p class="text-sm text-stone-600 mt-1">
+                The most moving thing about pojagi is that it was originally made from scraps &mdash; nothing wasted, everything repurposed into something beautiful. A philosophy for sustainable design.
+              </p>
             </div>
           </div>
         </div>
 
         <div class="px-6 py-4">
           <div class="pojagi-input flex items-center px-4 py-3">
-            <span class="text-stone-400 text-sm" style="font-family: Georgia, serif;">Add your thread to the weaving circle...</span>
+            <span class="text-stone-400 text-sm" style="font-family: Georgia, serif;">
+              Add your thread to the weaving circle...
+            </span>
             <div class="ml-auto flex gap-2 text-stone-400/50">
               <span class="cursor-pointer hover:text-stone-600 transition">&#x25A0;</span>
               <span class="cursor-pointer hover:text-stone-600 transition">&#x2661;</span>
@@ -1998,30 +2314,55 @@ defmodule SlackexWeb.MockupLive.Index do
           <h2 class="text-xl font-bold text-amber-200/80" style="font-family: Georgia, serif;">
             &#x2756; Jali Garden
           </h2>
-          <p class="text-[10px] text-amber-200/25 mt-1" style="font-family: Georgia, serif;">Light through carved stone</p>
+          <p class="text-[10px] text-amber-200/25 mt-1" style="font-family: Georgia, serif;">
+            Light through carved stone
+          </p>
         </div>
         <div class="jali-ornament mb-3">&#x2756; &#x2756; &#x2756;</div>
         <div class="px-3 space-y-1 flex-1">
           <p class="text-[10px] uppercase tracking-[0.2em] text-amber-200/20 px-3 mb-2">Courts</p>
           <div class="jali-channel active text-amber-100/75 text-sm">
-            <span class="jali-gem bg-amber-500/30 mr-1" style="width:6px;height:6px;display:inline-block;"></span> lotus-court
+            <span
+              class="jali-gem bg-amber-500/30 mr-1"
+              style="width:6px;height:6px;display:inline-block;"
+            >
+            </span>
+            lotus-court
           </div>
           <div class="jali-channel text-white/30 text-sm">
-            <span class="jali-gem bg-pink-500/20 mr-1" style="width:6px;height:6px;display:inline-block;"></span> rose-garden
+            <span
+              class="jali-gem bg-pink-500/20 mr-1"
+              style="width:6px;height:6px;display:inline-block;"
+            >
+            </span>
+            rose-garden
           </div>
           <div class="jali-channel text-white/30 text-sm">
-            <span class="jali-gem bg-blue-500/20 mr-1" style="width:6px;height:6px;display:inline-block;"></span> mirror-hall
+            <span
+              class="jali-gem bg-blue-500/20 mr-1"
+              style="width:6px;height:6px;display:inline-block;"
+            >
+            </span>
+            mirror-hall
           </div>
           <div class="jali-channel text-white/30 text-sm">
-            <span class="jali-gem bg-emerald-500/20 mr-1" style="width:6px;height:6px;display:inline-block;"></span> jasmine-walk
+            <span
+              class="jali-gem bg-emerald-500/20 mr-1"
+              style="width:6px;height:6px;display:inline-block;"
+            >
+            </span>
+            jasmine-walk
           </div>
-          <div class="h-px bg-gradient-to-r from-transparent via-amber-500/10 to-transparent my-5"></div>
+          <div class="h-px bg-gradient-to-r from-transparent via-amber-500/10 to-transparent my-5">
+          </div>
           <p class="text-[10px] uppercase tracking-[0.2em] text-amber-200/20 px-3 mb-2">Private</p>
           <div class="jali-channel text-white/30 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-pink-400/50"></div> Priya
+            <div class="w-2 h-2 rounded-full bg-pink-400/50"></div>
+            Priya
           </div>
           <div class="jali-channel text-white/30 text-sm flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full bg-emerald-400/50"></div> Arjun
+            <div class="w-2 h-2 rounded-full bg-emerald-400/50"></div>
+            Arjun
           </div>
         </div>
       </div>
@@ -2032,44 +2373,93 @@ defmodule SlackexWeb.MockupLive.Index do
           <h3 class="font-semibold text-amber-100/80" style="font-family: Georgia, serif;">
             &#x2756; lotus-court
           </h3>
-          <p class="text-[10px] text-amber-200/25" style="font-family: Georgia, serif;">Where jewels of thought are polished into wisdom</p>
+          <p class="text-[10px] text-amber-200/25" style="font-family: Georgia, serif;">
+            Where jewels of thought are polished into wisdom
+          </p>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div class="jali-msg p-4 flex gap-3">
-            <div class="jali-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-pink-950/60 jali-jewel-ruby">P</div>
+            <div class="jali-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-pink-950/60 jali-jewel-ruby">
+              P
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm jali-jewel-ruby" style="font-family: Georgia, serif;">Priya</span>
+                <span
+                  class="font-semibold text-sm jali-jewel-ruby"
+                  style="font-family: Georgia, serif;"
+                >
+                  Priya
+                </span>
                 <span class="text-[10px] text-white/15">golden hour</span>
               </div>
-              <p class="text-sm text-white/50 mt-1">The jali screen at the Taj Mahal filters sunlight into patterns that change throughout the day. Every hour reveals a different design &mdash; same stone, infinite expressions. That's what great UI should feel like.</p>
+              <p class="text-sm text-white/50 mt-1">
+                The jali screen at the Taj Mahal filters sunlight into patterns that change throughout the day. Every hour reveals a different design &mdash; same stone, infinite expressions. That's what great UI should feel like.
+              </p>
             </div>
           </div>
           <div class="jali-msg p-4 flex gap-3">
-            <div class="jali-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-emerald-950/60 jali-jewel-emerald">A</div>
+            <div class="jali-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-emerald-950/60 jali-jewel-emerald">
+              A
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm jali-jewel-emerald" style="font-family: Georgia, serif;">Arjun</span>
+                <span
+                  class="font-semibold text-sm jali-jewel-emerald"
+                  style="font-family: Georgia, serif;"
+                >
+                  Arjun
+                </span>
                 <span class="text-[10px] text-white/15">golden hour</span>
               </div>
-              <p class="text-sm text-white/50 mt-1">I've been studying Rajasthani textile palettes for the new theme system. Ruby, sapphire, emerald, gold &mdash; each jewel tone has been refined over centuries. The vibrancy is extraordinary.</p>
+              <p class="text-sm text-white/50 mt-1">
+                I've been studying Rajasthani textile palettes for the new theme system. Ruby, sapphire, emerald, gold &mdash; each jewel tone has been refined over centuries. The vibrancy is extraordinary.
+              </p>
               <div class="mt-3 flex gap-2">
-                <div class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold" style="background: linear-gradient(135deg, #e84070, #c83060);">Ruby</div>
-                <div class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold" style="background: linear-gradient(135deg, #4080e8, #3060c8);">Sapph</div>
-                <div class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold" style="background: linear-gradient(135deg, #40b868, #308848);">Emer</div>
-                <div class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold" style="background: linear-gradient(135deg, #c8a028, #a88020);">Gold</div>
+                <div
+                  class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold"
+                  style="background: linear-gradient(135deg, #e84070, #c83060);"
+                >
+                  Ruby
+                </div>
+                <div
+                  class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold"
+                  style="background: linear-gradient(135deg, #4080e8, #3060c8);"
+                >
+                  Sapph
+                </div>
+                <div
+                  class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold"
+                  style="background: linear-gradient(135deg, #40b868, #308848);"
+                >
+                  Emer
+                </div>
+                <div
+                  class="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center text-[9px] text-white/80 font-bold"
+                  style="background: linear-gradient(135deg, #c8a028, #a88020);"
+                >
+                  Gold
+                </div>
               </div>
             </div>
           </div>
           <div class="jali-msg p-4 flex gap-3">
-            <div class="jali-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-blue-950/60 jali-jewel-sapphire">D</div>
+            <div class="jali-avatar w-9 h-9 flex-shrink-0 flex items-center justify-center text-xs font-bold bg-blue-950/60 jali-jewel-sapphire">
+              D
+            </div>
             <div>
               <div class="flex items-baseline gap-2">
-                <span class="font-semibold text-sm jali-jewel-sapphire" style="font-family: Georgia, serif;">Devi</span>
+                <span
+                  class="font-semibold text-sm jali-jewel-sapphire"
+                  style="font-family: Georgia, serif;"
+                >
+                  Devi
+                </span>
                 <span class="text-[10px] text-white/15">twilight</span>
               </div>
-              <p class="text-sm text-white/50 mt-1">There's a concept in rangoli art &mdash; you create the most intricate patterns knowing they'll be swept away. The beauty is in the making, not the keeping. Like ephemeral messages.</p>
+              <p class="text-sm text-white/50 mt-1">
+                There's a concept in rangoli art &mdash; you create the most intricate patterns knowing they'll be swept away. The beauty is in the making, not the keeping. Like ephemeral messages.
+              </p>
               <div class="mt-2 flex gap-1">
                 <span class="text-xs bg-pink-500/5 border border-pink-500/10 rounded-full px-2.5 py-0.5 cursor-pointer hover:bg-pink-500/10 transition text-pink-300/50">
                   &#x2756; 6
@@ -2084,7 +2474,9 @@ defmodule SlackexWeb.MockupLive.Index do
 
         <div class="px-6 py-4">
           <div class="jali-input flex items-center px-4 py-3">
-            <span class="text-amber-200/20 text-sm" style="font-family: Georgia, serif;">Offer a jewel to the lotus court...</span>
+            <span class="text-amber-200/20 text-sm" style="font-family: Georgia, serif;">
+              Offer a jewel to the lotus court...
+            </span>
             <div class="ml-auto flex gap-3 text-amber-200/15">
               <span class="cursor-pointer hover:text-amber-200/30 transition">&#x2756;</span>
               <span class="cursor-pointer hover:text-amber-200/30 transition">&#x2740;</span>

@@ -80,7 +80,12 @@ defmodule SlackexWeb.ChatLive.BrowseChannelsModal do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="browse-channels-modal" phx-window-keydown="close_modal" phx-key="Escape" phx-target={@myself}>
+    <div
+      id="browse-channels-modal"
+      phx-window-keydown="close_modal"
+      phx-key="Escape"
+      phx-target={@myself}
+    >
       <div
         id="browse-channels-modal-backdrop"
         class="fixed inset-0 z-40 bg-black/50"
