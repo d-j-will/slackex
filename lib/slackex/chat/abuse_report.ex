@@ -20,9 +20,9 @@ defmodule Slackex.Chat.AbuseReport do
 
     field :message_id, :integer
     field :category, :string
-    field :description, :string
+    field :description, Slackex.Encrypted.Binary, source: :encrypted_description
     field :status, :string, default: "open"
-    field :metadata, :map, default: %{}
+    field :metadata, Slackex.Encrypted.Map, source: :encrypted_metadata
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -51,6 +51,7 @@ defmodule Slackex.Chat.AbuseReport do
   def changeset(report, attrs) do
     report
     |> cast(attrs, @castable_fields)
+    |> default_metadata()
     |> validate_required([:reporter_id, :reported_user_id, :category])
     |> validate_inclusion(:category, @valid_categories)
     |> validate_inclusion(:status, @valid_statuses)
@@ -58,5 +59,13 @@ defmodule Slackex.Chat.AbuseReport do
       name: :abuse_reports_reporter_reported_open_idx,
       message: "already has an open report for this user"
     )
+  end
+
+  defp default_metadata(changeset) do
+    if get_field(changeset, :metadata) == nil do
+      put_change(changeset, :metadata, %{})
+    else
+      changeset
+    end
   end
 end
