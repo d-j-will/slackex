@@ -74,7 +74,8 @@ defmodule SlackexWeb.ChatComponents do
         class={[
           "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
           "hover:bg-base-300",
-          @active && "bg-base-300 font-semibold"
+          @active && "bg-base-300",
+          (@active || @unread_count > 0) && "font-semibold"
         ]}
       >
         <span class="text-base-content/50">#</span>
@@ -108,7 +109,8 @@ defmodule SlackexWeb.ChatComponents do
         class={[
           "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
           "hover:bg-base-300",
-          @active && "bg-base-300 font-semibold"
+          @active && "bg-base-300",
+          (@active || @unread_count > 0) && "font-semibold"
         ]}
       >
         <.avatar user={@dm.other_user} size="sm" online={@online} />
