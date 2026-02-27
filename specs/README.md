@@ -11,12 +11,12 @@
 | [Phase 2 — Real-time & CQRS](#phase-2--real-time--cqrs) | **COMPLETE** | +45 | [02-phase-2-realtime-cqrs.md](02-phase-2-realtime-cqrs.md) |
 | [Phase 3 — Distribution & Scale](#phase-3--distribution--scale) | **IN PROGRESS** | +55 | [03-phase-3-distribution.md](03-phase-3-distribution.md) |
 | [Phase 4 — Intelligence & Search](#phase-4--intelligence--search) | Not started | — | [04-phase-4-intelligence.md](04-phase-4-intelligence.md) |
-| [Phase 5 — Full-Feature UI](#phase-5--full-feature-ui) | **IN PROGRESS** | +27 | [07-phase-5-ui.md](07-phase-5-ui.md) |
+| [Phase 5 — Full-Feature UI](#phase-5--full-feature-ui) | **IN PROGRESS** | +71 | [07-phase-5-ui.md](07-phase-5-ui.md) |
 | [CI/CD & DevOps](#cicd--devops) | Partial | — | [05-ci-cd-devops.md](05-ci-cd-devops.md) |
 | [Testing Strategy](#testing-strategy) | Reference | — | [06-testing-strategy.md](06-testing-strategy.md) |
 | [Architecture Overview](#architecture-overview) | Reference | — | [00-overview.md](00-overview.md) |
 
-**Current test count: 408 (0 failures)**
+**Current test count: 495 (0 failures)**
 
 ---
 
@@ -81,7 +81,7 @@
 
 ### Next recommended task
 
-**Phase 5 Step 2 — DM Conversations in UI** (expose DM backend in LiveView, add user search for starting new DMs). Alternatively, **Phase 3 Step 5 — Message Table Partitioning** (DB infrastructure, requires maintenance window migration).
+**Phase 5 Step 4 — User Profiles & Online Status** (wire Presence/OnlineTracker to sidebar, add profile popover). Alternatively, **Phase 5 Step 10 — Unread Counts, Catchup & Polish** (wire existing unread_count to sidebar badges). For infrastructure: **Phase 3 Step 5 — Message Table Partitioning** (DB infrastructure, requires maintenance window migration).
 
 ---
 
@@ -111,8 +111,8 @@
 | Step | Description | Status |
 |------|-------------|--------|
 | 1 | Layout Refactor & Responsive Shell | **Done** |
-| 2 | DM Conversations in UI | Not started |
-| 3 | Channel Browsing, Creation & Join/Leave | Not started |
+| 2 | DM Conversations in UI | **Done** |
+| 3 | Channel Browsing, Creation & Join/Leave | **Done** |
 | 4 | User Profiles & Online Status | Not started |
 | 5 | Message Editing & Deletion | Not started |
 | 6 | Reactions | Not started |
