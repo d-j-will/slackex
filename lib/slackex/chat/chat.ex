@@ -9,6 +9,7 @@ defmodule Slackex.Chat do
   alias Slackex.Accounts.User
 
   alias Slackex.Chat.{
+    AbuseReport,
     Channel,
     DMConversation,
     DMRateLimiter,
@@ -1015,6 +1016,72 @@ defmodule Slackex.Chat do
     Repo.all(
       from ub in UserBlock,
         where: ub.blocker_id == ^user_id
+    )
+  end
+
+  # ---------------------------------------------------------------------------
+  # Abuse report operations
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Creates an abuse report against a user.
+
+  Pre-flight checks:
+    1. Reporter account age >= 7 days
+    2. Reporter not dm_restricted
+
+  After successful creation:
+    - Auto-blocks reported user (reporter blocks reported, unidirectional)
+    - Upserts report_count on reported user's trust score
+
+  Returns `{:ok, abuse_report}` on success.
+  Returns `{:error, :account_too_new}` for accounts under 7 days.
+  Returns `{:error, :dm_restricted}` for restricted reporters.
+  Returns `{:error, changeset}` on validation failure (includes duplicate open report).
+  """
+  def create_abuse_report(reporter_id, reported_user_id, attrs) do
+    with :ok <- check_reporter_account_age(reporter_id),
+         :ok <- check_not_dm_restricted(reporter_id) do
+      id = Snowflake.generate()
+
+      report_attrs =
+        Map.merge(attrs, %{
+          reporter_id: reporter_id,
+          reported_user_id: reported_user_id,
+          status: "open"
+        })
+
+      case %AbuseReport{id: id} |> AbuseReport.changeset(report_attrs) |> Repo.insert() do
+        {:ok, report} ->
+          # Auto-block: reporter blocks reported user. Ignore errors (already blocked).
+          block_user(reporter_id, reported_user_id)
+          upsert_report_count(reported_user_id)
+          {:ok, report}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
+    end
+  end
+
+  defp check_reporter_account_age(reporter_id) do
+    cutoff = days_ago(@new_account_age_days)
+
+    account_meets_age_requirement =
+      Repo.exists?(
+        from u in User,
+          where: u.id == ^reporter_id and u.inserted_at <= ^cutoff
+      )
+
+    if account_meets_age_requirement, do: :ok, else: {:error, :account_too_new}
+  end
+
+  defp upsert_report_count(user_id) do
+    %UserTrustScore{user_id: user_id}
+    |> UserTrustScore.changeset(%{user_id: user_id, report_count: 1})
+    |> Repo.insert(
+      on_conflict: [inc: [report_count: 1]],
+      conflict_target: :user_id
     )
   end
 
