@@ -11,7 +11,7 @@ defmodule Slackex.Chat.Message do
   @primary_key {:id, :integer, autogenerate: false}
 
   schema "messages" do
-    field :content, :string
+    field :content, Slackex.Encrypted.Binary, source: :encrypted_content
     field :edited_at, :utc_datetime_usec
     field :inserted_at, :utc_datetime_usec
 
@@ -24,9 +24,45 @@ defmodule Slackex.Chat.Message do
     message
     |> cast(attrs, [:id, :content, :sender_id, :channel_id, :dm_conversation_id, :edited_at])
     |> validate_required([:id, :content, :sender_id])
-    |> validate_length(:content, min: 1, max: 4000)
+    |> validate_content_length(min: 1, max: 4000)
     |> put_inserted_at()
     |> validate_target()
+  end
+
+  defp validate_content_length(changeset, opts) do
+    case get_change(changeset, :content) do
+      nil ->
+        changeset
+
+      value when is_binary(value) ->
+        len = String.length(value)
+        min = Keyword.get(opts, :min)
+        max = Keyword.get(opts, :max)
+
+        cond do
+          min && len < min ->
+            add_error(changeset, :content, "should be at least %{count} character(s)",
+              count: min,
+              validation: :length,
+              kind: :min,
+              type: :string
+            )
+
+          max && len > max ->
+            add_error(changeset, :content, "should be at most %{count} character(s)",
+              count: max,
+              validation: :length,
+              kind: :max,
+              type: :string
+            )
+
+          true ->
+            changeset
+        end
+
+      _other ->
+        changeset
+    end
   end
 
   defp put_inserted_at(changeset) do
