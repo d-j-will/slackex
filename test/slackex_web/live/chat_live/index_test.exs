@@ -343,6 +343,126 @@ defmodule SlackexWeb.ChatLive.IndexTest do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Acceptance: Report button on individual messages (03-02)
+  # ---------------------------------------------------------------------------
+
+  describe "message-level report" do
+    setup %{user: user} do
+      import Ecto.Query
+
+      # Backdate user to satisfy 7-day account age requirement
+      past =
+        DateTime.utc_now()
+        |> DateTime.add(-8 * 24 * 3600, :second)
+        |> DateTime.truncate(:microsecond)
+
+      Slackex.Repo.update_all(
+        from(u in Slackex.Accounts.User, where: u.id == ^user.id),
+        set: [inserted_at: past]
+      )
+
+      other = insert_user_with_age_days(10)
+      {:ok, dm} = Chat.find_or_create_dm(user.id, other.id)
+
+      # Other user sends a message in the DM
+      {:ok, message} = Chat.send_dm(dm.id, other.id, "offensive content")
+
+      %{other: other, dm: dm, message: message}
+    end
+
+    test "report_message event opens modal with message_id pre-filled", %{
+      conn: conn,
+      dm: dm,
+      message: message
+    } do
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      html = render_click(view, "report_message", %{"message-id" => "#{message.id}"})
+
+      # Modal should be open
+      assert html =~ "Report User"
+      # Hidden field for message_id should be present with correct value
+      assert html =~ ~s(name="report[message_id]")
+      assert html =~ ~s(value="#{message.id}")
+    end
+
+    test "report action button rendered for other user's DM messages, not for own", %{
+      conn: conn,
+      user: user,
+      dm: dm,
+      message: _message
+    } do
+      # User sends their own message
+      {:ok, own_message} = Chat.send_dm(dm.id, user.id, "my own message")
+
+      {:ok, _view, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Report action should exist in DOM for other user's messages (hidden via CSS)
+      assert html =~ "report_message"
+      # The button with phx-click="report_message" should NOT appear for own messages
+      # We check that there is no report button associated with own_message id
+      refute html =~ ~s(phx-value-message-id="#{own_message.id}")
+    end
+
+    test "report action not shown in channel messages", %{conn: conn, user: user} do
+      other = insert_user_with_age_days(10)
+      {:ok, channel} = Chat.create_channel(user.id, %{name: "no-report-here"})
+      Chat.join_channel(other.id, channel.id)
+      Chat.send_message(channel.id, other.id, "channel message")
+
+      {:ok, _view, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # No report_message button in channel context
+      refute html =~ "report_message"
+    end
+
+    test "submit report with message_id persists the message reference", %{
+      conn: conn,
+      dm: dm,
+      message: message
+    } do
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # Open modal via message-level report
+      render_click(view, "report_message", %{"message-id" => "#{message.id}"})
+
+      # Submit the report
+      html =
+        render_submit(view, "submit_report", %{
+          "report" => %{
+            "category" => "harassment",
+            "description" => "threatening language",
+            "message_id" => "#{message.id}"
+          }
+        })
+
+      assert html =~ "Report submitted"
+
+      # Verify the persisted report has the message_id
+      import Ecto.Query
+
+      report =
+        Slackex.Repo.one(from r in Slackex.Chat.AbuseReport, order_by: [desc: r.id], limit: 1)
+
+      assert report.message_id == message.id
+    end
+
+    test "header-level report resets message_id to nil", %{conn: conn, dm: dm, message: message} do
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      # First open via message-level
+      render_click(view, "report_message", %{"message-id" => "#{message.id}"})
+      # Close
+      render_click(view, "close_report_modal")
+      # Open via header-level
+      html = render_click(view, "open_report_modal")
+
+      # No message_id hidden field should be present
+      refute html =~ ~s(name="report[message_id]")
+    end
+  end
+
   describe "terminate" do
     test "marks user offline when view terminates", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, ~p"/chat")

@@ -128,6 +128,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :message, :map, required: true
   attr :current_user_id, :integer, required: true
   attr :show_hover_actions, :boolean, default: false
+  attr :in_dm, :boolean, default: false
 
   def message_bubble(assigns) do
     assigns =
@@ -135,9 +136,10 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:sender_name, sender_name(assigns.message))
       |> assign(:time, format_time(assigns.message))
       |> assign(:sender, extract_sender(assigns.message))
+      |> assign(:show_report_action, show_report_action?(assigns))
 
     ~H"""
-    <div class="group flex gap-3 px-2 py-1 hover:bg-base-200/50 rounded-lg transition-colors">
+    <div class="group relative flex gap-3 px-2 py-1 hover:bg-base-200/50 rounded-lg transition-colors">
       <div class="flex-shrink-0 pt-0.5">
         <.avatar user={@sender} size="md" />
       </div>
@@ -150,9 +152,29 @@ defmodule SlackexWeb.ChatComponents do
           {Map.get(@message, :content, "")}
         </p>
       </div>
+      <div
+        :if={@show_report_action}
+        class="hidden group-hover:flex absolute right-2 top-1 items-center"
+      >
+        <button
+          phx-click="report_message"
+          phx-value-message-id={@message.id}
+          class="btn btn-ghost btn-xs text-warning"
+          title="Report message"
+        >
+          Report
+        </button>
+      </div>
     </div>
     """
   end
+
+  defp show_report_action?(%{in_dm: true, message: message, current_user_id: current_user_id}) do
+    sender_id = Map.get(message, :sender_id)
+    sender_id != nil and sender_id != current_user_id
+  end
+
+  defp show_report_action?(_assigns), do: false
 
   defp extract_sender(%{sender: %{username: _} = sender}), do: sender
 
@@ -240,6 +262,7 @@ defmodule SlackexWeb.ChatComponents do
   @doc "Renders the scrollable message list with stream updates."
   attr :streams, :any, required: true
   attr :current_user_id, :integer, required: true
+  attr :in_dm, :boolean, default: false
 
   def message_stream(assigns) do
     ~H"""
@@ -250,7 +273,7 @@ defmodule SlackexWeb.ChatComponents do
       class="flex-1 overflow-y-auto px-2 py-4"
     >
       <div :for={{dom_id, message} <- @streams.messages} id={dom_id}>
-        <.message_bubble message={message} current_user_id={@current_user_id} />
+        <.message_bubble message={message} current_user_id={@current_user_id} in_dm={@in_dm} />
       </div>
     </div>
     """
@@ -310,6 +333,7 @@ defmodule SlackexWeb.ChatComponents do
   @doc "Renders a modal for reporting a user with category selection and description."
   attr :show, :boolean, default: false
   attr :report_form, :any, required: true
+  attr :report_message_id, :integer, default: nil
 
   def report_modal(assigns) do
     ~H"""
@@ -329,6 +353,12 @@ defmodule SlackexWeb.ChatComponents do
             </button>
           </div>
           <.form for={@report_form} id="report-form" phx-submit="submit_report" class="p-4 space-y-4">
+            <input
+              :if={@report_message_id}
+              type="hidden"
+              name="report[message_id]"
+              value={@report_message_id}
+            />
             <div class="space-y-2">
               <label class="font-medium text-sm">Category</label>
               <div class="space-y-1">

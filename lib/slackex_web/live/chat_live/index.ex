@@ -51,6 +51,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:oldest_message_id, nil)
      |> assign(:has_more_messages, false)
      |> assign(:show_report_modal, false)
+     |> assign(:report_message_id, nil)
      |> assign(:report_form, to_form(%{}, as: :report))
      |> stream(:messages, [])}
   end
@@ -304,11 +305,24 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("open_report_modal", _params, socket) do
-    {:noreply, assign(socket, :show_report_modal, true)}
+    {:noreply,
+     socket
+     |> assign(:show_report_modal, true)
+     |> assign(:report_message_id, nil)}
   end
 
   def handle_event("close_report_modal", _params, socket) do
-    {:noreply, assign(socket, :show_report_modal, false)}
+    {:noreply,
+     socket
+     |> assign(:show_report_modal, false)
+     |> assign(:report_message_id, nil)}
+  end
+
+  def handle_event("report_message", %{"message-id" => message_id}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_report_modal, true)
+     |> assign(:report_message_id, String.to_integer(message_id))}
   end
 
   def handle_event("submit_report", %{"report" => report_params}, socket) do
@@ -319,7 +333,8 @@ defmodule SlackexWeb.ChatLive.Index do
     attrs = %{
       category: report_params["category"],
       description: report_params["description"],
-      dm_conversation_id: dm.id
+      dm_conversation_id: dm.id,
+      message_id: parse_message_id(report_params["message_id"])
     }
 
     case Chat.create_abuse_report(user.id, other_id, attrs) do
@@ -327,27 +342,35 @@ defmodule SlackexWeb.ChatLive.Index do
         {:noreply,
          socket
          |> assign(:show_report_modal, false)
+         |> assign(:report_message_id, nil)
          |> put_flash(:info, "Report submitted. Thank you for helping keep the community safe.")}
 
       {:error, %Ecto.Changeset{} = _changeset} ->
         {:noreply,
          socket
          |> assign(:show_report_modal, false)
+         |> assign(:report_message_id, nil)
          |> put_flash(:error, "You already have an open report for this user.")}
 
       {:error, :account_too_new} ->
         {:noreply,
          socket
          |> assign(:show_report_modal, false)
+         |> assign(:report_message_id, nil)
          |> put_flash(:error, "Your account must be at least 7 days old to report users.")}
 
       {:error, :dm_restricted} ->
         {:noreply,
          socket
          |> assign(:show_report_modal, false)
+         |> assign(:report_message_id, nil)
          |> put_flash(:error, "You are unable to submit reports at this time.")}
     end
   end
+
+  defp parse_message_id(nil), do: nil
+  defp parse_message_id(""), do: nil
+  defp parse_message_id(id) when is_binary(id), do: String.to_integer(id)
 
   # ---------------------------------------------------------------------------
   # PubSub / Info handlers
@@ -824,7 +847,7 @@ defmodule SlackexWeb.ChatLive.Index do
                 <% end %>
               </:actions>
             </.conversation_header>
-            <.message_stream streams={@streams} current_user_id={@current_user.id} />
+            <.message_stream streams={@streams} current_user_id={@current_user.id} in_dm={true} />
             <.typing_indicator users={MapSet.to_list(@typing_users)} />
             <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
           <% else %>
@@ -864,7 +887,11 @@ defmodule SlackexWeb.ChatLive.Index do
       current_user={@current_user}
     />
 
-    <.report_modal show={@show_report_modal} report_form={@report_form} />
+    <.report_modal
+      show={@show_report_modal}
+      report_form={@report_form}
+      report_message_id={@report_message_id}
+    />
     """
   end
 end
