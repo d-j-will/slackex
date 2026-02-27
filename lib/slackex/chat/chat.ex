@@ -339,7 +339,7 @@ defmodule Slackex.Chat do
 
   @doc """
   Lists DM conversations for a user with the other participant preloaded.
-  Returns a list of maps with :id, :other_user, and :inserted_at.
+  Returns a list of maps with :id, :other_user, :inserted_at, and :updated_at.
   Results are ordered by most recent activity first.
   """
   def list_user_dm_conversations(user_id) do
@@ -351,7 +351,7 @@ defmodule Slackex.Chat do
     |> Repo.all()
     |> Enum.map(fn dm ->
       other_user = if dm.user_a_id == user_id, do: dm.user_b, else: dm.user_a
-      %{id: dm.id, other_user: other_user, inserted_at: dm.inserted_at}
+      %{id: dm.id, other_user: other_user, inserted_at: dm.inserted_at, updated_at: dm.updated_at}
     end)
   end
 

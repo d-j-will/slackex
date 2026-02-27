@@ -315,6 +315,28 @@ defmodule Slackex.ChatTest do
     end
   end
 
+  describe "dm_conversation updated_at field" do
+    test "DMConversation has updated_at populated on creation" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      refreshed = Slackex.Repo.get!(Slackex.Chat.DMConversation, dm.id)
+      assert refreshed.updated_at != nil
+      assert %DateTime{} = refreshed.updated_at
+    end
+
+    test "list_user_dm_conversations includes updated_at" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, _dm} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      [conversation] = Chat.list_user_dm_conversations(alice.id)
+      assert Map.has_key?(conversation, :updated_at)
+      assert conversation.updated_at != nil
+    end
+  end
+
   describe "get_dm_conversation!/1" do
     test "returns DM conversation by ID" do
       alice = insert(:user)

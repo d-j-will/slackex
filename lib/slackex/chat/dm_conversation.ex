@@ -14,6 +14,7 @@ defmodule Slackex.Chat.DMConversation do
     has_many :messages, Slackex.Chat.Message
 
     field :inserted_at, :utc_datetime_usec, autogenerate: {DateTime, :utc_now, []}
+    field :updated_at, :utc_datetime_usec, autogenerate: {DateTime, :utc_now, []}
   end
 
   def changeset(dm_conversation, attrs) do
