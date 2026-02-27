@@ -675,7 +675,7 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ "Browse Channels"
     end
 
-    test "lists public channels user has not joined", %{
+    test "lists all public channels with join status", %{
       conn: conn,
       dev_channel: dev_channel,
       design_channel: design_channel
@@ -685,12 +685,13 @@ defmodule SlackexWeb.ChatLiveTest do
       # Render just the modal component to avoid matching sidebar content
       modal_html = lv |> element("#browse-channels-modal") |> render()
 
-      # Should show unjoined public channels
+      # Should show unjoined public channels with Join button
       assert modal_html =~ dev_channel.name
       assert modal_html =~ design_channel.name
 
-      # Should NOT show "general" (alice is a member from setup)
-      refute modal_html =~ "general"
+      # Should also show "general" (alice is a member) with Joined badge
+      assert modal_html =~ "general"
+      assert modal_html =~ "Joined"
     end
 
     test "clicking Join adds user to channel and sends {:channel_joined, channel}", %{
@@ -779,15 +780,16 @@ defmodule SlackexWeb.ChatLiveTest do
       refute html =~ "browse-channels-modal"
     end
 
-    test "joined channel no longer appears in browse modal on re-open", %{
+    test "joined channel shows Joined badge in browse modal on re-open", %{
       conn: conn,
       dev_channel: dev_channel
     } do
       {:ok, lv, _html} = live(conn, ~p"/chat/channels/browse")
 
-      # dev-talk should be in the browse list initially
+      # dev-talk should be in the browse list initially with a Join button
       modal_html = lv |> element("#browse-channels-modal") |> render()
       assert modal_html =~ dev_channel.name
+      assert modal_html =~ "btn btn-primary btn-sm"
 
       # Join dev-talk
       lv
@@ -799,9 +801,10 @@ defmodule SlackexWeb.ChatLiveTest do
       # Navigate back to browse modal
       render_patch(lv, ~p"/chat/channels/browse")
 
-      # dev-talk should no longer appear (alice is now a member)
+      # dev-talk should still appear but now with Joined badge instead of Join button
       modal_html = lv |> element("#browse-channels-modal") |> render()
-      refute modal_html =~ "dev-talk"
+      assert modal_html =~ "dev-talk"
+      assert modal_html =~ "Joined"
     end
   end
 

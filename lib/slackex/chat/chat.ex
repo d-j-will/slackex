@@ -115,6 +115,15 @@ defmodule Slackex.Chat do
     )
   end
 
+  @doc """
+  Returns a MapSet of channel IDs the user is subscribed to.
+  """
+  def list_user_channel_ids(user_id) do
+    from(s in Subscription, where: s.user_id == ^user_id, select: s.channel_id)
+    |> ReadRepo.read_repo().all()
+    |> MapSet.new()
+  end
+
   def get_channel!(id), do: Repo.get!(Channel, id)
   def get_channel_by_slug!(slug), do: Repo.get_by!(Channel, slug: slug)
 

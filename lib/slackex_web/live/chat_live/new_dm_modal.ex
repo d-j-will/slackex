@@ -57,8 +57,17 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
 
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
         <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-md">
-          <div class="p-4 border-b border-base-300">
+          <div class="p-4 border-b border-base-300 flex items-center justify-between">
             <h3 class="font-bold text-lg">New Message</h3>
+            <button
+              type="button"
+              phx-click="close_modal"
+              phx-target={@myself}
+              class="btn btn-ghost btn-sm btn-square"
+              aria-label="Close"
+            >
+              <span class="hero-x-mark size-5" />
+            </button>
           </div>
 
           <form id="new-dm-search" phx-change="search" phx-target={@myself} phx-submit="search">

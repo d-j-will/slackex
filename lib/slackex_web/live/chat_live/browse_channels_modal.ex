@@ -2,7 +2,7 @@ defmodule SlackexWeb.ChatLive.BrowseChannelsModal do
   @moduledoc """
   LiveComponent for the Browse Channels modal.
 
-  Lists public channels the current user has not joined.
+  Lists all public channels with join status indicated.
   Supports search/filter by name. Clicking Join adds the user
   to the channel and sends `{:channel_joined, channel}` to the parent LiveView.
   """
@@ -16,18 +16,20 @@ defmodule SlackexWeb.ChatLive.BrowseChannelsModal do
      socket
      |> assign(:search_query, "")
      |> assign(:all_channels, [])
-     |> assign(:filtered_channels, [])}
+     |> assign(:filtered_channels, [])
+     |> assign(:joined_channel_ids, MapSet.new())}
   end
 
   @impl true
   def update(assigns, socket) do
-    channels =
-      Chat.list_public_channels(exclude_member: assigns.current_user.id)
+    channels = Chat.list_public_channels()
+    joined_ids = Chat.list_user_channel_ids(assigns.current_user.id)
 
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:all_channels, channels)
+     |> assign(:joined_channel_ids, joined_ids)
      |> assign(:filtered_channels, filter_channels(channels, socket.assigns.search_query))}
   end
 
@@ -88,8 +90,17 @@ defmodule SlackexWeb.ChatLive.BrowseChannelsModal do
 
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
         <div class="bg-base-100 rounded-xl shadow-xl w-full sm:max-w-2xl">
-          <div class="p-4 border-b border-base-300">
+          <div class="p-4 border-b border-base-300 flex items-center justify-between">
             <h3 class="font-bold text-lg">Browse Channels</h3>
+            <button
+              type="button"
+              phx-click="close_modal"
+              phx-target={@myself}
+              class="btn btn-ghost btn-sm btn-square"
+              aria-label="Close"
+            >
+              <span class="hero-x-mark size-5" />
+            </button>
           </div>
 
           <form
@@ -128,14 +139,18 @@ defmodule SlackexWeb.ChatLive.BrowseChannelsModal do
                 <span class="badge badge-sm badge-ghost">
                   {member_count_label(channel.member_count)}
                 </span>
-                <button
-                  phx-click="join"
-                  phx-value-channel-id={channel.id}
-                  phx-target={@myself}
-                  class="btn btn-primary btn-sm"
-                >
-                  Join
-                </button>
+                <%= if MapSet.member?(@joined_channel_ids, channel.id) do %>
+                  <span class="badge badge-sm badge-success badge-outline">Joined</span>
+                <% else %>
+                  <button
+                    phx-click="join"
+                    phx-value-channel-id={channel.id}
+                    phx-target={@myself}
+                    class="btn btn-primary btn-sm"
+                  >
+                    Join
+                  </button>
+                <% end %>
               </div>
             </li>
           </ul>
