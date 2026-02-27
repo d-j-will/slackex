@@ -1,0 +1,23 @@
+events:
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-27T23:04:07Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-27T23:04:30Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-27T23:04:38Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-27T23:05:49Z'
+project_id: encryption-at-rest
+schema_version: '3.0'

@@ -84,6 +84,10 @@ defmodule Slackex.MixProject do
        compile: false,
        depth: 1},
 
+      # Encryption
+      {:cloak, "~> 1.1"},
+      {:cloak_ecto, "~> 1.3"},
+
       # Dev & Test
       {:tidewave, "~> 0.5", only: :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

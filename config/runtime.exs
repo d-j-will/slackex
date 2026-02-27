@@ -23,6 +23,28 @@ end
 config :slackex, :redis_url, System.get_env("REDIS_URL") || "redis://localhost:6379"
 
 if config_env() == :prod do
+  cloak_key =
+    System.get_env("CLOAK_KEY") ||
+      raise """
+      environment variable CLOAK_KEY is missing.
+      Generate a 32-byte key with: :crypto.strong_rand_bytes(32) |> Base.encode64()
+      """
+
+  config :slackex, Slackex.Vault,
+    ciphers: [
+      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(cloak_key)}
+    ]
+
+  hmac_secret =
+    System.get_env("CLOAK_HMAC_SECRET") ||
+      raise """
+      environment variable CLOAK_HMAC_SECRET is missing.
+      """
+
+  config :slackex, Slackex.Encrypted.HMAC,
+    algorithm: :sha256,
+    secret: hmac_secret
+
   guardian_secret =
     System.get_env("GUARDIAN_SECRET_KEY") ||
       raise """

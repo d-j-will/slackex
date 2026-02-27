@@ -67,6 +67,17 @@ config :slackex, Oban,
      ]}
   ]
 
+config :slackex, Slackex.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: Base.decode64!("AlhhcUBFZI1809fnVZuYlpT8GxESMBZ7XgtmRo16PA8=")}
+  ]
+
+config :slackex, Slackex.Encrypted.HMAC,
+  algorithm: :sha256,
+  secret: "dev-only-hmac-secret-override-in-prod"
+
 config :libcluster, topologies: []
 
 config :slackex, :redis_url, "redis://localhost:6379"

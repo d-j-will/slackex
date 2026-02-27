@@ -48,3 +48,14 @@ config :slackex, Oban, testing: :inline
 config :libcluster, topologies: []
 
 config :slackex, :redis_url, "redis://localhost:6379"
+
+config :slackex, Slackex.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1", key: Base.decode64!("AlhhcUBFZI1809fnVZuYlpT8GxESMBZ7XgtmRo16PA8=")}
+  ]
+
+config :slackex, Slackex.Encrypted.HMAC,
+  algorithm: :sha256,
+  secret: "test-only-hmac-secret"

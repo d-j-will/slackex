@@ -10,6 +10,7 @@ defmodule Slackex.Application do
     children = [
       SlackexWeb.Telemetry,
       Slackex.Chat.DMRateLimiter,
+      Slackex.Vault,
       Slackex.Repo,
       Slackex.ReadRepo,
       Slackex.ReadRepo.LagMonitor,
