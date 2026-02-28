@@ -1,0 +1,130 @@
+roadmap:
+  project_id: user-profiles-online-status
+  created_at: '2026-02-28T12:00:00Z'
+  total_steps: 4
+  phases: 2
+  phase_dependencies:
+    '02': ['01']
+phases:
+- id: '01'
+  name: 'Online Status Infrastructure and Sidebar Integration'
+  steps:
+  - id: 01-01
+    name: 'Bulk online query, profile changeset, and sidebar online indicators'
+    description: >
+      Add bulk online check to OnlineTracker via Redis MGET. Add profile_changeset
+      to User schema for display_name/status updates. Add get_user/1 and
+      update_user_profile/2 to Accounts context. Query online IDs on ChatLive mount,
+      pass online_user_ids MapSet to SidebarComponent, wire to dm_list_item online attr.
+    time_estimate: '3 hours'
+    depends_on: []
+    files_to_modify:
+    - 'lib/slackex/notifications/online_tracker.ex (MODIFY - add online_user_ids/1 bulk MGET)'
+    - 'lib/slackex/accounts/user.ex (MODIFY - add profile_changeset/2)'
+    - 'lib/slackex/accounts/accounts.ex (MODIFY - add get_user/1, update_user_profile/2)'
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - query online IDs on mount, assign online_user_ids, pass to sidebar)'
+    - 'lib/slackex_web/live/chat_live/sidebar_component.ex (MODIFY - receive online_user_ids, pass online boolean to dm_list_item and user footer avatar)'
+    - 'test/slackex/notifications/online_tracker_test.exs (MODIFY - add bulk query tests)'
+    - 'test/slackex/accounts_test.exs (MODIFY - add profile_changeset and update_user_profile tests)'
+    - 'test/slackex_web/live/chat_live_test.exs (MODIFY - add online indicator sidebar tests)'
+    criteria:
+    - 'OnlineTracker.online_user_ids/1 accepts list of user IDs, returns MapSet of those currently online via single Redis MGET call'
+    - 'OnlineTracker.online_user_ids/1 returns empty MapSet on Redis connection failure or partial failure (graceful degradation — never raises, never blocks UI)'
+    - 'OnlineTracker.online_user_ids/1 called with empty list returns empty MapSet without hitting Redis'
+    - 'User.profile_changeset/2 validates display_name length (max 50) and status length (max 100)'
+    - 'Accounts.update_user_profile/2 persists display_name and status changes, returns {:ok, user} or {:error, changeset}'
+    - 'ChatLive mount initializes online_user_ids as empty MapSet before querying Redis (safe default for zero-DM users)'
+    - 'Sidebar DM list items show green online dot for users present in online_user_ids MapSet'
+    - 'Sidebar user footer avatar shows online dot for current user'
+    - 'Users not in online_user_ids show no green dot (existing default false behavior)'
+  - id: 01-02
+    name: 'Real-time presence broadcasts via PubSub'
+    description: >
+      Broadcast presence changes when users go online/offline. On mount,
+      subscribe to a global presence topic. On online_heartbeat and terminate,
+      broadcast status change. Connected LiveViews handle presence diffs and
+      update online_user_ids assign without full page reload.
+    time_estimate: '2 hours'
+    depends_on: ['01-01']
+    files_to_modify:
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - subscribe to presence topic, broadcast on mark_online/mark_offline, handle_info for presence diffs)'
+    - 'test/slackex_web/live/chat_live_test.exs (MODIFY - add real-time presence update tests)'
+    criteria:
+    - 'When a user connects, a presence broadcast notifies other connected users that the user is online'
+    - 'When a user disconnects (terminate), a presence broadcast notifies others the user is offline'
+    - 'Connected LiveViews receiving a presence broadcast add or remove the user ID from online_user_ids'
+    - 'Sidebar DM list green dots update in real-time without page reload when other users come online or go offline'
+    - 'Presence broadcasts use the existing PubSub infrastructure (Slackex.PubSub) on a dedicated presence topic'
+    pubsub_topology: >
+      Global presence topic (e.g. "presence:online") chosen over per-user topics.
+      Trade-off: single subscription per LiveView vs N subscriptions for N contacts.
+      Global topic is simpler and bounded by total concurrent users, not contact graph size.
+      Acceptable for current scale; can partition by user-id hash if broadcast volume grows.
+- id: '02'
+  name: 'User Profile UI'
+  steps:
+  - id: 02-01
+    name: 'User profile popover on avatar/username click'
+    description: >
+      Create profile popover or modal component showing user display_name, username,
+      status text, and online indicator. Clicking any avatar or username in the
+      sidebar DM list or message bubble opens the profile. Include "Send Message"
+      button that navigates to or creates a DM with that user.
+    time_estimate: '3 hours'
+    depends_on: ['01-01']
+    files_to_modify:
+    - 'lib/slackex_web/components/chat_components.ex (MODIFY - add user_profile_card/1 component)'
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - handle profile open/close events, add profile_user assign)'
+    - 'lib/slackex_web/live/chat_live/sidebar_component.ex (MODIFY - add click handler to DM avatars/names)'
+    - 'test/slackex_web/live/chat_live_test.exs (MODIFY - add profile popover tests)'
+    criteria:
+    - 'Clicking a user avatar or username in the DM sidebar list opens a profile card for that user'
+    - 'Profile card displays display_name when set; falls back to username when display_name is nil or empty. Always shows @username, status text (or empty), and online indicator'
+    - 'Profile card includes a "Send Message" button that navigates to existing DM or creates a new one'
+    - '"Send Message" button is hidden when viewing own profile'
+    - 'Profile card closes when clicking outside or pressing Escape'
+  - id: 02-02
+    name: 'Edit own profile from sidebar footer'
+    description: >
+      Add settings/edit button to sidebar user footer. Opens modal with form
+      to edit display_name and status fields. Saves via Accounts.update_user_profile/2.
+      Sidebar footer updates immediately on save. Broadcasts profile update so
+      other users see updated name/status.
+    time_estimate: '2 hours'
+    depends_on: ['01-01', '02-01']
+    files_to_modify:
+    - 'lib/slackex_web/live/chat_live/sidebar_component.ex (MODIFY - add edit profile button to user footer)'
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - handle edit_profile events, save profile, broadcast update)'
+    - 'lib/slackex_web/components/chat_components.ex (MODIFY - add edit_profile_modal/1 component)'
+    - 'test/slackex_web/live/chat_live_test.exs (MODIFY - add edit profile modal tests)'
+    criteria:
+    - 'Sidebar user footer shows a settings/edit button next to the logout button'
+    - 'Clicking the edit button opens a modal with form fields for display_name and status'
+    - 'Submitting the form with valid data saves changes and closes the modal'
+    - 'Sidebar footer display name updates immediately after successful save'
+    - 'Validation errors display inline in the modal (display_name max 50 chars, status max 100 chars)'
+testing_strategy:
+  unit_tests:
+  - 'OnlineTracker.online_user_ids/1 — Redis MGET success, empty list, connection failure, partial failure'
+  - 'User.profile_changeset/2 — valid attrs, display_name too long, status too long, empty attrs'
+  - 'Accounts.update_user_profile/2 — success, validation error, user not found'
+  integration_tests:
+  - 'ChatLive mount assigns online_user_ids from Redis state'
+  - 'Sidebar renders online dots for online users and no dot for offline users'
+  - 'PubSub presence broadcast updates online_user_ids in connected LiveViews'
+  - 'Profile card opens on avatar click, displays correct user data, closes on Escape'
+  - 'Edit profile modal saves changes and updates sidebar footer immediately'
+  test_isolation:
+  - 'Redis tests use Slackex.RedisTest sandbox or mock via Redix adapter'
+  - 'PubSub tests use Phoenix.PubSub directly — no external dependencies'
+  - 'LiveView tests use ConnCase with authenticated user fixtures'
+implementation_scope:
+  source_directories:
+  - lib/slackex/notifications/
+  - lib/slackex/accounts/
+  - lib/slackex_web/live/chat_live/
+  - lib/slackex_web/components/
+  test_directories:
+  - test/slackex/notifications/
+  - test/slackex/
+  - test/slackex_web/live/
