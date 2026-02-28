@@ -14,31 +14,36 @@ defmodule Slackex.Notifications.OnlineTracker do
     :"redix_#{:rand.uniform(10) - 1}"
   end
 
+  # Executes a Redis command, returning `fallback` on any error.
+  # All public functions route through here for consistent error handling.
+  defp redis_command(args, fallback) do
+    case Redix.command(random_conn(), args) do
+      {:ok, result} -> result
+      _ -> fallback
+    end
+  rescue
+    _ -> fallback
+  end
+
   @doc "Marks a user as online with a 2-minute TTL."
   @spec mark_online(integer()) :: :ok
   def mark_online(user_id) do
-    Redix.command(random_conn(), ["SET", redis_key(user_id), "1", "EX", @ttl_seconds])
+    redis_command(["SET", redis_key(user_id), "1", "EX", @ttl_seconds], nil)
     :ok
-  rescue
-    _ -> :ok
   end
 
   @doc "Removes the online marker for a user."
   @spec mark_offline(integer()) :: :ok
   def mark_offline(user_id) do
-    Redix.command(random_conn(), ["DEL", redis_key(user_id)])
+    redis_command(["DEL", redis_key(user_id)], nil)
     :ok
-  rescue
-    _ -> :ok
   end
 
   @doc "Refreshes the TTL for an already-online user."
   @spec refresh(integer()) :: :ok
   def refresh(user_id) do
-    Redix.command(random_conn(), ["EXPIRE", redis_key(user_id), @ttl_seconds])
+    redis_command(["EXPIRE", redis_key(user_id), @ttl_seconds], nil)
     :ok
-  rescue
-    _ -> :ok
   end
 
   @doc """
@@ -52,30 +57,23 @@ defmodule Slackex.Notifications.OnlineTracker do
   def online_user_ids(user_ids) when is_list(user_ids) do
     keys = Enum.map(user_ids, &redis_key/1)
 
-    case Redix.command(random_conn(), ["MGET" | keys]) do
-      {:ok, values} ->
+    case redis_command(["MGET" | keys], :error) do
+      :error ->
+        MapSet.new()
+
+      values ->
         user_ids
         |> Enum.zip(values)
-        |> Enum.filter(fn {_id, val} -> val != nil end)
-        |> Enum.map(fn {id, _val} -> id end)
-        |> MapSet.new()
-
-      _ ->
-        MapSet.new()
+        |> Enum.reduce(MapSet.new(), fn
+          {id, val}, acc when val != nil -> MapSet.put(acc, id)
+          _, acc -> acc
+        end)
     end
-  rescue
-    _ -> MapSet.new()
   end
 
   @doc "Returns true if the user has an active online marker in Redis."
   @spec online?(integer()) :: boolean()
   def online?(user_id) do
-    case Redix.command(random_conn(), ["GET", redis_key(user_id)]) do
-      {:ok, nil} -> false
-      {:ok, _} -> true
-      _ -> false
-    end
-  rescue
-    _ -> false
+    redis_command(["GET", redis_key(user_id)], nil) != nil
   end
 end

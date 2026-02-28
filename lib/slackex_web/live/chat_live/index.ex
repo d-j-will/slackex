@@ -38,11 +38,11 @@ defmodule SlackexWeb.ChatLive.Index do
 
     unread_counts = Chat.batch_unread_counts(user.id)
 
-    dm_user_ids = Enum.map(dm_conversations, fn dm -> dm.other_user.id end)
-
     online_user_ids =
-      if connected?(socket) and dm_user_ids != [] do
-        OnlineTracker.online_user_ids(dm_user_ids)
+      if connected?(socket) do
+        dm_conversations
+        |> Enum.map(& &1.other_user.id)
+        |> OnlineTracker.online_user_ids()
       else
         MapSet.new()
       end
@@ -746,8 +746,7 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   defp dm_other_user(dm, current_user_id) do
-    other_id = if dm.user_a_id == current_user_id, do: dm.user_b_id, else: dm.user_a_id
-    Accounts.get_user!(other_id)
+    Accounts.get_user!(dm_other_user_id(dm, current_user_id))
   end
 
   defp broadcast_typing(user, {scope, id}) do

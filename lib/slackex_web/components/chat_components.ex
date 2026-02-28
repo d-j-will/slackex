@@ -90,11 +90,9 @@ defmodule SlackexWeb.ChatComponents do
   attr :unread_count, :integer, default: 0
 
   def dm_list_item(assigns) do
-    other = assigns.dm.other_user
-
     assigns =
       assigns
-      |> assign(:display, other.display_name || other.username)
+      |> assign(:display, display_name(assigns.dm.other_user))
       |> assign(:dm_path, "/chat/dm/#{assigns.dm.id}")
 
     ~H"""
@@ -423,7 +421,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :show_send_message, :boolean, default: true
 
   def user_profile_card(assigns) do
-    display = profile_display_name(assigns.user)
+    display = display_name(assigns.user)
     assigns = assign(assigns, :display, display)
 
     ~H"""
@@ -466,9 +464,9 @@ defmodule SlackexWeb.ChatComponents do
     """
   end
 
-  defp profile_display_name(%{display_name: name}) when is_binary(name) and name != "", do: name
-  defp profile_display_name(%{username: username}), do: username
-  defp profile_display_name(_), do: "Unknown"
+  defp display_name(%{display_name: name}) when is_binary(name) and name != "", do: name
+  defp display_name(%{username: username}), do: username
+  defp display_name(_), do: "Unknown"
 
   # ────────────────────────── Edit Profile Modal ────────────────────────────
 
