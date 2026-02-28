@@ -2,6 +2,7 @@ defmodule SlackexWeb.ChatLive.Index do
   use SlackexWeb, :live_view
 
   alias Slackex.Accounts
+  alias Slackex.Accounts.User
   alias Slackex.Chat
   alias Slackex.Chat.Permissions
   alias Slackex.Messaging
@@ -67,6 +68,8 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:report_message_id, nil)
      |> assign(:report_form, to_form(%{}, as: :report))
      |> assign(:profile_user, nil)
+     |> assign(:show_edit_profile, false)
+     |> assign(:edit_profile_form, build_profile_form(user))
      |> stream(:messages, [])}
   end
 
@@ -394,6 +397,51 @@ defmodule SlackexWeb.ChatLive.Index do
     {:noreply, socket}
   end
 
+  def handle_event("edit_profile", _params, socket) do
+    user = socket.assigns.current_user
+
+    {:noreply,
+     socket
+     |> assign(:show_edit_profile, true)
+     |> assign(:edit_profile_form, build_profile_form(user))}
+  end
+
+  def handle_event("close_edit_profile", _params, socket) do
+    {:noreply, assign(socket, :show_edit_profile, false)}
+  end
+
+  def handle_event("validate_profile", %{"profile" => profile_params}, socket) do
+    user = socket.assigns.current_user
+
+    changeset =
+      user
+      |> User.profile_changeset(profile_params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :edit_profile_form, to_form(changeset, as: :profile))}
+  end
+
+  def handle_event("save_profile", %{"profile" => profile_params}, socket) do
+    user = socket.assigns.current_user
+
+    case Accounts.update_user_profile(user, profile_params) do
+      {:ok, updated_user} ->
+        Phoenix.PubSub.broadcast(
+          Slackex.PubSub,
+          "profile:updates",
+          {:profile_updated, updated_user}
+        )
+
+        {:noreply,
+         socket
+         |> assign(:current_user, updated_user)
+         |> assign(:show_edit_profile, false)}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :edit_profile_form, to_form(changeset, as: :profile))}
+    end
+  end
+
   defp parse_message_id(nil), do: nil
   defp parse_message_id(""), do: nil
   defp parse_message_id(id) when is_binary(id), do: String.to_integer(id)
@@ -566,6 +614,11 @@ defmodule SlackexWeb.ChatLive.Index do
 
   defp remove_request(requests, request_id) do
     Enum.reject(requests, &(&1.id == request_id))
+  end
+
+  defp build_profile_form(user) do
+    changeset = User.profile_changeset(user, %{})
+    to_form(changeset, as: :profile)
   end
 
   defp dismiss_report_modal(socket) do
@@ -955,6 +1008,12 @@ defmodule SlackexWeb.ChatLive.Index do
       user={@profile_user}
       online={MapSet.member?(@online_user_ids, @profile_user.id)}
       show_send_message={@profile_user.id != @current_user.id}
+    />
+
+    <.edit_profile_modal
+      show={@show_edit_profile}
+      form={@edit_profile_form}
+      current_user={@current_user}
     />
     """
   end

@@ -470,6 +470,101 @@ defmodule SlackexWeb.ChatComponents do
   defp profile_display_name(%{username: username}), do: username
   defp profile_display_name(_), do: "Unknown"
 
+  # ────────────────────────── Edit Profile Modal ────────────────────────────
+
+  @doc "Renders a modal for editing the current user's profile (display_name and status)."
+  attr :show, :boolean, default: false
+  attr :form, :any, required: true
+  attr :current_user, :map, required: true
+
+  def edit_profile_modal(assigns) do
+    ~H"""
+    <div
+      :if={@show}
+      id="edit-profile-modal"
+      phx-window-keydown="close_edit_profile"
+      phx-key="Escape"
+    >
+      <div
+        id="edit-profile-backdrop"
+        class="fixed inset-0 z-40 bg-black/50"
+        phx-click="close_edit_profile"
+      />
+      <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
+        <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-md">
+          <div class="p-4 border-b border-base-300 flex items-center justify-between">
+            <h3 class="font-bold text-lg">Edit Profile</h3>
+            <button
+              type="button"
+              phx-click="close_edit_profile"
+              class="btn btn-ghost btn-sm btn-square"
+              aria-label="Close"
+            >
+              <span class="hero-x-mark size-5" />
+            </button>
+          </div>
+          <.form
+            for={@form}
+            id="edit-profile-form"
+            phx-submit="save_profile"
+            phx-change="validate_profile"
+            class="p-4 space-y-4"
+          >
+            <div>
+              <label class="font-medium text-sm" for="profile-display-name">Display Name</label>
+              <input
+                type="text"
+                name="profile[display_name]"
+                id="profile-display-name"
+                value={@form[:display_name].value}
+                class="input input-bordered w-full mt-1"
+                maxlength="50"
+                placeholder={@current_user.username}
+              />
+              <.field_error :for={msg <- Enum.map(@form[:display_name].errors, &translate_error/1)}>
+                {msg}
+              </.field_error>
+            </div>
+            <div>
+              <label class="font-medium text-sm" for="profile-status">Status</label>
+              <input
+                type="text"
+                name="profile[status]"
+                id="profile-status"
+                value={@form[:status].value}
+                class="input input-bordered w-full mt-1"
+                maxlength="100"
+                placeholder="What's on your mind?"
+              />
+              <.field_error :for={msg <- Enum.map(@form[:status].errors, &translate_error/1)}>
+                {msg}
+              </.field_error>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button type="button" phx-click="close_edit_profile" class="btn btn-ghost btn-sm">
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            </div>
+          </.form>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp field_error(assigns) do
+    ~H"""
+    <p class="mt-1 text-xs text-error">{render_slot(@inner_block)}</p>
+    """
+  end
+
+  defp translate_error({msg, opts}) do
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", fn _ -> to_string(value) end)
+    end)
+  end
+
   # ────────────────────────── Unread Badge ─────────────────────────────────
 
   @doc "Renders a small badge with an unread message count."

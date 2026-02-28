@@ -1874,4 +1874,143 @@ defmodule SlackexWeb.ChatLiveTest do
       refute html =~ "user-profile-card"
     end
   end
+
+  describe "edit profile from sidebar" do
+    # AC1: Sidebar user footer shows a settings/edit button next to the logout button
+    test "sidebar footer shows edit profile button", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+      assert html =~ "Edit profile"
+    end
+
+    # AC2: Clicking the edit button opens a modal with form fields for display_name and status
+    test "clicking edit profile button opens modal with form fields", %{conn: conn, alice: alice} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+
+      html = render(lv)
+      assert html =~ "edit-profile-modal"
+      assert html =~ "Display Name"
+      assert html =~ "Status"
+      # Form should be pre-filled with current user data
+      assert html =~ alice.username
+    end
+
+    # AC3: Submitting the form with valid data saves changes and closes the modal
+    test "submitting valid profile data saves and closes modal", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+
+      lv
+      |> form("#edit-profile-form", %{
+        "profile" => %{"display_name" => "Alice Updated", "status" => "Working hard"}
+      })
+      |> render_submit()
+
+      html = render(lv)
+      # Modal should be closed
+      refute html =~ "edit-profile-modal"
+      # Updated name should appear in sidebar footer
+      assert html =~ "Alice Updated"
+    end
+
+    # AC4: Sidebar footer display name updates immediately after successful save
+    test "sidebar footer updates display name after save", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+
+      lv
+      |> form("#edit-profile-form", %{
+        "profile" => %{"display_name" => "New Name", "status" => ""}
+      })
+      |> render_submit()
+
+      html = render(lv)
+      assert html =~ "New Name"
+    end
+
+    # AC5: Validation errors display inline in the modal
+    test "display_name over 50 chars shows validation error", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+
+      long_name = String.duplicate("a", 51)
+
+      html =
+        lv
+        |> form("#edit-profile-form", %{
+          "profile" => %{"display_name" => long_name, "status" => ""}
+        })
+        |> render_submit()
+
+      # Modal should still be open with error
+      assert html =~ "edit-profile-modal"
+      assert html =~ "should be at most 50 character(s)"
+    end
+
+    test "status over 100 chars shows validation error", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+
+      long_status = String.duplicate("b", 101)
+
+      html =
+        lv
+        |> form("#edit-profile-form", %{
+          "profile" => %{"display_name" => "Valid", "status" => long_status}
+        })
+        |> render_submit()
+
+      # Modal should still be open with error
+      assert html =~ "edit-profile-modal"
+      assert html =~ "should be at most 100 character(s)"
+    end
+
+    # Close modal behaviors
+    test "edit profile modal closes on Escape", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+      assert render(lv) =~ "edit-profile-modal"
+
+      render_keydown(lv, "close_edit_profile", %{"key" => "Escape"})
+
+      refute render(lv) =~ "edit-profile-modal"
+    end
+
+    test "edit profile modal closes on backdrop click", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+      assert render(lv) =~ "edit-profile-modal"
+
+      lv |> element("#edit-profile-backdrop") |> render_click()
+
+      refute render(lv) =~ "edit-profile-modal"
+    end
+
+    # Profile update broadcast
+    test "saving profile broadcasts update to other users", %{conn: conn, alice: alice} do
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "profile:updates")
+
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+
+      lv
+      |> form("#edit-profile-form", %{
+        "profile" => %{"display_name" => "Broadcast Name", "status" => "broadcasting"}
+      })
+      |> render_submit()
+
+      assert_receive {:profile_updated, updated_user}
+      assert updated_user.id == alice.id
+      assert updated_user.display_name == "Broadcast Name"
+      assert updated_user.status == "broadcasting"
+    end
+  end
 end
