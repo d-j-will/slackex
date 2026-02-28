@@ -1607,4 +1607,103 @@ defmodule SlackexWeb.ChatLiveTest do
       refute html =~ ~r/<li.*?bg-success.*?<\/li>/s
     end
   end
+
+  describe "real-time presence broadcasts" do
+    test "receiving a presence online broadcast adds user to online_user_ids", %{
+      conn: conn,
+      alice: alice,
+      bob: bob
+    } do
+      _dm = create_dm_between(alice, bob)
+
+      {:ok, lv, html} = live(conn, ~p"/chat")
+
+      # Bob is initially offline — no green dot
+      refute html =~ ~r/<li.*?bg-success.*?<\/li>/s
+
+      # Simulate a presence broadcast that bob came online
+      send(lv.pid, {:presence, :online, bob.id})
+
+      # After the broadcast, the sidebar should show the green dot for bob
+      html = render(lv)
+      assert html =~ "bg-success"
+    end
+
+    test "receiving a presence offline broadcast removes user from online_user_ids", %{
+      conn: conn,
+      alice: alice,
+      bob: bob
+    } do
+      _dm = create_dm_between(alice, bob)
+
+      # Mark bob as online so he shows up initially
+      Slackex.Notifications.OnlineTracker.mark_online(bob.id)
+
+      {:ok, lv, html} = live(conn, ~p"/chat")
+
+      # Bob is initially online — green dot present
+      assert html =~ "bg-success"
+
+      # Simulate a presence broadcast that bob went offline
+      send(lv.pid, {:presence, :offline, bob.id})
+
+      # After the broadcast, the sidebar should no longer show the green dot
+      html = render(lv)
+      refute html =~ ~r/<li.*?bg-success.*?<\/li>/s
+    end
+
+    test "presence online broadcast for unknown user does not crash", %{
+      conn: conn
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      # Sending a presence broadcast for a user not in any DM should not crash
+      send(lv.pid, {:presence, :online, -1})
+
+      # LiveView should still be alive and rendering
+      assert render(lv) =~ "Welcome to Slackex"
+    end
+
+    test "user connection broadcasts presence online via PubSub", %{
+      alice: alice,
+      bob: bob
+    } do
+      _dm = create_dm_between(alice, bob)
+
+      # Subscribe to the presence topic to capture broadcasts
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "presence:online")
+
+      # Log bob in and connect — this should trigger a presence broadcast
+      bob_conn = build_conn() |> log_in_user(bob)
+      {:ok, _lv, _html} = live(bob_conn, ~p"/chat")
+
+      # We should receive the presence online broadcast for bob
+      assert_receive {:presence, :online, bob_id}
+      assert bob_id == bob.id
+    end
+
+    test "user disconnection broadcasts presence offline via PubSub", %{
+      alice: alice,
+      bob: bob
+    } do
+      _dm = create_dm_between(alice, bob)
+
+      # Subscribe to the presence topic to capture broadcasts
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "presence:online")
+
+      # Log bob in and connect
+      bob_conn = build_conn() |> log_in_user(bob)
+      {:ok, lv, _html} = live(bob_conn, ~p"/chat")
+
+      # Drain the online broadcast from mount
+      assert_receive {:presence, :online, _bob_id}
+
+      # Stop the LiveView to trigger terminate
+      GenServer.stop(lv.pid)
+
+      # We should receive the presence offline broadcast for bob
+      assert_receive {:presence, :offline, bob_id}
+      assert bob_id == bob.id
+    end
+  end
 end

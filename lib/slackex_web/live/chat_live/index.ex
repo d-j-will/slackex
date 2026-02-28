@@ -17,6 +17,7 @@ defmodule SlackexWeb.ChatLive.Index do
   @message_page_size 50
   @heartbeat_interval_ms 60_000
   @typing_timeout_ms 3_000
+  @presence_topic "presence:online"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -28,7 +29,9 @@ defmodule SlackexWeb.ChatLive.Index do
     if connected?(socket) do
       Messaging.subscribe_user(user.id)
       subscribe_all_conversations(channels, dm_conversations)
+      Phoenix.PubSub.subscribe(Slackex.PubSub, @presence_topic)
       OnlineTracker.mark_online(user.id)
+      Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :online, user.id})
       Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
     end
 
@@ -507,6 +510,18 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_info({:presence, :online, user_id}, socket) do
+    online_user_ids = MapSet.put(socket.assigns.online_user_ids, user_id)
+    {:noreply, assign(socket, :online_user_ids, online_user_ids)}
+  end
+
+  @impl true
+  def handle_info({:presence, :offline, user_id}, socket) do
+    online_user_ids = MapSet.delete(socket.assigns.online_user_ids, user_id)
+    {:noreply, assign(socket, :online_user_ids, online_user_ids)}
+  end
+
+  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
   end
@@ -514,7 +529,9 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def terminate(_reason, socket) do
     if socket.assigns[:current_user] do
-      OnlineTracker.mark_offline(socket.assigns.current_user.id)
+      user_id = socket.assigns.current_user.id
+      OnlineTracker.mark_offline(user_id)
+      Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :offline, user_id})
     end
 
     :ok
