@@ -134,6 +134,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :current_user_id, :integer, required: true
   attr :show_hover_actions, :boolean, default: false
   attr :in_dm, :boolean, default: false
+  attr :editing_message_id, :integer, default: nil
 
   def message_bubble(assigns) do
     assigns =
@@ -142,6 +143,10 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:time, format_time(assigns.message))
       |> assign(:sender, extract_sender(assigns.message))
       |> assign(:show_report_action, show_report_action?(assigns))
+      |> assign(:is_deleted, message_deleted?(assigns.message))
+      |> assign(:is_edited, message_edited?(assigns.message))
+      |> assign(:is_own_message, is_own_message?(assigns.message, assigns.current_user_id))
+      |> assign(:is_editing, Map.get(assigns.message, :editing, false) == true)
 
     ~H"""
     <div class="group relative flex gap-3 px-2 py-1 hover:bg-base-200/50 rounded-lg transition-colors">
@@ -153,12 +158,67 @@ defmodule SlackexWeb.ChatComponents do
           <span class="font-semibold text-sm">{@sender_name}</span>
           <time class="text-xs text-base-content/40">{@time}</time>
         </div>
-        <p class="text-sm text-base-content/90 break-words whitespace-pre-wrap">
-          {Map.get(@message, :content, "")}
-        </p>
+        <%= if @is_deleted do %>
+          <p class="text-sm text-base-content/40 italic">[This message has been deleted]</p>
+        <% else %>
+          <%= if @is_editing do %>
+            <div class="mt-1">
+              <textarea
+                id={"edit-input-#{@message.id}"}
+                class="textarea textarea-bordered textarea-sm w-full"
+                phx-hook="EditMessage"
+              >{Map.get(@message, :content, "")}</textarea>
+              <div class="flex gap-2 mt-1">
+                <button
+                  phx-click="save_edit"
+                  phx-value-msg-id={@message.id}
+                  phx-value-content={Map.get(@message, :content, "")}
+                  class="btn btn-primary btn-xs"
+                  id={"save-edit-#{@message.id}"}
+                >
+                  Save
+                </button>
+                <button
+                  phx-click="cancel_edit"
+                  class="btn btn-ghost btn-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          <% else %>
+            <p class="text-sm text-base-content/90 break-words whitespace-pre-wrap">
+              {Map.get(@message, :content, "")}
+              <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
+            </p>
+          <% end %>
+        <% end %>
       </div>
       <div
-        :if={@show_report_action}
+        :if={@is_own_message and not @is_deleted and not @is_editing}
+        class="hidden group-hover:flex absolute right-2 top-1 items-center gap-1"
+        data-role="message-actions"
+      >
+        <button
+          phx-click="edit_message"
+          phx-value-msg-id={@message.id}
+          class="btn btn-ghost btn-xs"
+          title="Edit message"
+        >
+          Edit
+        </button>
+        <button
+          phx-click="delete_message"
+          phx-value-msg-id={@message.id}
+          data-confirm="Are you sure you want to delete this message?"
+          class="btn btn-ghost btn-xs text-error"
+          title="Delete message"
+        >
+          Delete
+        </button>
+      </div>
+      <div
+        :if={@show_report_action and not @is_deleted}
         class="hidden group-hover:flex absolute right-2 top-1 items-center"
       >
         <button
@@ -172,6 +232,13 @@ defmodule SlackexWeb.ChatComponents do
       </div>
     </div>
     """
+  end
+
+  defp message_deleted?(message), do: Map.get(message, :deleted_at) != nil
+  defp message_edited?(message), do: Map.get(message, :edited_at) != nil
+
+  defp is_own_message?(message, current_user_id) do
+    Map.get(message, :sender_id) == current_user_id
   end
 
   defp show_report_action?(%{in_dm: true, message: message, current_user_id: current_user_id}) do
@@ -268,6 +335,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :streams, :any, required: true
   attr :current_user_id, :integer, required: true
   attr :in_dm, :boolean, default: false
+  attr :editing_message_id, :integer, default: nil
 
   def message_stream(assigns) do
     ~H"""
@@ -278,7 +346,12 @@ defmodule SlackexWeb.ChatComponents do
       class="flex-1 overflow-y-auto px-2 py-4"
     >
       <div :for={{dom_id, message} <- @streams.messages} id={dom_id}>
-        <.message_bubble message={message} current_user_id={@current_user_id} in_dm={@in_dm} />
+        <.message_bubble
+          message={message}
+          current_user_id={@current_user_id}
+          in_dm={@in_dm}
+          editing_message_id={@editing_message_id}
+        />
       </div>
     </div>
     """

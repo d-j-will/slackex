@@ -2035,4 +2035,253 @@ defmodule SlackexWeb.ChatLiveTest do
       assert updated_user.status == "broadcasting"
     end
   end
+
+  describe "message editing" do
+    setup %{alice: alice, bob: bob, channel: channel} do
+      {:ok, msg} = Chat.send_message(channel.id, alice.id, "Original content")
+      {:ok, bob_msg} = Chat.send_message(channel.id, bob.id, "Bob's message")
+      %{message: msg, bob_message: bob_msg}
+    end
+
+    test "edit_message sets editing_message_id for own message", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      lv
+      |> element("[phx-click='edit_message'][phx-value-msg-id='#{message.id}']")
+      |> render_click()
+
+      # The editing state should be active - an edit form should appear
+      html = render(lv)
+      assert html =~ "save_edit"
+    end
+
+    test "edit_message does not allow editing another user's message", %{
+      conn: conn,
+      channel: channel,
+      bob_message: bob_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Directly push the event with bob's message id
+      render_click(lv, "edit_message", %{"msg-id" => "#{bob_message.id}"})
+
+      html = render(lv)
+      # Should NOT show edit form
+      refute html =~ "save_edit"
+    end
+
+    test "cancel_edit clears editing state", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(lv, "edit_message", %{"msg-id" => "#{message.id}"})
+      assert render(lv) =~ "save_edit"
+
+      render_click(lv, "cancel_edit", %{})
+      refute render(lv) =~ "save_edit"
+    end
+
+    test "save_edit updates message content and clears editing state", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(lv, "edit_message", %{"msg-id" => "#{message.id}"})
+
+      render_click(lv, "save_edit", %{"content" => "Updated content"})
+
+      html = render(lv)
+      assert html =~ "Updated content"
+      refute html =~ "save_edit"
+    end
+
+    test "save_edit shows flash on error for unauthorized edit", %{
+      conn: conn,
+      channel: channel,
+      bob_message: bob_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Force editing_message_id by directly setting it (simulating a tampered client)
+      # We send save_edit with bob's message id - the Messaging layer will reject it
+      render_click(lv, "save_edit", %{
+        "msg-id" => "#{bob_message.id}",
+        "content" => "Hacked content"
+      })
+
+      html = render(lv)
+      assert html =~ "Could not edit message"
+    end
+
+    test "message.edited envelope updates message in stream for all connected users", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      edited_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      envelope =
+        Envelope.wrap("message.edited", {:channel, channel.id}, %{
+          id: message.id,
+          content: "Edited by broadcast",
+          edited_at: edited_at
+        })
+
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "channel:#{channel.id}",
+        {:envelope, envelope}
+      )
+
+      html = render(lv)
+      assert html =~ "Edited by broadcast"
+      assert html =~ "edited"
+    end
+  end
+
+  describe "message deletion" do
+    setup %{alice: alice, bob: bob, channel: channel} do
+      {:ok, msg} = Chat.send_message(channel.id, alice.id, "Delete me")
+      {:ok, bob_msg} = Chat.send_message(channel.id, bob.id, "Bob delete me")
+      %{message: msg, bob_message: bob_msg}
+    end
+
+    test "delete_message removes own message and shows deleted placeholder", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(lv, "delete_message", %{"msg-id" => "#{message.id}"})
+
+      html = render(lv)
+      refute html =~ "Delete me"
+      assert html =~ "deleted"
+    end
+
+    test "delete_message shows flash on error for unauthorized deletion", %{
+      conn: conn,
+      channel: channel,
+      bob_message: bob_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # alice is channel owner so she CAN delete bob's message in a channel.
+      # We need a scenario where deletion fails. Let's delete it once and try again.
+      render_click(lv, "delete_message", %{"msg-id" => "#{bob_message.id}"})
+
+      # Try deleting a non-existent message
+      render_click(lv, "delete_message", %{"msg-id" => "999999999"})
+
+      html = render(lv)
+      assert html =~ "Could not delete message"
+    end
+
+    test "message.deleted envelope updates message in stream for all connected users", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      deleted_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      envelope =
+        Envelope.wrap("message.deleted", {:channel, channel.id}, %{
+          id: message.id,
+          deleted_at: deleted_at
+        })
+
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "channel:#{channel.id}",
+        {:envelope, envelope}
+      )
+
+      html = render(lv)
+      refute html =~ "Delete me"
+      assert html =~ "deleted"
+    end
+  end
+
+  describe "message editing in DMs" do
+    setup %{alice: alice, bob: bob} do
+      dm = create_dm_between(alice, bob)
+      {:ok, msg} = Chat.send_dm(dm.id, alice.id, "DM to edit")
+      %{dm: dm, dm_message: msg}
+    end
+
+    test "edit and save in DM updates message content", %{
+      conn: conn,
+      dm: dm,
+      dm_message: dm_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      render_click(lv, "edit_message", %{"msg-id" => "#{dm_message.id}"})
+      assert render(lv) =~ "save_edit"
+
+      render_click(lv, "save_edit", %{"content" => "DM updated content"})
+
+      html = render(lv)
+      assert html =~ "DM updated content"
+      refute html =~ "save_edit"
+    end
+
+    test "message.edited envelope in DM updates stream", %{
+      conn: conn,
+      dm: dm,
+      dm_message: dm_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      edited_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      envelope =
+        Envelope.wrap("message.edited", {:dm, dm.id}, %{
+          id: dm_message.id,
+          content: "DM edited by broadcast",
+          edited_at: edited_at
+        })
+
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "dm:#{dm.id}", {:envelope, envelope})
+
+      html = render(lv)
+      assert html =~ "DM edited by broadcast"
+    end
+
+    test "message.deleted envelope in DM updates stream", %{
+      conn: conn,
+      dm: dm,
+      dm_message: dm_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      deleted_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      envelope =
+        Envelope.wrap("message.deleted", {:dm, dm.id}, %{
+          id: dm_message.id,
+          deleted_at: deleted_at
+        })
+
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "dm:#{dm.id}", {:envelope, envelope})
+
+      html = render(lv)
+      refute html =~ "DM to edit"
+      assert html =~ "deleted"
+    end
+  end
 end

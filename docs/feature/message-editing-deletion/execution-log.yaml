@@ -49,5 +49,30 @@ events:
   s: EXECUTED
   sid: 01-02
   t: '2026-02-28T03:35:30Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-28T03:38:00Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-28T03:39:30Z'
+- d: "NOT_APPLICABLE: acceptance tests cover all ACs through LiveView driving port"
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 02-01
+  t: '2026-02-28T03:39:35Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-28T03:43:00Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-02-28T03:45:30Z'
 project_id: message-editing-deletion
 schema_version: '3.0'
