@@ -57,6 +57,22 @@ defmodule Slackex.Cache do
     :ok
   end
 
+  @doc "Updates a cached message in-place by id. ETS only (Redis invalidated)."
+  @spec update_message(target(), integer(), map()) :: :ok
+  def update_message(target, message_id, updates) do
+    Local.update_message(target, message_id, updates)
+    Redis.invalidate(target)
+    :ok
+  end
+
+  @doc "Removes a cached message by id. ETS only (Redis invalidated)."
+  @spec remove_message(target(), integer()) :: :ok
+  def remove_message(target, message_id) do
+    Local.remove_message(target, message_id)
+    Redis.invalidate(target)
+    :ok
+  end
+
   @doc "Invalidates `target` in both ETS and Redis."
   @spec invalidate(target()) :: :ok
   def invalidate(target) do

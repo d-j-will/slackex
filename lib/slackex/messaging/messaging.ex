@@ -9,6 +9,7 @@ defmodule Slackex.Messaging do
   LiveViews, channels, and API controllers.
   """
 
+  alias Slackex.Cache
   alias Slackex.Chat
   alias Slackex.Messaging.ChannelServer
   alias Slackex.Messaging.ChannelSupervisor
@@ -44,6 +45,72 @@ defmodule Slackex.Messaging do
         sender_id,
         content
       )
+    end
+  end
+
+  @doc """
+  Edits a message. Delegates to `Chat.edit_message/3`, then broadcasts
+  `{:envelope, %{event: "message.edited"}}` on the appropriate PubSub topic.
+
+  Returns `{:ok, message}` or `{:error, reason}`.
+  """
+  @spec edit_message(integer(), integer(), String.t()) ::
+          {:ok, struct()} | {:error, atom()}
+  def edit_message(message_id, user_id, new_content) do
+    with {:ok, message} <- Chat.edit_message(message_id, user_id, new_content) do
+      {target_type, target_id} = message_target(message)
+
+      payload = %{
+        id: message.id,
+        content: message.content,
+        edited_at: message.edited_at
+      }
+
+      envelope = Envelope.wrap("message.edited", {target_type, target_id}, payload)
+
+      Phoenix.PubSub.broadcast(
+        @pubsub,
+        pubsub_topic(target_type, target_id),
+        {:envelope, envelope}
+      )
+
+      Cache.update_message({target_type, target_id}, message.id, %{
+        content: message.content,
+        edited_at: message.edited_at
+      })
+
+      {:ok, message}
+    end
+  end
+
+  @doc """
+  Deletes a message. Delegates to `Chat.delete_message/3`, then broadcasts
+  `{:envelope, %{event: "message.deleted"}}` on the appropriate PubSub topic.
+
+  Returns `{:ok, message}` or `{:error, reason}`.
+  """
+  @spec delete_message(integer(), integer(), keyword()) ::
+          {:ok, struct()} | {:error, atom()}
+  def delete_message(message_id, user_id, opts \\ []) do
+    with {:ok, message} <- Chat.delete_message(message_id, user_id, opts) do
+      {target_type, target_id} = message_target(message)
+
+      payload = %{
+        id: message.id,
+        deleted_at: message.deleted_at
+      }
+
+      envelope = Envelope.wrap("message.deleted", {target_type, target_id}, payload)
+
+      Phoenix.PubSub.broadcast(
+        @pubsub,
+        pubsub_topic(target_type, target_id),
+        {:envelope, envelope}
+      )
+
+      Cache.remove_message({target_type, target_id}, message.id)
+
+      {:ok, message}
     end
   end
 
@@ -123,4 +190,14 @@ defmodule Slackex.Messaging do
       {:error, :unauthorized}
     end
   end
+
+  defp message_target(message) do
+    cond do
+      not is_nil(message.channel_id) -> {:channel, message.channel_id}
+      not is_nil(message.dm_conversation_id) -> {:dm, message.dm_conversation_id}
+    end
+  end
+
+  defp pubsub_topic(:channel, id), do: "channel:#{id}"
+  defp pubsub_topic(:dm, id), do: "dm:#{id}"
 end

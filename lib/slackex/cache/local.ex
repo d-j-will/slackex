@@ -47,6 +47,18 @@ defmodule Slackex.Cache.Local do
     {:ok, messages}
   end
 
+  @doc "Updates a message in `target`'s list by id, replacing matched fields."
+  @spec update_message(target(), integer(), map()) :: :ok
+  def update_message(target, message_id, updates) do
+    GenServer.call(__MODULE__, {:update_message, target, message_id, updates})
+  end
+
+  @doc "Removes a single message from `target`'s list by id."
+  @spec remove_message(target(), integer()) :: :ok
+  def remove_message(target, message_id) do
+    GenServer.call(__MODULE__, {:remove_message, target, message_id})
+  end
+
   @doc "Removes the cache entry for `target`."
   @spec invalidate(target()) :: :ok
   def invalidate(target) do
@@ -93,6 +105,38 @@ defmodule Slackex.Cache.Local do
     :ets.insert(@table, {target, updated, now})
 
     maybe_evict()
+
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:update_message, target, message_id, updates}, _from, state) do
+    case :ets.lookup(@table, target) do
+      [{^target, msgs, ts}] ->
+        updated =
+          Enum.map(msgs, fn msg ->
+            if msg.id == message_id, do: Map.merge(msg, updates), else: msg
+          end)
+
+        :ets.insert(@table, {target, updated, ts})
+
+      [] ->
+        :ok
+    end
+
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:remove_message, target, message_id}, _from, state) do
+    case :ets.lookup(@table, target) do
+      [{^target, msgs, ts}] ->
+        filtered = Enum.reject(msgs, fn msg -> msg.id == message_id end)
+        :ets.insert(@table, {target, filtered, ts})
+
+      [] ->
+        :ok
+    end
 
     {:reply, :ok, state}
   end

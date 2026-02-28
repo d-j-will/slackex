@@ -104,6 +104,7 @@ defmodule Slackex.Messaging.ChannelServer do
       id: channel_id
     )
 
+    Phoenix.PubSub.subscribe(Slackex.PubSub, pubsub_topic(channel_type, channel_id))
     Process.send_after(self(), :batch_flush, @batch_interval)
 
     {:ok,
@@ -293,6 +294,45 @@ defmodule Slackex.Messaging.ChannelServer do
 
         {:noreply, %{state | in_flight: new_in_flight}, @idle_timeout}
     end
+  end
+
+  def handle_info({:envelope, %{event: "message.edited", payload: payload}}, state) do
+    updated_queue =
+      :queue.to_list(state.messages)
+      |> Enum.map(fn msg ->
+        if msg.id == payload.id do
+          msg
+          |> Map.put(:content, payload.content)
+          |> Map.put(:edited_at, payload.edited_at)
+        else
+          msg
+        end
+      end)
+      |> Enum.reduce(:queue.new(), fn msg, q -> :queue.in(msg, q) end)
+
+    {:noreply, %{state | messages: updated_queue}, @idle_timeout}
+  end
+
+  def handle_info({:envelope, %{event: "message.deleted", payload: payload}}, state) do
+    updated_queue =
+      :queue.to_list(state.messages)
+      |> Enum.map(fn msg ->
+        if msg.id == payload.id do
+          msg
+          |> Map.put(:content, nil)
+          |> Map.put(:deleted_at, payload.deleted_at)
+        else
+          msg
+        end
+      end)
+      |> Enum.reduce(:queue.new(), fn msg, q -> :queue.in(msg, q) end)
+
+    {:noreply, %{state | messages: updated_queue}, @idle_timeout}
+  end
+
+  def handle_info({:envelope, _}, state) do
+    # Ignore other envelope events (e.g. message.new which is handled inline)
+    {:noreply, state, @idle_timeout}
   end
 
   def handle_info(:timeout, state) do

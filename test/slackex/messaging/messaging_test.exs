@@ -209,6 +209,164 @@ defmodule Slackex.MessagingTest do
     end
   end
 
+  describe "edit_message/3" do
+    test "delegates to Chat, broadcasts message.edited envelope on channel topic" do
+      user = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "m-#{System.unique_integer()}"})
+
+      # Persist message to DB via Chat context directly
+      {:ok, db_msg} = Slackex.Chat.send_message(channel.id, user.id, "original")
+
+      # Start ChannelServer (loads message from DB on init)
+      {:ok, _pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
+      on_exit(fn -> stop_server({:channel, channel.id}) end)
+
+      Messaging.subscribe_channel(channel.id)
+
+      assert {:ok, edited} = Messaging.edit_message(db_msg.id, user.id, "updated")
+      assert edited.content == "updated"
+      assert edited.edited_at != nil
+
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.event == "message.edited"
+      assert envelope.payload.id == db_msg.id
+      assert envelope.payload.content == "updated"
+      assert envelope.payload.edited_at != nil
+    end
+
+    test "updates the ChannelServer in-memory queue on edit" do
+      user = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "m-#{System.unique_integer()}"})
+
+      {:ok, db_msg} = Slackex.Chat.send_message(channel.id, user.id, "before edit")
+
+      {:ok, _pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
+      on_exit(fn -> stop_server({:channel, channel.id}) end)
+
+      {:ok, _edited} = Messaging.edit_message(db_msg.id, user.id, "after edit")
+
+      # Allow PubSub handle_info to process
+      Process.sleep(100)
+
+      messages = Messaging.get_recent_messages(channel.id, 50)
+      edited_in_queue = Enum.find(messages, &(&1.id == db_msg.id))
+
+      assert edited_in_queue.content == "after edit"
+      assert edited_in_queue.edited_at != nil
+    end
+
+    test "broadcasts message.edited envelope on DM topic" do
+      dm = insert(:dm_conversation)
+
+      {:ok, db_msg} = Slackex.Chat.send_dm(dm.id, dm.user_a.id, "dm original")
+
+      {:ok, _pid} = ChannelSupervisor.ensure_started({:dm, dm.id})
+      on_exit(fn -> stop_server({:dm, dm.id}) end)
+
+      Messaging.subscribe_dm(dm.id)
+
+      assert {:ok, edited} = Messaging.edit_message(db_msg.id, dm.user_a.id, "dm updated")
+      assert edited.content == "dm updated"
+
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.event == "message.edited"
+      assert envelope.target == %{type: :dm, id: dm.id}
+    end
+
+    test "returns error when edit fails in Chat context" do
+      user = insert(:user)
+      other = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "m-#{System.unique_integer()}"})
+
+      {:ok, db_msg} = Slackex.Chat.send_message(channel.id, user.id, "mine")
+
+      assert {:error, :unauthorized} = Messaging.edit_message(db_msg.id, other.id, "hijack")
+    end
+  end
+
+  describe "delete_message/3" do
+    test "delegates to Chat, broadcasts message.deleted envelope on channel topic" do
+      user = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "m-#{System.unique_integer()}"})
+
+      {:ok, db_msg} = Slackex.Chat.send_message(channel.id, user.id, "to delete")
+
+      {:ok, _pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
+      on_exit(fn -> stop_server({:channel, channel.id}) end)
+
+      Messaging.subscribe_channel(channel.id)
+
+      assert {:ok, deleted} = Messaging.delete_message(db_msg.id, user.id)
+      assert deleted.content == nil
+      assert deleted.deleted_at != nil
+
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.event == "message.deleted"
+      assert envelope.payload.id == db_msg.id
+      assert envelope.payload.deleted_at != nil
+    end
+
+    test "updates the ChannelServer in-memory queue on delete" do
+      user = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "m-#{System.unique_integer()}"})
+
+      {:ok, db_msg} = Slackex.Chat.send_message(channel.id, user.id, "will be deleted")
+
+      {:ok, _pid} = ChannelSupervisor.ensure_started({:channel, channel.id})
+      on_exit(fn -> stop_server({:channel, channel.id}) end)
+
+      {:ok, _deleted} = Messaging.delete_message(db_msg.id, user.id)
+
+      # Allow PubSub handle_info to process
+      Process.sleep(100)
+
+      messages = Messaging.get_recent_messages(channel.id, 50)
+      deleted_in_queue = Enum.find(messages, &(&1.id == db_msg.id))
+
+      assert deleted_in_queue.content == nil
+      assert deleted_in_queue.deleted_at != nil
+    end
+
+    test "broadcasts message.deleted envelope on DM topic" do
+      dm = insert(:dm_conversation)
+
+      {:ok, db_msg} = Slackex.Chat.send_dm(dm.id, dm.user_a.id, "dm to delete")
+
+      {:ok, _pid} = ChannelSupervisor.ensure_started({:dm, dm.id})
+      on_exit(fn -> stop_server({:dm, dm.id}) end)
+
+      Messaging.subscribe_dm(dm.id)
+
+      assert {:ok, _deleted} = Messaging.delete_message(db_msg.id, dm.user_a.id)
+
+      assert_receive {:envelope, envelope}, 1000
+      assert envelope.event == "message.deleted"
+      assert envelope.target == %{type: :dm, id: dm.id}
+    end
+
+    test "returns error when delete fails in Chat context" do
+      user = insert(:user)
+      other = insert(:user)
+
+      {:ok, channel} =
+        Slackex.Chat.create_channel(user.id, %{name: "m-#{System.unique_integer()}"})
+
+      {:ok, db_msg} = Slackex.Chat.send_message(channel.id, user.id, "mine")
+
+      assert {:error, :unauthorized} = Messaging.delete_message(db_msg.id, other.id)
+    end
+  end
+
   describe "ChannelSupervisor.ensure_started/2" do
     test "starts and returns a pid for a new target" do
       user = insert(:user)
