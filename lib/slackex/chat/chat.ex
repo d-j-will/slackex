@@ -234,12 +234,10 @@ defmodule Slackex.Chat do
          :ok <- check_not_deleted(message),
          :ok <- check_is_sender(message, user_id) do
       sanitized = HtmlSanitizeEx.strip_tags(new_content)
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
       message
-      |> Message.edit_changeset(%{
-        content: sanitized,
-        edited_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
-      })
+      |> Message.edit_changeset(%{content: sanitized, edited_at: now})
       |> Repo.update()
     end
   end

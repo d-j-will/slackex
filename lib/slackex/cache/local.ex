@@ -111,32 +111,20 @@ defmodule Slackex.Cache.Local do
 
   @impl true
   def handle_call({:update_message, target, message_id, updates}, _from, state) do
-    case :ets.lookup(@table, target) do
-      [{^target, msgs, ts}] ->
-        updated =
-          Enum.map(msgs, fn msg ->
-            if msg.id == message_id, do: Map.merge(msg, updates), else: msg
-          end)
-
-        :ets.insert(@table, {target, updated, ts})
-
-      [] ->
-        :ok
-    end
+    transform_cached_messages(target, fn msgs ->
+      Enum.map(msgs, fn msg ->
+        if msg.id == message_id, do: Map.merge(msg, updates), else: msg
+      end)
+    end)
 
     {:reply, :ok, state}
   end
 
   @impl true
   def handle_call({:remove_message, target, message_id}, _from, state) do
-    case :ets.lookup(@table, target) do
-      [{^target, msgs, ts}] ->
-        filtered = Enum.reject(msgs, fn msg -> msg.id == message_id end)
-        :ets.insert(@table, {target, filtered, ts})
-
-      [] ->
-        :ok
-    end
+    transform_cached_messages(target, fn msgs ->
+      Enum.reject(msgs, fn msg -> msg.id == message_id end)
+    end)
 
     {:reply, :ok, state}
   end
@@ -144,6 +132,16 @@ defmodule Slackex.Cache.Local do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp transform_cached_messages(target, transform_fn) do
+    case :ets.lookup(@table, target) do
+      [{^target, msgs, ts}] ->
+        :ets.insert(@table, {target, transform_fn.(msgs), ts})
+
+      [] ->
+        :ok
+    end
+  end
 
   defp maybe_evict do
     if :ets.info(@table, :size) > @max_channels do

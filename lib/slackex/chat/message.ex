@@ -38,8 +38,10 @@ defmodule Slackex.Chat.Message do
   end
 
   def delete_changeset(message) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
     message
-    |> change(content: nil, deleted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond))
+    |> change(content: nil, deleted_at: now)
   end
 
   defp validate_content_length(changeset, opts) do

@@ -464,50 +464,26 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("cancel_edit", _params, socket) do
-    editing_id = socket.assigns.editing_message_id
-
-    socket = assign(socket, :editing_message_id, nil)
-
     socket =
-      if editing_id do
-        case Chat.get_message(editing_id) do
-          {:ok, message} ->
-            message = Slackex.Repo.preload(message, :sender)
-            stream_insert(socket, :messages, Map.put(message, :editing, false))
-
-          _ ->
-            socket
-        end
-      else
-        socket
-      end
+      socket
+      |> assign(:editing_message_id, nil)
+      |> restore_message_after_edit(socket.assigns.editing_message_id)
 
     {:noreply, socket}
   end
 
   def handle_event("save_edit", %{"content" => content} = params, socket) do
-    message_id =
-      case params do
-        %{"msg-id" => id} -> String.to_integer(id)
-        _ -> socket.assigns.editing_message_id
-      end
-
+    message_id = extract_message_id(params, socket.assigns.editing_message_id)
     user = socket.assigns.current_user
+
+    socket = assign(socket, :editing_message_id, nil)
 
     case Messaging.edit_message(message_id, user.id, content) do
       {:ok, message} ->
-        message = enrich_message(message)
-
-        {:noreply,
-         socket
-         |> assign(:editing_message_id, nil)
-         |> stream_insert(:messages, message)}
+        {:noreply, stream_insert(socket, :messages, enrich_message(message))}
 
       {:error, _reason} ->
-        {:noreply,
-         socket
-         |> assign(:editing_message_id, nil)
-         |> put_flash(:error, "Could not edit message.")}
+        {:noreply, put_flash(socket, :error, "Could not edit message.")}
     end
   end
 
@@ -525,6 +501,9 @@ defmodule SlackexWeb.ChatLive.Index do
         {:noreply, put_flash(socket, :error, "Could not delete message.")}
     end
   end
+
+  defp extract_message_id(%{"msg-id" => id}, _fallback), do: String.to_integer(id)
+  defp extract_message_id(_params, fallback), do: fallback
 
   defp parse_message_id(nil), do: nil
   defp parse_message_id(""), do: nil
@@ -997,27 +976,36 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
-  defp apply_edit_to_stream(%{id: id, content: content, edited_at: edited_at}) do
-    case Chat.get_message(id) do
-      {:ok, message} ->
-        message
-        |> Slackex.Repo.preload(:sender)
-        |> Map.merge(%{content: content, edited_at: edited_at})
+  defp restore_message_after_edit(socket, nil), do: socket
 
-      {:error, _} ->
-        %{id: id, content: content, edited_at: edited_at, sender: %{username: "unknown"}}
+  defp restore_message_after_edit(socket, message_id) do
+    case Chat.get_message(message_id) do
+      {:ok, message} ->
+        message = Slackex.Repo.preload(message, :sender)
+        stream_insert(socket, :messages, Map.put(message, :editing, false))
+
+      _ ->
+        socket
     end
   end
 
+  defp apply_edit_to_stream(%{id: id, content: content, edited_at: edited_at}) do
+    apply_update_to_stream(id, %{content: content, edited_at: edited_at})
+  end
+
   defp apply_delete_to_stream(%{id: id, deleted_at: deleted_at}) do
-    case Chat.get_message(id) do
+    apply_update_to_stream(id, %{content: nil, deleted_at: deleted_at})
+  end
+
+  defp apply_update_to_stream(message_id, updates) do
+    case Chat.get_message(message_id) do
       {:ok, message} ->
         message
         |> Slackex.Repo.preload(:sender)
-        |> Map.merge(%{content: nil, deleted_at: deleted_at})
+        |> Map.merge(updates)
 
       {:error, _} ->
-        %{id: id, content: nil, deleted_at: deleted_at, sender: %{username: "unknown"}}
+        Map.merge(%{id: message_id, sender: %{username: "unknown"}}, updates)
     end
   end
 

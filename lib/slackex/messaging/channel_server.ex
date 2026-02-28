@@ -87,7 +87,7 @@ defmodule Slackex.Messaging.ChannelServer do
     queue =
       messages
       |> Enum.take(@max_cached_messages)
-      |> Enum.reduce(:queue.new(), fn msg, q -> :queue.in(msg, q) end)
+      |> list_to_queue()
 
     table = if channel_type == :channel, do: "channels", else: "dm_conversations"
 
@@ -298,34 +298,20 @@ defmodule Slackex.Messaging.ChannelServer do
 
   def handle_info({:envelope, %{event: "message.edited", payload: payload}}, state) do
     updated_queue =
-      :queue.to_list(state.messages)
-      |> Enum.map(fn msg ->
-        if msg.id == payload.id do
-          msg
-          |> Map.put(:content, payload.content)
-          |> Map.put(:edited_at, payload.edited_at)
-        else
-          msg
-        end
-      end)
-      |> Enum.reduce(:queue.new(), fn msg, q -> :queue.in(msg, q) end)
+      update_queued_message(state.messages, payload.id, %{
+        content: payload.content,
+        edited_at: payload.edited_at
+      })
 
     {:noreply, %{state | messages: updated_queue}, @idle_timeout}
   end
 
   def handle_info({:envelope, %{event: "message.deleted", payload: payload}}, state) do
     updated_queue =
-      :queue.to_list(state.messages)
-      |> Enum.map(fn msg ->
-        if msg.id == payload.id do
-          msg
-          |> Map.put(:content, nil)
-          |> Map.put(:deleted_at, payload.deleted_at)
-        else
-          msg
-        end
-      end)
-      |> Enum.reduce(:queue.new(), fn msg, q -> :queue.in(msg, q) end)
+      update_queued_message(state.messages, payload.id, %{
+        content: nil,
+        deleted_at: payload.deleted_at
+      })
 
     {:noreply, %{state | messages: updated_queue}, @idle_timeout}
   end
@@ -383,6 +369,19 @@ defmodule Slackex.Messaging.ChannelServer do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp update_queued_message(queue, message_id, updates) do
+    queue
+    |> :queue.to_list()
+    |> Enum.map(fn msg ->
+      if msg.id == message_id, do: Map.merge(msg, updates), else: msg
+    end)
+    |> list_to_queue()
+  end
+
+  defp list_to_queue(list) do
+    Enum.reduce(list, :queue.new(), fn item, q -> :queue.in(item, q) end)
+  end
 
   defp epoch_opts(state) do
     [epoch: state.writer_epoch, type: state.channel_type, id: state.channel_id]

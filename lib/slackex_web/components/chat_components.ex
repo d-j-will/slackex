@@ -138,20 +138,21 @@ defmodule SlackexWeb.ChatComponents do
   attr :current_user_role, :string, default: nil
 
   def message_bubble(assigns) do
-    is_own = is_own_message?(assigns.message, assigns.current_user_id)
+    message = assigns.message
+    is_own = is_own_message?(message, assigns.current_user_id)
     can_admin_delete = assigns.current_user_role in ["owner", "admin"]
 
     assigns =
       assigns
-      |> assign(:sender_name, sender_name(assigns.message))
-      |> assign(:time, format_time(assigns.message))
-      |> assign(:sender, extract_sender(assigns.message))
+      |> assign(:sender_name, sender_name(message))
+      |> assign(:time, format_time(message))
+      |> assign(:sender, extract_sender(message))
       |> assign(:show_report_action, show_report_action?(assigns))
-      |> assign(:is_deleted, message_deleted?(assigns.message))
-      |> assign(:is_edited, message_edited?(assigns.message))
+      |> assign(:is_deleted, message_deleted?(message))
+      |> assign(:is_edited, message_edited?(message))
       |> assign(:is_own_message, is_own)
       |> assign(:can_delete, is_own or can_admin_delete)
-      |> assign(:is_editing, Map.get(assigns.message, :editing, false) == true)
+      |> assign(:is_editing, Map.get(message, :editing, false) == true)
 
     ~H"""
     <div class="group relative flex gap-3 px-2 py-1 hover:bg-base-200/50 rounded-lg transition-colors">

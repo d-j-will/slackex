@@ -58,23 +58,12 @@ defmodule Slackex.Messaging do
           {:ok, struct()} | {:error, atom()}
   def edit_message(message_id, user_id, new_content) do
     with {:ok, message} <- Chat.edit_message(message_id, user_id, new_content) do
-      {target_type, target_id} = message_target(message)
+      target = message_target(message)
+      payload = %{id: message.id, content: message.content, edited_at: message.edited_at}
 
-      payload = %{
-        id: message.id,
-        content: message.content,
-        edited_at: message.edited_at
-      }
+      broadcast_envelope("message.edited", target, payload)
 
-      envelope = Envelope.wrap("message.edited", {target_type, target_id}, payload)
-
-      Phoenix.PubSub.broadcast(
-        @pubsub,
-        pubsub_topic(target_type, target_id),
-        {:envelope, envelope}
-      )
-
-      Cache.update_message({target_type, target_id}, message.id, %{
+      Cache.update_message(target, message.id, %{
         content: message.content,
         edited_at: message.edited_at
       })
@@ -93,22 +82,11 @@ defmodule Slackex.Messaging do
           {:ok, struct()} | {:error, atom()}
   def delete_message(message_id, user_id, opts \\ []) do
     with {:ok, message} <- Chat.delete_message(message_id, user_id, opts) do
-      {target_type, target_id} = message_target(message)
+      target = message_target(message)
+      payload = %{id: message.id, deleted_at: message.deleted_at}
 
-      payload = %{
-        id: message.id,
-        deleted_at: message.deleted_at
-      }
-
-      envelope = Envelope.wrap("message.deleted", {target_type, target_id}, payload)
-
-      Phoenix.PubSub.broadcast(
-        @pubsub,
-        pubsub_topic(target_type, target_id),
-        {:envelope, envelope}
-      )
-
-      Cache.remove_message({target_type, target_id}, message.id)
+      broadcast_envelope("message.deleted", target, payload)
+      Cache.remove_message(target, message.id)
 
       {:ok, message}
     end
@@ -182,6 +160,16 @@ defmodule Slackex.Messaging do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp broadcast_envelope(event, {target_type, target_id}, payload) do
+    envelope = Envelope.wrap(event, {target_type, target_id}, payload)
+
+    Phoenix.PubSub.broadcast(
+      @pubsub,
+      pubsub_topic(target_type, target_id),
+      {:envelope, envelope}
+    )
+  end
 
   defp validate_dm_participant(dm, sender_id) do
     if sender_id == dm.user_a_id or sender_id == dm.user_b_id do
