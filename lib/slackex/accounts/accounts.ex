@@ -60,9 +60,24 @@ defmodule Slackex.Accounts do
   end
 
   @doc """
+  Gets a user by id. Returns nil if not found.
+  """
+  def get_user(id), do: Repo.get(User, id)
+
+  @doc """
   Gets a user by id. Raises if not found.
   """
   def get_user!(id), do: Repo.get!(User, id)
+
+  @doc """
+  Updates a user's profile (display_name and status).
+  Returns {:ok, user} or {:error, changeset}.
+  """
+  def update_user_profile(user, attrs) do
+    user
+    |> User.profile_changeset(attrs)
+    |> Repo.update()
+  end
 
   @doc """
   Generates a session token and persists it to the database.

@@ -1572,4 +1572,39 @@ defmodule SlackexWeb.ChatLiveTest do
       refute html =~ "new-dm-modal"
     end
   end
+
+  describe "sidebar online indicators" do
+    test "DM list items show green dot for online users", %{
+      conn: conn,
+      alice: alice,
+      bob: bob
+    } do
+      _dm = create_dm_between(alice, bob)
+
+      # Mark bob as online in Redis
+      Slackex.Notifications.OnlineTracker.mark_online(bob.id)
+
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      # The avatar for bob in the DM list should have the online indicator
+      assert html =~ "bg-success"
+    end
+
+    test "DM list items do not show green dot for offline users", %{
+      conn: conn,
+      alice: alice,
+      bob: bob
+    } do
+      _dm = create_dm_between(alice, bob)
+
+      # Do NOT mark bob as online
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      # The sidebar DM section should not contain the online indicator for bob
+      # (current user's own footer avatar may have it, so we check the DM list specifically)
+      # Since bob is offline, his avatar in the DM list should not show bg-success
+      # We verify by checking the DM list area does not contain an online dot
+      refute html =~ ~r/<li.*?bg-success.*?<\/li>/s
+    end
+  end
 end

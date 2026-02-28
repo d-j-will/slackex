@@ -224,6 +224,7 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
               dm={dm}
               active={@active_dm != nil && @active_dm.id == dm.id}
               unread_count={Map.get(@unread_counts.dm_counts, dm.id, 0)}
+              online={MapSet.member?(@online_user_ids, dm.other_user.id)}
             />
           </ul>
 
@@ -240,7 +241,7 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
 
       <%!-- User footer --%>
       <div class="p-3 border-t border-base-300 flex items-center gap-2">
-        <.avatar user={@current_user} size="sm" />
+        <.avatar user={@current_user} size="sm" online={true} />
         <span class="text-sm font-medium truncate flex-1">
           {@current_user.display_name || @current_user.username}
         </span>

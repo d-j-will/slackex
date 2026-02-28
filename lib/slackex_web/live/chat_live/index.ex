@@ -34,6 +34,15 @@ defmodule SlackexWeb.ChatLive.Index do
 
     unread_counts = Chat.batch_unread_counts(user.id)
 
+    dm_user_ids = Enum.map(dm_conversations, fn dm -> dm.other_user.id end)
+
+    online_user_ids =
+      if connected?(socket) and dm_user_ids != [] do
+        OnlineTracker.online_user_ids(dm_user_ids)
+      else
+        MapSet.new()
+      end
+
     {:ok,
      socket
      |> assign(:channels, channels)
@@ -41,6 +50,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:dm_requests, dm_requests)
      |> assign(:dm_request_count, length(dm_requests))
      |> assign(:unread_counts, unread_counts)
+     |> assign(:online_user_ids, online_user_ids)
      |> assign(:active_channel, nil)
      |> assign(:active_dm, nil)
      |> assign(:can_send, false)
@@ -796,6 +806,7 @@ defmodule SlackexWeb.ChatLive.Index do
           dm_requests={@dm_requests}
           dm_request_count={@dm_request_count}
           unread_counts={@unread_counts}
+          online_user_ids={@online_user_ids}
         />
       </div>
 

@@ -55,6 +55,17 @@ defmodule Slackex.Accounts.User do
   end
 
   @doc """
+  Changeset for updating a user's profile (display_name and status).
+  Validates display_name max 50 chars, status max 100 chars.
+  """
+  def profile_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:display_name, :status])
+    |> validate_length(:display_name, max: 50)
+    |> validate_length(:status, max: 100)
+  end
+
+  @doc """
   Changeset for updating a user's DM preference.
   Validates the value is one of: anyone, shared_channels, nobody.
   """

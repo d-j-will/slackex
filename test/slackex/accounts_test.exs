@@ -166,6 +166,88 @@ defmodule Slackex.AccountsTest do
     end
   end
 
+  describe "profile_changeset/2" do
+    test "valid display_name and status are accepted" do
+      user = insert(:user)
+
+      changeset =
+        Slackex.Accounts.User.profile_changeset(user, %{
+          display_name: "New Name",
+          status: "Away"
+        })
+
+      assert changeset.valid?
+      assert get_change(changeset, :display_name) == "New Name"
+      assert get_change(changeset, :status) == "Away"
+    end
+
+    test "display_name over 50 characters is rejected" do
+      user = insert(:user)
+      long_name = String.duplicate("a", 51)
+
+      changeset = Slackex.Accounts.User.profile_changeset(user, %{display_name: long_name})
+
+      refute changeset.valid?
+      assert %{display_name: [_]} = errors_on(changeset)
+    end
+
+    test "status over 100 characters is rejected" do
+      user = insert(:user)
+      long_status = String.duplicate("b", 101)
+
+      changeset = Slackex.Accounts.User.profile_changeset(user, %{status: long_status})
+
+      refute changeset.valid?
+      assert %{status: [_]} = errors_on(changeset)
+    end
+  end
+
+  describe "get_user/1" do
+    test "returns user when found" do
+      user = insert(:user)
+
+      result = Accounts.get_user(user.id)
+
+      assert result.id == user.id
+    end
+
+    test "returns nil when user not found" do
+      result = Accounts.get_user(0)
+
+      assert is_nil(result)
+    end
+  end
+
+  describe "update_user_profile/2" do
+    test "persists display_name and status changes" do
+      user = insert(:user)
+
+      assert {:ok, updated} =
+               Accounts.update_user_profile(user, %{
+                 display_name: "Updated Name",
+                 status: "In a meeting"
+               })
+
+      assert updated.display_name == "Updated Name"
+      assert updated.status == "In a meeting"
+
+      # Verify it's persisted
+      reloaded = Accounts.get_user!(updated.id)
+      assert reloaded.display_name == "Updated Name"
+      assert reloaded.status == "In a meeting"
+    end
+
+    test "returns error changeset for invalid data" do
+      user = insert(:user)
+      long_name = String.duplicate("x", 51)
+
+      assert {:error, changeset} =
+               Accounts.update_user_profile(user, %{display_name: long_name})
+
+      refute changeset.valid?
+    end
+  end
+
   describe "JWT token lifecycle" do
     test "access token is valid within TTL" do
       user = insert(:user)
