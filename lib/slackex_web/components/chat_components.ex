@@ -433,7 +433,15 @@ defmodule SlackexWeb.ChatComponents do
     >
       <div id="profile-backdrop" class="fixed inset-0 z-40 bg-black/50" phx-click="close_profile" />
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
-        <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-sm p-6">
+        <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-sm p-6 relative">
+          <button
+            type="button"
+            phx-click="close_profile"
+            class="btn btn-ghost btn-sm btn-square absolute top-2 right-2"
+            aria-label="Close"
+          >
+            <span class="hero-x-mark size-5" />
+          </button>
           <div class="flex flex-col items-center text-center space-y-3">
             <.avatar user={@user} size="lg" online={@online} />
             <div>
