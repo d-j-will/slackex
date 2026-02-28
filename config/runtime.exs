@@ -30,8 +30,10 @@ if config_env() == :prod do
       Generate a 32-byte key with: :crypto.strong_rand_bytes(32) |> Base.encode64()
       """
 
+  cloak_key_tag = System.get_env("CLOAK_KEY_TAG") || "AES.GCM.V1"
+
   primary_cipher =
-    {:default, {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(cloak_key)}}
+    {:default, {Cloak.Ciphers.AES.GCM, tag: cloak_key_tag, key: Base.decode64!(cloak_key)}}
 
   ciphers =
     case System.get_env("CLOAK_RETIRED_KEY") do
@@ -39,10 +41,11 @@ if config_env() == :prod do
         [primary_cipher]
 
       retired_key ->
+        retired_tag = System.get_env("CLOAK_RETIRED_KEY_TAG") || "AES.GCM.V1"
+
         [
           primary_cipher,
-          {:retired,
-           {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1.retired", key: Base.decode64!(retired_key)}}
+          {:retired, {Cloak.Ciphers.AES.GCM, tag: retired_tag, key: Base.decode64!(retired_key)}}
         ]
     end
 

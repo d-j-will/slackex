@@ -13,11 +13,19 @@ defmodule Slackex.Vault do
   ## Key Rotation Procedure
 
   1. Generate a new 32-byte key: `:crypto.strong_rand_bytes(32) |> Base.encode64()`
-  2. Set the new key as `CLOAK_KEY` environment variable
-  3. Move the old key to `CLOAK_RETIRED_KEY` environment variable
-  4. Restart the application (Vault picks up both keys via runtime.exs)
-  5. Run `mix slackex.rotate_key` to re-encrypt all data with the new primary key
-  6. Once rotation completes, `CLOAK_RETIRED_KEY` can be removed
+  2. Set environment variables:
+     - `CLOAK_KEY` — the new key
+     - `CLOAK_KEY_TAG` — a new unique tag (e.g. `"AES.GCM.V2"`)
+     - `CLOAK_RETIRED_KEY` — the old key
+     - `CLOAK_RETIRED_KEY_TAG` — the tag used when data was originally encrypted
+       (e.g. `"AES.GCM.V1"`)
+  3. Restart the application (Vault picks up both keys via runtime.exs)
+  4. Run `mix slackex.rotate_key` to re-encrypt all data with the new primary key
+  5. Once rotation completes, remove `CLOAK_RETIRED_KEY` and `CLOAK_RETIRED_KEY_TAG`
+
+  Tags are critical: Cloak uses them as binary prefixes on ciphertext to
+  match the correct cipher for decryption. The retired key MUST keep its
+  original tag so existing ciphertexts can be decoded.
   """
 
   use Cloak.Vault, otp_app: :slackex
