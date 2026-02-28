@@ -103,7 +103,14 @@ defmodule SlackexWeb.ChatComponents do
         patch={@dm_path}
         class={sidebar_item_classes(@active, @unread_count)}
       >
-        <.avatar user={@dm.other_user} size="sm" online={@online} />
+        <span
+          data-profile-user-id={@dm.other_user.id}
+          phx-click="show_profile"
+          phx-value-user-id={@dm.other_user.id}
+          class="cursor-pointer"
+        >
+          <.avatar user={@dm.other_user} size="sm" online={@online} />
+        </span>
         <span class="truncate flex-1">{@display}</span>
         <.unread_badge :if={@unread_count > 0} count={@unread_count} />
       </.link>
@@ -407,6 +414,61 @@ defmodule SlackexWeb.ChatComponents do
   defp category_label("inappropriate_content"), do: "Inappropriate Content"
   defp category_label("phishing"), do: "Phishing"
   defp category_label("other"), do: "Other"
+
+  # ────────────────────────── User Profile Card ───────────────────────────
+
+  @doc "Renders a profile card modal for a user, showing name, username, status, and online indicator."
+  attr :user, :map, default: nil
+  attr :online, :boolean, default: false
+  attr :show_send_message, :boolean, default: true
+
+  def user_profile_card(assigns) do
+    display = profile_display_name(assigns.user)
+    assigns = assign(assigns, :display, display)
+
+    ~H"""
+    <div
+      :if={@user}
+      id="user-profile-card"
+      phx-window-keydown="close_profile"
+      phx-key="Escape"
+    >
+      <div id="profile-backdrop" class="fixed inset-0 z-40 bg-black/50" phx-click="close_profile" />
+      <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
+        <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-sm p-6">
+          <div class="flex flex-col items-center text-center space-y-3">
+            <.avatar user={@user} size="lg" online={@online} />
+            <div>
+              <h3 class="font-bold text-lg">{@display}</h3>
+              <p class="text-sm text-base-content/60">@{@user.username}</p>
+            </div>
+            <p :if={@user.status && @user.status != ""} class="text-sm text-base-content/70">
+              {@user.status}
+            </p>
+            <span class={[
+              "badge badge-sm",
+              @online && "badge-success",
+              !@online && "badge-ghost"
+            ]}>
+              {if @online, do: "Online", else: "Offline"}
+            </span>
+            <button
+              :if={@show_send_message}
+              phx-click="send_message_to_profile_user"
+              class="btn btn-primary btn-sm w-full mt-2"
+            >
+              Send Message
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp profile_display_name(%{display_name: name}) when is_binary(name) and name != "", do: name
+  defp profile_display_name(%{username: username}), do: username
+  defp profile_display_name(_), do: "Unknown"
 
   # ────────────────────────── Unread Badge ─────────────────────────────────
 

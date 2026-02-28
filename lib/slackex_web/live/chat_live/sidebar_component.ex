@@ -43,6 +43,11 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
     {:noreply, assign(socket, :requests_expanded, !socket.assigns.requests_expanded)}
   end
 
+  def handle_event("show_profile", %{"user-id" => user_id}, socket) do
+    send(self(), {:show_profile, String.to_integer(user_id)})
+    {:noreply, socket}
+  end
+
   defp truncate_preview(nil, _max_length), do: ""
   defp truncate_preview(text, max_length) when byte_size(text) <= max_length, do: text
 
@@ -241,7 +246,15 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
 
       <%!-- User footer --%>
       <div class="p-3 border-t border-base-300 flex items-center gap-2">
-        <.avatar user={@current_user} size="sm" online={true} />
+        <span
+          data-profile-user-id={@current_user.id}
+          phx-click="show_profile"
+          phx-value-user-id={@current_user.id}
+          phx-target={@myself}
+          class="cursor-pointer"
+        >
+          <.avatar user={@current_user} size="sm" online={true} />
+        </span>
         <span class="text-sm font-medium truncate flex-1">
           {@current_user.display_name || @current_user.username}
         </span>

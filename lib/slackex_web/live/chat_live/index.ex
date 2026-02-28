@@ -66,6 +66,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:show_report_modal, false)
      |> assign(:report_message_id, nil)
      |> assign(:report_form, to_form(%{}, as: :report))
+     |> assign(:profile_user, nil)
      |> stream(:messages, [])}
   end
 
@@ -377,6 +378,22 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  def handle_event("show_profile", %{"user-id" => user_id}, socket) do
+    user = Accounts.get_user!(String.to_integer(user_id))
+    {:noreply, assign(socket, :profile_user, user)}
+  end
+
+  def handle_event("close_profile", _params, socket) do
+    {:noreply, assign(socket, :profile_user, nil)}
+  end
+
+  def handle_event("send_message_to_profile_user", _params, socket) do
+    profile_user = socket.assigns.profile_user
+    socket = assign(socket, :profile_user, nil)
+    send(self(), {:start_dm, profile_user.id})
+    {:noreply, socket}
+  end
+
   defp parse_message_id(nil), do: nil
   defp parse_message_id(""), do: nil
   defp parse_message_id(id) when is_binary(id), do: String.to_integer(id)
@@ -519,6 +536,12 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_info({:presence, :offline, user_id}, socket) do
     online_user_ids = MapSet.delete(socket.assigns.online_user_ids, user_id)
     {:noreply, assign(socket, :online_user_ids, online_user_ids)}
+  end
+
+  @impl true
+  def handle_info({:show_profile, user_id}, socket) do
+    user = Accounts.get_user!(user_id)
+    {:noreply, assign(socket, :profile_user, user)}
   end
 
   @impl true
@@ -925,6 +948,13 @@ defmodule SlackexWeb.ChatLive.Index do
       show={@show_report_modal}
       report_form={@report_form}
       report_message_id={@report_message_id}
+    />
+
+    <.user_profile_card
+      :if={@profile_user}
+      user={@profile_user}
+      online={MapSet.member?(@online_user_ids, @profile_user.id)}
+      show_send_message={@profile_user.id != @current_user.id}
     />
     """
   end

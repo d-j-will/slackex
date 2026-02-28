@@ -1706,4 +1706,172 @@ defmodule SlackexWeb.ChatLiveTest do
       assert bob_id == bob.id
     end
   end
+
+  describe "user profile card" do
+    setup %{alice: alice, bob: bob} do
+      %{dm: create_dm_between(alice, bob)}
+    end
+
+    # AC1: Clicking a user avatar in the DM sidebar opens a profile card
+    test "clicking avatar in DM sidebar opens profile card for that user", %{
+      conn: conn,
+      bob: bob,
+      dm: _dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      # Click on the avatar area for the DM user in the sidebar
+      lv
+      |> element("[data-profile-user-id=\"#{bob.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      assert html =~ "user-profile-card"
+      expected_name = bob.display_name || bob.username
+      assert html =~ expected_name
+      assert html =~ "@#{bob.username}"
+    end
+
+    # AC2: Profile card displays display_name with fallback, @username, status, online indicator
+    test "profile card shows display_name, falls back to username when nil", %{
+      conn: _conn,
+      alice: alice
+    } do
+      # Create a user with no display_name
+      no_name = insert(:user, username: "noname_user", display_name: nil)
+      _dm = create_dm_between(alice, no_name)
+
+      conn = build_conn() |> log_in_user(alice)
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv
+      |> element("[data-profile-user-id=\"#{no_name.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      # Should fall back to username as the display heading
+      assert html =~ "noname_user"
+      assert html =~ "@noname_user"
+    end
+
+    test "profile card shows online indicator when user is online", %{
+      conn: conn,
+      bob: bob,
+      dm: _dm
+    } do
+      Slackex.Notifications.OnlineTracker.mark_online(bob.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv
+      |> element("[data-profile-user-id=\"#{bob.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      assert html =~ "user-profile-card"
+      # Online indicator should be present in the profile card
+      assert html =~ "Online"
+    end
+
+    test "profile card shows offline indicator when user is offline", %{
+      conn: conn,
+      bob: bob,
+      dm: _dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv
+      |> element("[data-profile-user-id=\"#{bob.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      assert html =~ "user-profile-card"
+      assert html =~ "Offline"
+    end
+
+    # AC3: "Send Message" button navigates to existing DM or creates one
+    test "Send Message button navigates to DM conversation with that user", %{
+      conn: conn,
+      bob: bob,
+      dm: dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv
+      |> element("[data-profile-user-id=\"#{bob.id}\"]")
+      |> render_click()
+
+      # Click Send Message in the profile card
+      lv
+      |> element("#user-profile-card button", "Send Message")
+      |> render_click()
+
+      # Should navigate to the DM conversation
+      assert_patch(lv, ~p"/chat/dm/#{dm.id}")
+    end
+
+    # AC4: "Send Message" button hidden on own profile
+    test "Send Message button is hidden when viewing own profile", %{
+      conn: conn,
+      alice: alice,
+      dm: _dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      # Open profile card for current user (alice) via the user footer
+      lv
+      |> element("[data-profile-user-id=\"#{alice.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      assert html =~ "user-profile-card"
+      refute html =~ "Send Message"
+    end
+
+    # AC5: Profile card closes on outside click or Escape
+    test "profile card closes when clicking the backdrop", %{
+      conn: conn,
+      bob: bob,
+      dm: _dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv
+      |> element("[data-profile-user-id=\"#{bob.id}\"]")
+      |> render_click()
+
+      # Profile card should be open
+      html = render(lv)
+      assert html =~ "user-profile-card"
+
+      # Click the backdrop to close
+      lv
+      |> element("#profile-backdrop")
+      |> render_click()
+
+      html = render(lv)
+      refute html =~ "user-profile-card"
+    end
+
+    test "profile card closes when pressing Escape", %{
+      conn: conn,
+      bob: bob,
+      dm: _dm
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+
+      lv
+      |> element("[data-profile-user-id=\"#{bob.id}\"]")
+      |> render_click()
+
+      html = render(lv)
+      assert html =~ "user-profile-card"
+
+      # Press Escape
+      render_keydown(lv, "close_profile", %{"key" => "Escape"})
+
+      html = render(lv)
+      refute html =~ "user-profile-card"
+    end
+  end
 end
