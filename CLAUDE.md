@@ -7,7 +7,7 @@ Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL 
 Key directories:
 - `lib/slackex/` — domain contexts (Chat, Messaging, Accounts)
 - `lib/slackex_web/` — LiveView, components, router
-- `test/` — ExUnit tests (currently 666 tests)
+- `test/` — ExUnit tests (currently 783 tests)
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
@@ -21,6 +21,15 @@ functional
 Always run `mix format` before committing Elixir code. CI enforces formatting and will fail on unformatted files.
 
 Always run `mix test` before committing. Verify zero failures before staging changes. If CI includes `docker-compose` tests, ensure those configurations are updated too.
+
+## UI Component Conventions
+
+All modals and popovers must implement three dismiss mechanisms:
+1. Backdrop click (`phx-click="close_..."` on the overlay div)
+2. Escape key (`phx-window-keydown="close_..."` with `phx-key="Escape"`)
+3. Explicit close button (X) using `<button phx-click="close_..." class="btn btn-ghost btn-sm btn-square"><span class="hero-x-mark size-5" /></button>`
+
+This applies regardless of the modal's visual layout. Centered cards without header bars still need a close button (positioned absolute top-right).
 
 ## Bug Fixing Guidelines
 
