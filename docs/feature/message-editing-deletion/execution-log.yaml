@@ -19,5 +19,35 @@ events:
   s: EXECUTED
   sid: 01-01
   t: '2026-02-28T03:29:01Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-28T03:29:50Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-02-28T03:33:20Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-02-28T03:33:55Z'
+- d: "NOT_APPLICABLE: acceptance tests cover all behaviors at driving port level; test budget 2x4=8 satisfied"
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 01-02
+  t: '2026-02-28T03:34:00Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-02-28T03:35:00Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-02-28T03:35:30Z'
 project_id: message-editing-deletion
 schema_version: '3.0'
