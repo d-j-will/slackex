@@ -31,6 +31,7 @@ defmodule SlackexWeb.ChatLive.Index do
       Messaging.subscribe_user(user.id)
       subscribe_all_conversations(channels, dm_conversations)
       Phoenix.PubSub.subscribe(Slackex.PubSub, @presence_topic)
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "profile:updates")
       OnlineTracker.mark_online(user.id)
       Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :online, user.id})
       Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
@@ -593,6 +594,17 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_info({:profile_updated, updated_user}, socket) do
+    socket =
+      socket
+      |> maybe_refresh_profile_card(updated_user)
+      |> maybe_refresh_current_user(updated_user)
+      |> refresh_dm_conversations_for_profile(updated_user)
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
   end
@@ -841,6 +853,43 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   defp message_for_active_conversation?(_envelope, _socket), do: false
+
+  defp maybe_refresh_profile_card(socket, updated_user) do
+    case socket.assigns.profile_user do
+      %{id: id} when id == updated_user.id ->
+        assign(socket, :profile_user, updated_user)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp maybe_refresh_current_user(socket, updated_user) do
+    if socket.assigns.current_user.id == updated_user.id do
+      assign(socket, :current_user, updated_user)
+    else
+      socket
+    end
+  end
+
+  defp refresh_dm_conversations_for_profile(socket, updated_user) do
+    dm_conversations = socket.assigns.dm_conversations
+
+    if Enum.any?(dm_conversations, fn dm -> dm.other_user.id == updated_user.id end) do
+      updated_dms =
+        Enum.map(dm_conversations, fn dm ->
+          if dm.other_user.id == updated_user.id do
+            %{dm | other_user: updated_user}
+          else
+            dm
+          end
+        end)
+
+      assign(socket, :dm_conversations, updated_dms)
+    else
+      socket
+    end
+  end
 
   defp increment_unread_count(socket, %{target: %{type: :channel, id: channel_id}}) do
     update_unread_count(socket, :channel_counts, channel_id, &(&1 + 1))

@@ -1587,7 +1587,11 @@ defmodule SlackexWeb.ChatLiveTest do
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
       # The avatar for bob in the DM list should have the online indicator
+      # Verify the green dot (bg-success span) appears inside the DM list item
       assert html =~ "bg-success"
+      # The DM list item for bob should contain the online indicator span
+      assert html =~
+               ~r/<li>.*?data-profile-user-id="#{bob.id}".*?bg-success.*?<\/li>/s
     end
 
     test "DM list items do not show green dot for offline users", %{
@@ -1600,11 +1604,10 @@ defmodule SlackexWeb.ChatLiveTest do
       # Do NOT mark bob as online
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
-      # The sidebar DM section should not contain the online indicator for bob
-      # (current user's own footer avatar may have it, so we check the DM list specifically)
-      # Since bob is offline, his avatar in the DM list should not show bg-success
-      # We verify by checking the DM list area does not contain an online dot
-      refute html =~ ~r/<li.*?bg-success.*?<\/li>/s
+      # Bob's DM list item should not contain the online indicator
+      # The li containing bob's profile user id should not have bg-success
+      refute html =~
+               ~r/<li>.*?data-profile-user-id="#{bob.id}".*?bg-success.*?<\/li>/s
     end
   end
 
@@ -1618,15 +1621,18 @@ defmodule SlackexWeb.ChatLiveTest do
 
       {:ok, lv, html} = live(conn, ~p"/chat")
 
-      # Bob is initially offline — no green dot
-      refute html =~ ~r/<li.*?bg-success.*?<\/li>/s
+      # Bob is initially offline — his DM list item should not have the green dot
+      refute html =~
+               ~r/<li>.*?data-profile-user-id="#{bob.id}".*?bg-success.*?<\/li>/s
 
       # Simulate a presence broadcast that bob came online
       send(lv.pid, {:presence, :online, bob.id})
 
-      # After the broadcast, the sidebar should show the green dot for bob
+      # After the broadcast, bob's DM list item should show the green dot
       html = render(lv)
-      assert html =~ "bg-success"
+
+      assert html =~
+               ~r/<li>.*?data-profile-user-id="#{bob.id}".*?bg-success.*?<\/li>/s
     end
 
     test "receiving a presence offline broadcast removes user from online_user_ids", %{
@@ -1641,15 +1647,18 @@ defmodule SlackexWeb.ChatLiveTest do
 
       {:ok, lv, html} = live(conn, ~p"/chat")
 
-      # Bob is initially online — green dot present
-      assert html =~ "bg-success"
+      # Bob is initially online — his DM list item should have the green dot
+      assert html =~
+               ~r/<li>.*?data-profile-user-id="#{bob.id}".*?bg-success.*?<\/li>/s
 
       # Simulate a presence broadcast that bob went offline
       send(lv.pid, {:presence, :offline, bob.id})
 
-      # After the broadcast, the sidebar should no longer show the green dot
+      # After the broadcast, bob's DM list item should no longer have the green dot
       html = render(lv)
-      refute html =~ ~r/<li.*?bg-success.*?<\/li>/s
+
+      refute html =~
+               ~r/<li>.*?data-profile-user-id="#{bob.id}".*?bg-success.*?<\/li>/s
     end
 
     test "presence online broadcast for unknown user does not crash", %{
@@ -1769,7 +1778,13 @@ defmodule SlackexWeb.ChatLiveTest do
 
       html = render(lv)
       assert html =~ "user-profile-card"
+      # Verify user content is displayed in the profile card
+      expected_name = bob.display_name || bob.username
+      assert html =~ expected_name
+      assert html =~ "@#{bob.username}"
+      assert html =~ bob.status
       # Online indicator should be present in the profile card
+      assert html =~ "badge-success"
       assert html =~ "Online"
     end
 
@@ -1786,6 +1801,13 @@ defmodule SlackexWeb.ChatLiveTest do
 
       html = render(lv)
       assert html =~ "user-profile-card"
+      # Verify user content is displayed in the profile card
+      expected_name = bob.display_name || bob.username
+      assert html =~ expected_name
+      assert html =~ "@#{bob.username}"
+      assert html =~ bob.status
+      # Offline indicator should be present
+      assert html =~ "badge-ghost"
       assert html =~ "Offline"
     end
 
