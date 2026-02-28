@@ -7,7 +7,7 @@ Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL 
 Key directories:
 - `lib/slackex/` — domain contexts (Chat, Messaging, Accounts)
 - `lib/slackex_web/` — LiveView, components, router
-- `test/` — ExUnit tests (currently 783 tests)
+- `test/` — ExUnit tests (currently 838 tests)
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
