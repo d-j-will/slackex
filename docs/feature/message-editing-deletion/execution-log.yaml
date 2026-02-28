@@ -74,5 +74,45 @@ events:
   s: EXECUTED
   sid: 02-01
   t: '2026-02-28T03:45:30Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-02-28T03:47:00Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-02-28T03:48:30Z'
+- d: "NOT_APPLICABLE: acceptance tests cover all ACs through LiveView rendering"
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 03-01
+  t: '2026-02-28T03:48:35Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-02-28T03:55:00Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-02-28T03:57:30Z'
 project_id: message-editing-deletion
 schema_version: '3.0'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-02-28T04:00:00Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-02-28T04:02:00Z'
+- d: "NOT_APPLICABLE: acceptance tests cover all ACs through LiveView driving port"
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 03-01
+  t: '2026-02-28T04:03:00Z'

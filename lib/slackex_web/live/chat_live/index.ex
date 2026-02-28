@@ -1105,6 +1105,7 @@ defmodule SlackexWeb.ChatLive.Index do
             streams={@streams}
             current_user_id={@current_user.id}
             editing_message_id={@editing_message_id}
+            current_user_role={@user_role}
           />
           <.typing_indicator users={MapSet.to_list(@typing_users)} />
 

@@ -2167,8 +2167,11 @@ defmodule SlackexWeb.ChatLiveTest do
       render_click(lv, "delete_message", %{"msg-id" => "#{message.id}"})
 
       html = render(lv)
-      refute html =~ "Delete me"
-      assert html =~ "deleted"
+
+      assert html =~ "This message has been deleted"
+      # Bob's message still shows its delete button with title="Delete message",
+      # so we check the deleted message's content area specifically
+      refute html =~ ">Delete me<"
     end
 
     test "delete_message shows flash on error for unauthorized deletion", %{
@@ -2211,8 +2214,10 @@ defmodule SlackexWeb.ChatLiveTest do
       )
 
       html = render(lv)
-      refute html =~ "Delete me"
-      assert html =~ "deleted"
+      assert html =~ "This message has been deleted"
+      # Bob's message still has title="Delete message" which contains "Delete me" substring,
+      # so check the deleted message's content area specifically
+      refute html =~ ">Delete me<"
     end
   end
 
@@ -2282,6 +2287,106 @@ defmodule SlackexWeb.ChatLiveTest do
       html = render(lv)
       refute html =~ "DM to edit"
       assert html =~ "deleted"
+    end
+  end
+
+  describe "message bubble hover actions and indicators" do
+    setup %{alice: alice, bob: bob, channel: channel} do
+      {:ok, alice_msg} = Chat.send_message(channel.id, alice.id, "Alice message")
+      {:ok, bob_msg} = Chat.send_message(channel.id, bob.id, "Bob message")
+      %{alice_message: alice_msg, bob_message: bob_msg}
+    end
+
+    test "own message shows Edit and Delete buttons", %{
+      conn: conn,
+      channel: channel,
+      alice_message: alice_message
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Alice should see edit and delete on her own message
+      assert html =~ "phx-click=\"edit_message\""
+      assert html =~ "phx-value-msg-id=\"#{alice_message.id}\""
+      assert html =~ "phx-click=\"delete_message\""
+    end
+
+    test "channel owner sees Delete button on other user's messages", %{
+      conn: conn,
+      channel: channel,
+      bob_message: bob_message
+    } do
+      # alice is channel owner, so she should see Delete on bob's message
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # There should be a delete button targeting bob's message
+      assert html =~ "phx-click=\"delete_message\""
+      assert html =~ "phx-value-msg-id=\"#{bob_message.id}\""
+    end
+
+    test "channel owner does NOT see Edit button on other user's messages", %{
+      conn: conn,
+      channel: channel,
+      bob_message: bob_message
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # There should NOT be an edit button targeting bob's message
+      # Edit buttons should only exist for alice's own messages
+      refute html =~ "phx-click=\"edit_message\" phx-value-msg-id=\"#{bob_message.id}\""
+    end
+
+    test "delete button has data-confirm attribute", %{
+      conn: conn,
+      channel: channel
+    } do
+      {:ok, _lv, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      assert html =~ "data-confirm=\"Are you sure you want to delete this message?\""
+    end
+
+    test "edited message shows (edited) indicator", %{
+      conn: conn,
+      channel: channel,
+      alice_message: alice_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Edit the message to set edited_at
+      render_click(lv, "edit_message", %{"msg-id" => "#{alice_message.id}"})
+      render_click(lv, "save_edit", %{"content" => "Updated content"})
+
+      html = render(lv)
+      assert html =~ "(edited)"
+    end
+
+    test "deleted message shows placeholder with no hover actions", %{
+      conn: conn,
+      channel: channel,
+      alice_message: alice_message
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(lv, "delete_message", %{"msg-id" => "#{alice_message.id}"})
+
+      html = render(lv)
+      assert html =~ "This message has been deleted"
+
+      # No edit or delete buttons should target the deleted message
+      refute html =~ "phx-click=\"edit_message\" phx-value-msg-id=\"#{alice_message.id}\""
+      refute html =~ "phx-click=\"delete_message\" phx-value-msg-id=\"#{alice_message.id}\""
+    end
+
+    test "report button appears for DM messages from other users (no regression)", %{
+      conn: conn,
+      alice: alice,
+      bob: bob
+    } do
+      dm = create_dm_between(alice, bob)
+      {:ok, _bob_dm_msg} = Chat.send_dm(dm.id, bob.id, "Bob DM content")
+
+      {:ok, _lv, html} = live(conn, ~p"/chat/dm/#{dm.id}")
+
+      assert html =~ "report_message"
     end
   end
 end

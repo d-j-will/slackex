@@ -135,8 +135,12 @@ defmodule SlackexWeb.ChatComponents do
   attr :show_hover_actions, :boolean, default: false
   attr :in_dm, :boolean, default: false
   attr :editing_message_id, :integer, default: nil
+  attr :current_user_role, :string, default: nil
 
   def message_bubble(assigns) do
+    is_own = is_own_message?(assigns.message, assigns.current_user_id)
+    can_admin_delete = assigns.current_user_role in ["owner", "admin"]
+
     assigns =
       assigns
       |> assign(:sender_name, sender_name(assigns.message))
@@ -145,7 +149,8 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:show_report_action, show_report_action?(assigns))
       |> assign(:is_deleted, message_deleted?(assigns.message))
       |> assign(:is_edited, message_edited?(assigns.message))
-      |> assign(:is_own_message, is_own_message?(assigns.message, assigns.current_user_id))
+      |> assign(:is_own_message, is_own)
+      |> assign(:can_delete, is_own or can_admin_delete)
       |> assign(:is_editing, Map.get(assigns.message, :editing, false) == true)
 
     ~H"""
@@ -195,11 +200,12 @@ defmodule SlackexWeb.ChatComponents do
         <% end %>
       </div>
       <div
-        :if={@is_own_message and not @is_deleted and not @is_editing}
+        :if={(@is_own_message or @can_delete) and not @is_deleted and not @is_editing}
         class="hidden group-hover:flex absolute right-2 top-1 items-center gap-1"
         data-role="message-actions"
       >
         <button
+          :if={@is_own_message}
           phx-click="edit_message"
           phx-value-msg-id={@message.id}
           class="btn btn-ghost btn-xs"
@@ -218,7 +224,7 @@ defmodule SlackexWeb.ChatComponents do
         </button>
       </div>
       <div
-        :if={@show_report_action and not @is_deleted}
+        :if={@show_report_action and not @is_deleted and not @can_delete}
         class="hidden group-hover:flex absolute right-2 top-1 items-center"
       >
         <button
@@ -336,6 +342,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :current_user_id, :integer, required: true
   attr :in_dm, :boolean, default: false
   attr :editing_message_id, :integer, default: nil
+  attr :current_user_role, :string, default: nil
 
   def message_stream(assigns) do
     ~H"""
@@ -351,6 +358,7 @@ defmodule SlackexWeb.ChatComponents do
           current_user_id={@current_user_id}
           in_dm={@in_dm}
           editing_message_id={@editing_message_id}
+          current_user_role={@current_user_role}
         />
       </div>
     </div>
