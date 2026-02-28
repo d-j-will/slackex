@@ -13,6 +13,7 @@ defmodule Slackex.Chat.Message do
   schema "messages" do
     field :content, Slackex.Encrypted.Binary, source: :encrypted_content
     field :edited_at, :utc_datetime_usec
+    field :deleted_at, :utc_datetime_usec
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :channel, Slackex.Chat.Channel
@@ -27,6 +28,18 @@ defmodule Slackex.Chat.Message do
     |> validate_content_length(min: 1, max: 4000)
     |> put_inserted_at()
     |> validate_target()
+  end
+
+  def edit_changeset(message, attrs) do
+    message
+    |> cast(attrs, [:content, :edited_at])
+    |> validate_required([:content, :edited_at])
+    |> validate_content_length(min: 1, max: 4000)
+  end
+
+  def delete_changeset(message) do
+    message
+    |> change(content: nil, deleted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond))
   end
 
   defp validate_content_length(changeset, opts) do

@@ -1,0 +1,23 @@
+events:
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-28T03:26:30Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-28T03:27:29Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-28T03:27:36Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-02-28T03:29:01Z'
+project_id: message-editing-deletion
+schema_version: '3.0'

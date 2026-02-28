@@ -26,7 +26,10 @@ defmodule Slackex.Chat.Permissions do
     send_message: 2,
     read_messages: 1,
     manage_channel: 3,
-    delete_channel: 4
+    delete_channel: 4,
+    edit_own_message: 2,
+    delete_own_message: 2,
+    delete_any_message: 3
   }
 
   @spec can?(String.t() | nil, atom()) :: boolean()

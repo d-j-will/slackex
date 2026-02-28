@@ -1,0 +1,165 @@
+roadmap:
+  project_id: message-editing-deletion
+  created_at: '2026-02-28T18:00:00Z'
+  total_steps: 5
+  phases: 3
+  phase_dependencies:
+    '02': ['01']
+    '03': ['02']
+phases:
+- id: '01'
+  name: 'Domain Layer -- Edit and Delete Operations'
+  steps:
+  - id: 01-01
+    name: 'Message edit and soft-delete in Chat context with permissions'
+    description: >
+      Add edit_message and delete_message to Chat context. Edit updates
+      encrypted_content and sets edited_at. Soft delete nullifies content
+      and sets deleted_at. Add deleted_at column via migration. Add
+      edit_own_message(2), delete_own_message(2), delete_any_message(3)
+      to Permissions action_min_level. Add update changeset to Message
+      that skips id/inserted_at and allows nil content for deletion.
+    time_estimate: '3 hours'
+    depends_on: []
+    files_to_modify:
+    - 'priv/repo/migrations/TIMESTAMP_add_deleted_at_to_messages.exs (CREATE - add deleted_at utc_datetime_usec column)'
+    - 'lib/slackex/chat/message.ex (MODIFY - add deleted_at field, add edit_changeset/2 for content+edited_at, add delete_changeset/1 for nullify+deleted_at)'
+    - 'lib/slackex/chat/permissions.ex (MODIFY - add edit_own_message, delete_own_message, delete_any_message actions)'
+    - 'lib/slackex/chat/chat.ex (MODIFY - add get_message!/1, edit_message/3, delete_message/3)'
+    - 'test/slackex/chat/permissions_test.exs (MODIFY - add tests for new permission actions)'
+    - 'test/slackex/chat/chat_test.exs (MODIFY - add edit_message and delete_message tests)'
+    criteria:
+    - 'Migration adds deleted_at (utc_datetime_usec, nullable) column to messages table'
+    - 'edit_message/3 accepts (message_id, user_id, new_content); returns {:ok, message} when sender_id matches user_id; returns {:error, :unauthorized} otherwise'
+    - 'edit_message/3 sets edited_at to current UTC timestamp and updates encrypted content'
+    - 'edit_message/3 returns {:error, :not_found} for nonexistent message_id'
+    - 'edit_message/3 returns {:error, :deleted} when message already has deleted_at set'
+    - 'delete_message/3 accepts (message_id, user_id, opts); soft-deletes by setting content to nil and deleted_at to current UTC timestamp'
+    - 'delete_message/3 allows message owner to delete own message in any context (channel or DM)'
+    - 'delete_message/3 allows admin/owner role to delete any message in channels they manage (checks role via get_role when channel_id present)'
+    - 'delete_message/3 returns {:error, :unauthorized} when non-owner non-admin tries to delete another users message in a channel'
+    - 'delete_message/3 returns {:error, :unauthorized} when user tries to delete another users message in a DM'
+    - 'Permissions.can?("admin", :delete_any_message) returns true; Permissions.can?("member", :delete_any_message) returns false'
+  - id: 01-02
+    name: 'Real-time broadcast of edit and delete events via Messaging context'
+    description: >
+      Add edit_message and delete_message to Messaging facade. After
+      successful Chat context operation, broadcast message.edited and
+      message.deleted events via Envelope on the appropriate PubSub
+      topic. Update ChannelServer in-memory queue to reflect edits
+      and deletes. Update Cache to invalidate or patch cached messages.
+    time_estimate: '3 hours'
+    depends_on: ['01-01']
+    files_to_modify:
+    - 'lib/slackex/messaging/messaging.ex (MODIFY - add edit_message/3 and delete_message/3 that delegate to Chat then broadcast via Envelope)'
+    - 'lib/slackex/messaging/channel_server.ex (MODIFY - add handle_call for edit_delete operations OR handle_info for broadcast-driven cache update)'
+    - 'lib/slackex/cache/cache.ex (MODIFY - add update_message/2 or invalidate strategy for edits/deletes)'
+    - 'lib/slackex/cache/local.ex (MODIFY - add update or remove message from ETS)'
+    - 'test/slackex/messaging/messaging_test.exs (MODIFY - add edit and delete broadcast tests)'
+    criteria:
+    - 'Messaging.edit_message/3 delegates to Chat.edit_message/3, then broadcasts {:envelope, %{event: "message.edited"}} on the channel or DM PubSub topic'
+    - 'Messaging.delete_message/3 delegates to Chat.delete_message/3, then broadcasts {:envelope, %{event: "message.deleted"}} on the channel or DM PubSub topic'
+    - 'Edit envelope payload includes message id, updated content, and edited_at timestamp'
+    - 'Delete envelope payload includes message id and deleted_at timestamp'
+    - 'ChannelServer in-memory queue updates the message on edit (content + edited_at) and marks deleted messages (content nil + deleted_at set)'
+    - 'Cache is invalidated on edit and delete so subsequent ChannelServer init loads correct state from DB; ChannelServer subscribes to PubSub and updates its in-memory queue via handle_info without full rebuild'
+- id: '02'
+  name: 'LiveView Event Handling'
+  steps:
+  - id: 02-01
+    name: 'Handle edit and delete events in ChatLive and update message stream'
+    description: >
+      Add handle_event callbacks for "edit_message", "save_edit",
+      "cancel_edit", and "delete_message" in ChatLive.Index. Add
+      handle_info for message.edited and message.deleted envelope
+      events to update the message stream in real-time. Track
+      editing_message_id assign for inline edit state.
+    time_estimate: '3 hours'
+    depends_on: ['01-02']
+    files_to_modify:
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - add handle_event for edit/delete actions, handle_info for message.edited and message.deleted envelopes, add editing_message_id assign)'
+    - 'test/slackex_web/live/chat_live_test.exs (MODIFY - add edit and delete event handling tests, real-time update tests)'
+    criteria:
+    - 'mount/3 initializes editing_message_id assign to nil'
+    - 'handle_event "edit_message" sets editing_message_id assign to the target message id (only if current_user is the message sender)'
+    - 'handle_event "cancel_edit" clears editing_message_id assign'
+    - 'handle_event "save_edit" calls Messaging.edit_message/3 with new content; on success clears editing_message_id and updates stream; on error shows flash'
+    - 'handle_event "delete_message" calls Messaging.delete_message/3; on success updates stream to show deleted placeholder; on error shows flash'
+    - 'handle_info for {:envelope, %{event: "message.edited"}} updates the message in the stream with new content and edited_at (all connected users see the edit in real-time)'
+    - 'handle_info for {:envelope, %{event: "message.deleted"}} updates the message in the stream to show deleted state (all connected users see the deletion in real-time)'
+    - 'Delete confirmation uses data-confirm attribute on the delete button (browser native confirm dialog, not a custom modal)'
+- id: '03'
+  name: 'UI Components'
+  steps:
+  - id: 03-01
+    name: 'Message bubble hover actions, edited indicator, and deleted placeholder'
+    description: >
+      Extend message_bubble to show edit/delete buttons on hover for
+      eligible messages. Add "(edited)" indicator next to timestamp
+      when edited_at is set. Render "[message deleted]" placeholder
+      when message content is nil / deleted_at is set. Style deleted
+      messages with muted italic text.
+    time_estimate: '2 hours'
+    depends_on: ['02-01']
+    files_to_modify:
+    - 'lib/slackex_web/components/chat_components.ex (MODIFY - extend message_bubble with hover edit/delete buttons, edited indicator, deleted placeholder)'
+    - 'test/slackex_web/live/chat_live_test.exs (MODIFY - add tests for edited indicator rendering, deleted placeholder rendering, hover action visibility)'
+    criteria:
+    - 'Message bubble shows Edit button on hover when current user is the message sender and message is not deleted'
+    - 'Message bubble shows Delete button on hover when current user is the message sender and message is not deleted'
+    - 'Message bubble shows Delete button on hover for admin/owner role users on any non-deleted message in their managed channels'
+    - 'Delete button has data-confirm="Are you sure you want to delete this message?" attribute'
+    - '"(edited)" text appears next to the timestamp when the message has a non-nil edited_at value'
+    - 'Deleted messages render as "[message deleted]" in muted italic styling, with no hover actions and no sender content'
+    - 'Hover action bar includes existing Report button for DM messages from other users (no regression)'
+  - id: 03-02
+    name: 'Inline edit form replacing message content'
+    description: >
+      When editing_message_id matches a message, replace that messages
+      content area with a textarea pre-filled with current content and
+      Save/Cancel buttons. Save triggers "save_edit" event. Cancel
+      triggers "cancel_edit". Escape key cancels editing.
+    time_estimate: '2 hours'
+    depends_on: ['02-01', '03-01']
+    files_to_modify:
+    - 'lib/slackex_web/components/chat_components.ex (MODIFY - add inline edit form variant to message_bubble when editing)'
+    - 'lib/slackex_web/live/chat_live/index.ex (MODIFY - pass editing_message_id to message_stream component)'
+    - 'test/slackex_web/live/chat_live_test.exs (MODIFY - add inline edit form tests: render, save, cancel, escape)'
+    criteria:
+    - 'When editing_message_id equals a message id, that message content area is replaced by a textarea pre-filled with the current message content'
+    - 'Inline edit form shows Save and Cancel buttons below the textarea'
+    - 'Clicking Save dispatches "save_edit" event with message id and new content'
+    - 'Clicking Cancel or pressing Escape dispatches "cancel_edit" and restores the original message display'
+    - 'Only one message can be in edit mode at a time (starting a new edit cancels any existing edit)'
+    - 'Textarea respects existing 4000 character message length limit'
+testing_strategy:
+  unit_tests:
+  - 'Message.edit_changeset/2 -- valid content update, sets edited_at, rejects empty content'
+  - 'Message.delete_changeset/1 -- nullifies content, sets deleted_at'
+  - 'Permissions -- edit_own_message at level 2, delete_own_message at level 2, delete_any_message at level 3'
+  - 'Chat.edit_message/3 -- success, unauthorized (wrong user), not found, already deleted'
+  - 'Chat.delete_message/3 -- own message success, admin delete success, unauthorized, not found'
+  integration_tests:
+  - 'Messaging.edit_message/3 broadcasts message.edited envelope on PubSub topic'
+  - 'Messaging.delete_message/3 broadcasts message.deleted envelope on PubSub topic'
+  - 'ChatLive edit flow: click edit, modify content, save, verify stream update and edited indicator'
+  - 'ChatLive delete flow: click delete, confirm, verify stream shows deleted placeholder'
+  - 'ChatLive real-time: second user sees edit and delete changes without page reload'
+  - 'Admin can delete other users messages in channels they manage'
+  - 'Users cannot edit or delete other users messages in DMs'
+  test_isolation:
+  - 'Chat context tests use Ecto SQL Sandbox for database isolation'
+  - 'PubSub broadcast tests subscribe before action and assert_receive on envelope'
+  - 'LiveView tests use ConnCase with authenticated user fixtures'
+implementation_scope:
+  source_directories:
+  - lib/slackex/chat/
+  - lib/slackex/messaging/
+  - lib/slackex/cache/
+  - lib/slackex_web/live/chat_live/
+  - lib/slackex_web/components/
+  - priv/repo/migrations/
+  test_directories:
+  - test/slackex/chat/
+  - test/slackex/messaging/
+  - test/slackex_web/live/

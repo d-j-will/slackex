@@ -207,6 +207,89 @@ defmodule Slackex.Chat do
   # ---------------------------------------------------------------------------
 
   @doc """
+  Gets a message by ID. Returns the message or raises Ecto.NoResultsError.
+  """
+  def get_message!(id), do: Repo.get!(Message, id)
+
+  @doc """
+  Gets a message by ID. Returns `{:ok, message}` or `{:error, :not_found}`.
+  """
+  def get_message(id) do
+    case Repo.get(Message, id) do
+      nil -> {:error, :not_found}
+      message -> {:ok, message}
+    end
+  end
+
+  @doc """
+  Edits a message's content. Only the original sender may edit.
+
+  Returns `{:ok, message}` on success.
+  Returns `{:error, :not_found}` when the message does not exist.
+  Returns `{:error, :unauthorized}` when user_id does not match sender_id.
+  Returns `{:error, :deleted}` when the message has already been soft-deleted.
+  """
+  def edit_message(message_id, user_id, new_content) do
+    with {:ok, message} <- get_message(message_id),
+         :ok <- check_not_deleted(message),
+         :ok <- check_is_sender(message, user_id) do
+      sanitized = HtmlSanitizeEx.strip_tags(new_content)
+
+      message
+      |> Message.edit_changeset(%{
+        content: sanitized,
+        edited_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      })
+      |> Repo.update()
+    end
+  end
+
+  @doc """
+  Soft-deletes a message by nullifying content and setting deleted_at.
+
+  The message owner can always delete their own message (channel or DM).
+  In channels, admins and owners can delete any message.
+  In DMs, only the message sender can delete their own message.
+
+  Returns `{:ok, message}` on success.
+  Returns `{:error, :not_found}` when the message does not exist.
+  Returns `{:error, :unauthorized}` when the user lacks permission to delete.
+  """
+  def delete_message(message_id, user_id, opts \\ []) do
+    _ = opts
+
+    with {:ok, message} <- get_message(message_id),
+         :ok <- authorize_delete(message, user_id) do
+      message
+      |> Message.delete_changeset()
+      |> Repo.update()
+    end
+  end
+
+  defp check_not_deleted(%Message{deleted_at: nil}), do: :ok
+  defp check_not_deleted(%Message{}), do: {:error, :deleted}
+
+  defp check_is_sender(%Message{sender_id: sender_id}, user_id) when sender_id == user_id,
+    do: :ok
+
+  defp check_is_sender(%Message{}, _user_id), do: {:error, :unauthorized}
+
+  defp authorize_delete(%Message{sender_id: user_id}, user_id), do: :ok
+
+  defp authorize_delete(%Message{channel_id: channel_id} = _message, user_id)
+       when not is_nil(channel_id) do
+    role = get_role(user_id, channel_id)
+
+    if Permissions.can?(role, :delete_any_message) do
+      :ok
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  defp authorize_delete(%Message{}, _user_id), do: {:error, :unauthorized}
+
+  @doc """
   Sends a message to a channel. Checks sender has write permission,
   sanitizes HTML, generates Snowflake ID, broadcasts via PubSub.
   """

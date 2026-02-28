@@ -19,6 +19,18 @@ defmodule Slackex.Chat.PermissionsTest do
     test "owners can delete channels" do
       assert Permissions.can?("owner", :delete_channel)
     end
+
+    test "owners can edit own messages" do
+      assert Permissions.can?("owner", :edit_own_message)
+    end
+
+    test "owners can delete own messages" do
+      assert Permissions.can?("owner", :delete_own_message)
+    end
+
+    test "owners can delete any message" do
+      assert Permissions.can?("owner", :delete_any_message)
+    end
   end
 
   describe "can?/2 — admin" do
@@ -36,6 +48,18 @@ defmodule Slackex.Chat.PermissionsTest do
 
     test "admins cannot delete channels" do
       refute Permissions.can?("admin", :delete_channel)
+    end
+
+    test "admins can edit own messages" do
+      assert Permissions.can?("admin", :edit_own_message)
+    end
+
+    test "admins can delete own messages" do
+      assert Permissions.can?("admin", :delete_own_message)
+    end
+
+    test "admins can delete any message" do
+      assert Permissions.can?("admin", :delete_any_message)
     end
   end
 
@@ -55,6 +79,18 @@ defmodule Slackex.Chat.PermissionsTest do
     test "members cannot delete channels" do
       refute Permissions.can?("member", :delete_channel)
     end
+
+    test "members can edit own messages" do
+      assert Permissions.can?("member", :edit_own_message)
+    end
+
+    test "members can delete own messages" do
+      assert Permissions.can?("member", :delete_own_message)
+    end
+
+    test "members cannot delete any message" do
+      refute Permissions.can?("member", :delete_any_message)
+    end
   end
 
   describe "can?/2 — viewer" do
@@ -73,6 +109,18 @@ defmodule Slackex.Chat.PermissionsTest do
     test "viewers cannot delete channels" do
       refute Permissions.can?("viewer", :delete_channel)
     end
+
+    test "viewers cannot edit own messages" do
+      refute Permissions.can?("viewer", :edit_own_message)
+    end
+
+    test "viewers cannot delete own messages" do
+      refute Permissions.can?("viewer", :delete_own_message)
+    end
+
+    test "viewers cannot delete any message" do
+      refute Permissions.can?("viewer", :delete_any_message)
+    end
   end
 
   describe "can?/2 — nil (non-member)" do
@@ -90,6 +138,18 @@ defmodule Slackex.Chat.PermissionsTest do
 
     test "nil role cannot delete channels" do
       refute Permissions.can?(nil, :delete_channel)
+    end
+
+    test "nil role cannot edit own messages" do
+      refute Permissions.can?(nil, :edit_own_message)
+    end
+
+    test "nil role cannot delete own messages" do
+      refute Permissions.can?(nil, :delete_own_message)
+    end
+
+    test "nil role cannot delete any message" do
+      refute Permissions.can?(nil, :delete_any_message)
     end
   end
 end
