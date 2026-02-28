@@ -171,13 +171,13 @@ defmodule SlackexWeb.ChatComponents do
               <textarea
                 id={"edit-input-#{@message.id}"}
                 class="textarea textarea-bordered textarea-sm w-full"
+                maxlength="4000"
                 phx-hook="EditMessage"
               >{Map.get(@message, :content, "")}</textarea>
               <div class="flex gap-2 mt-1">
                 <button
                   phx-click="save_edit"
                   phx-value-msg-id={@message.id}
-                  phx-value-content={Map.get(@message, :content, "")}
                   class="btn btn-primary btn-xs"
                   id={"save-edit-#{@message.id}"}
                 >

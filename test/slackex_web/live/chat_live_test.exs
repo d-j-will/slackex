@@ -2088,6 +2088,44 @@ defmodule SlackexWeb.ChatLiveTest do
       refute render(lv) =~ "save_edit"
     end
 
+    test "inline edit form shows textarea pre-filled with original content and Save/Cancel buttons",
+         %{
+           conn: conn,
+           channel: channel,
+           message: message
+         } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(lv, "edit_message", %{"msg-id" => "#{message.id}"})
+
+      html = render(lv)
+      # Textarea should be pre-filled with the original content
+      assert html =~ "edit-input-#{message.id}"
+      assert html =~ "Original content"
+      # Save and Cancel buttons should be visible
+      assert html =~ "Save"
+      assert html =~ "Cancel"
+    end
+
+    test "inline edit form replaces message content area", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      {:ok, lv, html_before} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Before editing, message shows as plain text (no textarea)
+      refute html_before =~ "edit-input-#{message.id}"
+
+      render_click(lv, "edit_message", %{"msg-id" => "#{message.id}"})
+
+      html_after = render(lv)
+      # After editing, textarea appears
+      assert html_after =~ "edit-input-#{message.id}"
+      # The message content should be in the textarea, not as plain paragraph text
+      assert html_after =~ "textarea"
+    end
+
     test "save_edit updates message content and clears editing state", %{
       conn: conn,
       channel: channel,

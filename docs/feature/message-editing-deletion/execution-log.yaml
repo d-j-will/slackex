@@ -116,3 +116,28 @@ schema_version: '3.0'
   s: SKIPPED
   sid: 03-01
   t: '2026-02-28T04:03:00Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-02-28T04:00:30Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-02-28T04:01:00Z'
+- d: "NOT_APPLICABLE: acceptance tests cover inline edit form rendering and behavior through LiveView driving port"
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 03-02
+  t: '2026-02-28T04:01:05Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-02-28T04:02:00Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-02-28T04:03:00Z'
