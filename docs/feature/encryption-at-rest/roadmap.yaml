@@ -1,0 +1,204 @@
+roadmap:
+  project_id: encryption-at-rest
+  created_at: '2026-02-27T22:56:42Z'
+  total_steps: 6
+  phases: 3
+phases:
+- id: '01'
+  name: 'Vault setup, encrypted Ecto types, and message content encryption'
+  steps:
+  - id: 01-01
+    name: 'Cloak Vault and encrypted Ecto types'
+    description: >
+      Add cloak 1.1.4 and cloak_ecto 1.3.0 dependencies.
+      Create Slackex.Vault GenServer module configured with AES-GCM-256 cipher.
+      Add Vault to Application supervision tree before Repo.
+      Create custom encrypted Ecto types (Slackex.Encrypted.Binary, Slackex.Encrypted.Map)
+      and HMAC type (Slackex.Encrypted.HMAC) backed by the Vault.
+      Configure Vault keys per environment: static key in dev/test configs,
+      environment variable (CLOAK_KEY) in runtime.exs for prod.
+    time_estimate: '2 hours'
+    dependencies: []
+    files_to_modify:
+      - mix.exs (MODIFY)
+      - lib/slackex/vault.ex (CREATE)
+      - lib/slackex/encrypted/binary.ex (CREATE)
+      - lib/slackex/encrypted/map.ex (CREATE)
+      - lib/slackex/encrypted/hmac.ex (CREATE)
+      - lib/slackex/application.ex (MODIFY)
+      - config/config.exs (MODIFY)
+      - config/dev.exs (MODIFY)
+      - config/test.exs (MODIFY)
+      - config/runtime.exs (MODIFY)
+      - test/slackex/vault_test.exs (CREATE)
+    criteria:
+      - Vault GenServer starts successfully in the application supervision tree
+      - Encrypting then decrypting a binary value through Slackex.Encrypted.Binary returns the original value
+      - Encrypting then decrypting a map value through Slackex.Encrypted.Map returns the original map
+      - HMAC of identical inputs produces identical hashes; different inputs produce different hashes
+      - Vault reads encryption key from environment variable in prod config
+      - Running mix test test/slackex/vault_test.exs passes, confirming Vault initializes in test environment with static key
+  - id: 01-02
+    name: 'Encrypt message content field'
+    description: >
+      Create migration to add encrypted_content (:binary) column to messages table.
+      Update Message schema to use Slackex.Encrypted.Binary for the content field,
+      backed by the new encrypted_content column. The migration adds the column as
+      nullable initially for backward compatibility with existing plaintext rows.
+      Update changeset to cast through the encrypted type. Existing queries in
+      Chat context (list_messages, list_dm_messages, send_message, send_dm,
+      accept_dm_request) continue to work transparently since Cloak.Ecto
+      auto-encrypts on write and auto-decrypts on read.
+    time_estimate: '3 hours'
+    dependencies:
+      - 01-01
+    files_to_modify:
+      - priv/repo/migrations/TIMESTAMP_add_encrypted_content_to_messages.exs (CREATE)
+      - lib/slackex/chat/message.ex (MODIFY)
+      - test/slackex/chat/message_encryption_test.exs (CREATE)
+    criteria:
+      - New messages are stored as encrypted binary in the database (raw DB value is not plaintext)
+      - Reading a message via Chat context returns decrypted plaintext content
+      - Sending a message through Chat.send_message stores encrypted content and returns readable text
+      - Sending a DM through Chat.send_dm stores encrypted content and returns readable text
+      - Message content validation (min 1, max 4000 chars) still applies before encryption
+- id: '02'
+  name: 'Encrypt remaining sensitive fields across schemas'
+  steps:
+  - id: 02-01
+    name: 'Encrypt user email with HMAC search column'
+    description: >
+      Create migration to add encrypted_email (:binary) and email_hash (:binary)
+      columns to users table. Update User schema to use Slackex.Encrypted.Binary
+      for email and Slackex.Encrypted.HMAC for email_hash. Add unique index on
+      email_hash to replace the existing unique constraint on plaintext email.
+      Update Accounts.get_user_by_email_and_password to query by email_hash
+      instead of plaintext email. Update User.registration_changeset to
+      populate email_hash on cast. The email_hash enables exact-match lookups
+      on encrypted email without decryption.
+    time_estimate: '3 hours'
+    dependencies:
+      - 01-01
+    files_to_modify:
+      - priv/repo/migrations/TIMESTAMP_add_encrypted_email_to_users.exs (CREATE)
+      - lib/slackex/accounts/user.ex (MODIFY)
+      - lib/slackex/accounts/accounts.ex (MODIFY)
+      - test/slackex/accounts/user_encryption_test.exs (CREATE)
+    criteria:
+      - New user registration stores email as encrypted binary and populates email_hash
+      - Repo.get_by(User, email_hash: hash) finds the correct user for a given email
+      - Login via Accounts.get_user_by_email_and_password succeeds with correct email and password
+      - Duplicate email registration is rejected via unique constraint on email_hash
+      - Database unique index on email_hash enforces uniqueness at PostgreSQL level (raw INSERT with duplicate hash raises constraint violation)
+      - Raw database value for email column is not plaintext after migration
+  - id: 02-02
+    name: 'Encrypt DM request preview_text and abuse report fields'
+    description: >
+      Create migration to add encrypted columns: encrypted_preview_text (:binary) on
+      dm_requests, encrypted_description (:binary) and encrypted_metadata (:binary)
+      on abuse_reports. Update DMRequest schema to use Slackex.Encrypted.Binary for
+      preview_text. Update AbuseReport schema to use Slackex.Encrypted.Binary for
+      description and Slackex.Encrypted.Map for metadata. Update changesets to cast
+      through encrypted types. These fields are not searched by content, so no HMAC
+      hash columns are needed.
+    time_estimate: '2 hours'
+    dependencies:
+      - 01-01
+    files_to_modify:
+      - priv/repo/migrations/TIMESTAMP_add_encrypted_fields_to_dm_requests_and_abuse_reports.exs (CREATE)
+      - lib/slackex/chat/dm_request.ex (MODIFY)
+      - lib/slackex/chat/abuse_report.ex (MODIFY)
+      - test/slackex/chat/dm_request_encryption_test.exs (CREATE)
+      - test/slackex/chat/abuse_report_encryption_test.exs (CREATE)
+    criteria:
+      - Creating a DM request stores preview_text as encrypted binary in the database
+      - Reading a DM request via Chat.list_pending_requests_for_user returns decrypted preview_text
+      - Creating an abuse report stores description and metadata as encrypted binary
+      - Reading an abuse report returns decrypted description string and metadata map
+      - preview_text validation (max 500 chars) still applies before encryption
+- id: '03'
+  name: 'Plaintext data migration and key rotation support'
+  steps:
+  - id: 03-01
+    name: 'Migrate existing plaintext data to encrypted form'
+    description: >
+      Create a Mix task (mix slackex.encrypt_existing) that migrates existing
+      plaintext data to encrypted form in batches. Process each table
+      (messages, users, dm_requests, abuse_reports) by reading rows where the
+      encrypted column is null, encrypting the plaintext value, and writing
+      the encrypted result. Use batched streaming (500 rows per batch) to
+      avoid memory issues. For users, also populate email_hash from plaintext
+      email. The follow-up migration (TIMESTAMP_drop_plaintext_columns.exs) is
+      a separate Ecto migration file created alongside the Mix task. After running
+      the Mix task to encrypt all data, run mix ecto.migrate to apply the
+      drop-plaintext migration which drops original plaintext columns and renames
+      encrypted columns to the original names. Log progress with row counts per table.
+    time_estimate: '4 hours'
+    dependencies:
+      - 01-02
+      - 02-01
+      - 02-02
+    files_to_modify:
+      - lib/mix/tasks/slackex.encrypt_existing.ex (CREATE)
+      - priv/repo/migrations/TIMESTAMP_drop_plaintext_columns.exs (CREATE)
+      - test/mix/tasks/encrypt_existing_test.exs (CREATE)
+    criteria:
+      - Running mix slackex.encrypt_existing encrypts all existing plaintext message content
+      - Running mix slackex.encrypt_existing encrypts all existing plaintext user emails and populates email_hash
+      - Running mix slackex.encrypt_existing encrypts all existing plaintext dm_request preview_text
+      - Running mix slackex.encrypt_existing encrypts all existing plaintext abuse_report description and metadata
+      - Task processes rows in batches and logs progress (batch count and total rows processed per table)
+  - id: 03-02
+    name: 'Key rotation support via mix cloak.migrate'
+    description: >
+      Configure Vault to support multiple cipher keys: a current primary key for
+      new encryptions and retired keys for decrypting legacy ciphertexts. Add a
+      second cipher key configuration slot with :retired label in Vault config.
+      Create a Mix task (mix slackex.rotate_key) that wraps Cloak's migration
+      to re-encrypt all fields in all encrypted schemas with the current primary
+      key. Document key rotation procedure: generate new key, move old key to
+      retired slot, set new key as primary, run rotation task. Verify that data
+      encrypted with the old key remains readable during and after rotation.
+    time_estimate: '3 hours'
+    dependencies:
+      - 03-01
+    files_to_modify:
+      - lib/slackex/vault.ex (MODIFY)
+      - lib/mix/tasks/slackex.rotate_key.ex (CREATE)
+      - config/runtime.exs (MODIFY)
+      - test/slackex/vault_key_rotation_test.exs (CREATE)
+    criteria:
+      - Data encrypted with the original key is still readable after adding a new primary key
+      - New data is encrypted with the new primary key (not the retired key)
+      - Running mix slackex.rotate_key re-encrypts all rows in all encrypted tables with the current primary key
+      - After rotation, all data is readable using only the new primary key
+      - Vault configuration accepts both primary and retired key via separate environment variables
+implementation_scope:
+  source_directories:
+    - lib/slackex/vault.ex
+    - lib/slackex/encrypted/
+    - lib/slackex/chat/
+    - lib/slackex/accounts/
+    - lib/mix/tasks/
+  test_directories:
+    - test/slackex/
+    - test/mix/tasks/
+  excluded_patterns:
+    - _build/**
+    - deps/**
+phase_dependencies:
+  '02':
+    - '01'
+  '03':
+    - '01'
+    - '02'
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-02-27T23:05:00Z'
+  review_iterations: 2
+  defects_addressed:
+    - 'D1: Added Vault test environment initialization criterion to step 01-01'
+    - 'D2: Clarified migration sequencing in step 03-01 (separate Ecto migration file, explicit run order)'
+    - 'D3: Added database-level email_hash uniqueness index criterion to step 02-01'
+    - 'D4: Added explicit test passing criterion for Vault in test env to step 01-01'
