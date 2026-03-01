@@ -152,5 +152,7 @@ jobs:
 
           ssh -o StrictHostKeyChecking=accept-new root@${{ secrets.DEPLOY_HOST }} << 'EOF'
             docker pull ghcr.io/davewil/slackex:latest
-            cd /root/slackex && docker compose -f docker-compose.prod.yml up -d app
+            cd /root/slackex
+            docker compose -f docker-compose.prod.yml run --rm app bin/slackex eval "Slackex.Release.migrate()"
+            docker compose -f docker-compose.prod.yml up -d app
           EOF
