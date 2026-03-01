@@ -661,8 +661,8 @@ defmodule SlackexWeb.ChatLive.Index do
          |> assign(:dm_conversations, dm_conversations)
          |> push_patch(to: ~p"/chat/dm/#{dm.id}")}
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Could not send DM request.")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, dm_request_error_message(reason))}
     end
   end
 
@@ -1198,4 +1198,31 @@ defmodule SlackexWeb.ChatLive.Index do
     />
     """
   end
+
+  defp dm_request_error_message(:account_too_new),
+    do: "Your account must be at least 24 hours old to send DM requests."
+
+  defp dm_request_error_message(:no_shared_channels),
+    do: "You need to share a channel with this user before sending a DM request."
+
+  defp dm_request_error_message(:blocked),
+    do: "Unable to send a DM request to this user."
+
+  defp dm_request_error_message(:dm_restricted),
+    do: "Your DM privileges have been restricted."
+
+  defp dm_request_error_message(:cooldown_active),
+    do: "Please wait before sending another request to this user."
+
+  defp dm_request_error_message(:rate_limited),
+    do: "You're sending too many DM requests. Please try again later."
+
+  defp dm_request_error_message(:too_many_pending),
+    do: "You have too many pending DM requests. Wait for some to be accepted or declined."
+
+  defp dm_request_error_message(:dm_preference_rejected),
+    do: "This user is not accepting DM requests."
+
+  defp dm_request_error_message(_),
+    do: "Could not send DM request."
 end
