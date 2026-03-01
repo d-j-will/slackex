@@ -87,6 +87,43 @@ All database migrations must be **deploy-safe** — the old application code mus
 3. Deploy code that uses only the new schema
 4. Run the contract migration (if any)
 
+## Feature Flag Discipline
+
+All new user-facing features must be deployed behind a feature flag (FunWithFlags) and remain hidden until the Product Owner is satisfied. This applies to the expand/contract workflow:
+
+### Lifecycle
+1. **Develop** — implement the feature behind `FunWithFlags.enabled?(:feature_name, for: user)`. The flag defaults to off.
+2. **Deploy** — code ships to production but is invisible to users.
+3. **PO validation** — enable the flag for specific test users or groups via the admin UI. PO validates the feature in production.
+4. **Release** — PO approves, flag is enabled globally.
+5. **Contract** — remove the flag check and any old code path in a follow-up PR. Delete the flag from the admin UI.
+
+### Rules
+- **Never expose unfinished features** — if it's not behind a flag, it must be complete and approved.
+- **One flag per feature** — don't nest flags or create complex flag dependencies.
+- **Name flags descriptively** — use snake_case atoms: `:threaded_replies`, `:message_reactions`, not `:feature_1`.
+- **Clean up promptly** — flags that have been globally enabled for more than one release cycle should be removed (contract phase).
+- **Guard both UI and logic** — check the flag in the LiveView (to hide UI elements) and in the context module (to reject API calls). Don't rely on UI hiding alone.
+- **Flag checks are cheap** — FunWithFlags uses ETS cache, so checking flags in hot paths is fine.
+
+### In templates
+```elixir
+<%= if FunWithFlags.enabled?(:new_feature, for: @current_user) do %>
+  <.new_feature_component />
+<% end %>
+```
+
+### In context modules
+```elixir
+def some_action(user, params) do
+  if FunWithFlags.enabled?(:new_feature, for: user) do
+    # new behaviour
+  else
+    {:error, :not_available}
+  end
+end
+```
+
 ## General Workflow
 
 When the user provides a specific URL, package name, or configuration detail, use it immediately rather than exploring the codebase first. Ask for missing specifics upfront before starting work.
