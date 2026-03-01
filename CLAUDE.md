@@ -24,6 +24,8 @@ Always run `mix test` before committing. Verify zero failures before staging cha
 
 Run `mix dialyzer` after making code changes to catch type errors locally before CI. Fix all warnings — CI treats dialyzer warnings as failures. Common fix: use `_ = expr` to explicitly discard return values from fire-and-forget calls (PubSub.broadcast, Process.send_after, etc.).
 
+CI services must match local test infrastructure. The test database runs on port 5433 (not the default 5432) — both locally via `docker compose` and in CI via the GitHub Actions service port mapping. When modifying `config/test.exs` database settings or `.github/workflows/ci-deploy.yml` service ports, keep them in sync.
+
 ## Test Environment
 
 **Never dismiss test failures.** If tests fail due to infrastructure (database not running, Redis unavailable, etc.), fix the environment first, then re-run tests. Do not treat infrastructure failures as "not our problem."
