@@ -54,6 +54,39 @@ When fixing bugs in Phoenix LiveView:
 - Check existing codebase for actual module paths rather than guessing — use `Glob` or `Grep` to confirm
 - Read the relevant LiveView module and template before proposing a fix
 
+## Migration Discipline
+
+All database migrations must be **deploy-safe** — the old application code must continue working while the new migration is applied. Follow the expand/contract pattern:
+
+### Expand phase (deploy N)
+- **Add columns as nullable** (or with defaults). Never add `NOT NULL` columns without a default in a single step.
+- **Add new tables** freely — old code simply ignores them.
+- **Add new indexes** concurrently: use `@disable_ddl_transaction true` and `@disable_migration_lock true` with `CREATE INDEX CONCURRENTLY`.
+- **Keep old columns/tables in place** — do not rename or remove anything the running code still references.
+
+### Contract phase (deploy N+1 or later)
+- **Remove old columns/tables** only after all code referencing them has been deployed and is stable.
+- **Add NOT NULL constraints** only after backfilling existing rows (use a data migration or separate step).
+- **Drop indexes** that are no longer needed.
+
+### Never in a single migration
+- Rename a column or table (expand: add new, migrate data, contract: drop old)
+- Change a column type (expand: add new column, backfill, contract: drop old)
+- Add a NOT NULL column without a default
+- Drop a column still referenced by running code
+
+### Ecto-specific rules
+- Use `Ecto.Migration.execute/2` for reversible raw SQL.
+- Long-running data migrations belong in a separate task/script, not in a schema migration — avoid locking tables.
+- Test migrations both directions: `mix ecto.migrate` then `mix ecto.rollback` to verify reversibility.
+- Prefix migration filenames descriptively: `add_`, `create_`, `drop_`, `backfill_`, `remove_`.
+
+### Deployment order
+1. Deploy code that handles both old and new schema (expand-compatible)
+2. Run the expand migration
+3. Deploy code that uses only the new schema
+4. Run the contract migration (if any)
+
 ## General Workflow
 
 When the user provides a specific URL, package name, or configuration detail, use it immediately rather than exploring the codebase first. Ask for missing specifics upfront before starting work.
