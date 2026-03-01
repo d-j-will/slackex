@@ -27,15 +27,19 @@ defmodule SlackexWeb.ChatLive.Index do
     dm_conversations = Chat.list_user_dm_conversations(user.id)
     dm_requests = Chat.list_pending_requests_for_user(user.id)
 
-    if connected?(socket) do
-      Messaging.subscribe_user(user.id)
-      subscribe_all_conversations(channels, dm_conversations)
-      Phoenix.PubSub.subscribe(Slackex.PubSub, @presence_topic)
-      Phoenix.PubSub.subscribe(Slackex.PubSub, "profile:updates")
-      OnlineTracker.mark_online(user.id)
-      Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :online, user.id})
-      Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
-    end
+    _ =
+      if connected?(socket) do
+        _ = Messaging.subscribe_user(user.id)
+        subscribe_all_conversations(channels, dm_conversations)
+        _ = Phoenix.PubSub.subscribe(Slackex.PubSub, @presence_topic)
+        _ = Phoenix.PubSub.subscribe(Slackex.PubSub, "profile:updates")
+        OnlineTracker.mark_online(user.id)
+
+        _ =
+          Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :online, user.id})
+
+        Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
+      end
 
     unread_counts = Chat.batch_unread_counts(user.id)
 
@@ -160,16 +164,17 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_event("typing", _params, socket) do
     user = socket.assigns.current_user
 
-    cond do
-      socket.assigns.active_dm != nil ->
-        broadcast_typing(user, {:dm, socket.assigns.active_dm.id})
+    _ =
+      cond do
+        socket.assigns.active_dm != nil ->
+          broadcast_typing(user, {:dm, socket.assigns.active_dm.id})
 
-      socket.assigns.active_channel != nil and socket.assigns.can_send ->
-        broadcast_typing(user, {:channel, socket.assigns.active_channel.id})
+        socket.assigns.active_channel != nil and socket.assigns.can_send ->
+          broadcast_typing(user, {:channel, socket.assigns.active_channel.id})
 
-      true ->
-        :ok
-    end
+        true ->
+          :ok
+      end
 
     {:noreply, socket}
   end
@@ -287,8 +292,8 @@ defmodule SlackexWeb.ChatLive.Index do
     request = Enum.find(socket.assigns.dm_requests, &(&1.id == request_id))
 
     if request do
-      Chat.decline_dm_request(request_id, user.id)
-      Chat.block_user(user.id, request.sender_id)
+      _ = Chat.decline_dm_request(request_id, user.id)
+      _ = Chat.block_user(user.id, request.sender_id)
 
       dm_requests = remove_request(socket.assigns.dm_requests, request_id)
 
@@ -428,11 +433,12 @@ defmodule SlackexWeb.ChatLive.Index do
 
     case Accounts.update_user_profile(user, profile_params) do
       {:ok, updated_user} ->
-        Phoenix.PubSub.broadcast(
-          Slackex.PubSub,
-          "profile:updates",
-          {:profile_updated, updated_user}
-        )
+        _ =
+          Phoenix.PubSub.broadcast(
+            Slackex.PubSub,
+            "profile:updates",
+            {:profile_updated, updated_user}
+          )
 
         {:noreply,
          socket
@@ -558,7 +564,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
     if payload.user_id != user.id do
       typing_users = MapSet.put(socket.assigns.typing_users, payload.username)
-      Process.send_after(self(), {:clear_typing, payload.username}, @typing_timeout_ms)
+      _ = Process.send_after(self(), {:clear_typing, payload.username}, @typing_timeout_ms)
       {:noreply, assign(socket, :typing_users, typing_users)}
     else
       {:noreply, socket}
@@ -574,7 +580,7 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def handle_info(:online_heartbeat, socket) do
     OnlineTracker.refresh(socket.assigns.current_user.id)
-    Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
+    _ = Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
     {:noreply, socket}
   end
 
@@ -696,11 +702,12 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def terminate(_reason, socket) do
-    if socket.assigns[:current_user] do
-      user_id = socket.assigns.current_user.id
-      OnlineTracker.mark_offline(user_id)
-      Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :offline, user_id})
-    end
+    _ =
+      if socket.assigns[:current_user] do
+        user_id = socket.assigns.current_user.id
+        OnlineTracker.mark_offline(user_id)
+        Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :offline, user_id})
+      end
 
     :ok
   end
@@ -791,7 +798,7 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
-    if connected?(socket), do: Messaging.subscribe_channel(channel.id)
+    _ = if connected?(socket), do: Messaging.subscribe_channel(channel.id)
 
     messages = fetch_initial_messages(&Chat.list_messages/2, channel.id)
     Chat.mark_as_read(user.id, channel.id)
@@ -810,7 +817,7 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
-    if connected?(socket), do: Messaging.subscribe_dm(dm.id)
+    _ = if connected?(socket), do: Messaging.subscribe_dm(dm.id)
 
     other_user = dm_other_user(dm, user.id)
     messages = fetch_initial_messages(&Chat.list_dm_messages/2, dm.id)

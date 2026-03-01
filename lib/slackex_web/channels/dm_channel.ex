@@ -32,7 +32,7 @@ defmodule SlackexWeb.DMChannel do
       {:ok, dm} when dm.user_a_id == user_id or dm.user_b_id == user_id ->
         messages = Chat.list_dm_messages(dm_id, limit: 50)
         serialized = Enum.map(messages, &MessageJSON.data/1)
-        Phoenix.PubSub.subscribe(Slackex.PubSub, "dm:#{dm_id}")
+        _ = Phoenix.PubSub.subscribe(Slackex.PubSub, "dm:#{dm_id}")
         {:ok, %{messages: serialized}, assign(socket, :dm_id, dm_id)}
 
       {:ok, _dm} ->

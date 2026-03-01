@@ -432,7 +432,7 @@ defmodule Slackex.Chat do
   end
 
   defp maybe_broadcast_new_dm({:ok, dm} = result) do
-    broadcast_new_dm(dm)
+    _ = broadcast_new_dm(dm)
     result
   end
 
@@ -442,7 +442,9 @@ defmodule Slackex.Chat do
   defp check_rate_limit(initiator_id, false = _is_self_dm), do: DMRateLimiter.check(initiator_id)
 
   defp broadcast_new_dm(dm) do
-    Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_a_id}", {:dm_conversation_new, dm})
+    _ =
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_a_id}", {:dm_conversation_new, dm})
+
     Phoenix.PubSub.broadcast(Slackex.PubSub, "user:#{dm.user_b_id}", {:dm_conversation_new, dm})
   end
 
@@ -498,7 +500,7 @@ defmodule Slackex.Chat do
          :ok <- check_dm_preference(sender_id, recipient_id) do
       insert_dm_request(sender_id, recipient_id, preview_text)
       |> tap(fn
-        {:ok, request} -> broadcast_dm_request_new(request, recipient_id)
+        {:ok, request} -> _ = broadcast_dm_request_new(request, recipient_id)
         _error -> :ok
       end)
     else
@@ -678,8 +680,8 @@ defmodule Slackex.Chat do
     |> Repo.transaction()
     |> case do
       {:ok, %{accept: accepted_request, dm_conversation: dm, message: message} = _changes} ->
-        broadcast_dm_request_accepted(accepted_request)
-        broadcast_new_dm(dm)
+        _ = broadcast_dm_request_accepted(accepted_request)
+        _ = broadcast_new_dm(dm)
         {:ok, %{request: accepted_request, dm_conversation: dm, message: message}}
 
       {:error, :request, :not_found, _} ->

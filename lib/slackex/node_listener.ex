@@ -16,7 +16,7 @@ defmodule Slackex.NodeListener do
 
   @impl true
   def init(_opts) do
-    :net_kernel.monitor_nodes(true, node_type: :visible)
+    _ = :net_kernel.monitor_nodes(true, node_type: :visible)
     {:ok, %{}}
   end
 

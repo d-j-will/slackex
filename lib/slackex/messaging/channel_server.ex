@@ -104,8 +104,8 @@ defmodule Slackex.Messaging.ChannelServer do
       id: channel_id
     )
 
-    Phoenix.PubSub.subscribe(Slackex.PubSub, pubsub_topic(channel_type, channel_id))
-    Process.send_after(self(), :batch_flush, @batch_interval)
+    _ = Phoenix.PubSub.subscribe(Slackex.PubSub, pubsub_topic(channel_type, channel_id))
+    _ = Process.send_after(self(), :batch_flush, @batch_interval)
 
     {:ok,
      %{
@@ -150,18 +150,19 @@ defmodule Slackex.Messaging.ChannelServer do
           }
           |> put_target_field(state.channel_type, state.channel_id)
 
-        Cache.put_message({state.channel_type, state.channel_id}, message)
+        _ = Cache.put_message({state.channel_type, state.channel_id}, message)
         new_queue = bounded_enqueue(state.messages, message, @max_cached_messages)
         new_pending = [message | state.pending_writes]
 
         envelope =
           Envelope.wrap("message.new", {state.channel_type, state.channel_id}, message)
 
-        Phoenix.PubSub.broadcast(
-          Slackex.PubSub,
-          pubsub_topic(state.channel_type, state.channel_id),
-          {:envelope, envelope}
-        )
+        _ =
+          Phoenix.PubSub.broadcast(
+            Slackex.PubSub,
+            pubsub_topic(state.channel_type, state.channel_id),
+            {:envelope, envelope}
+          )
 
         new_state = %{
           state
@@ -197,7 +198,7 @@ defmodule Slackex.Messaging.ChannelServer do
       else
         ref = make_ref()
         batch = state.pending_writes
-        BatchWriter.async_insert_batch(batch, ref, epoch_opts(state))
+        _ = BatchWriter.async_insert_batch(batch, ref, epoch_opts(state))
 
         %{
           state
@@ -206,7 +207,7 @@ defmodule Slackex.Messaging.ChannelServer do
         }
       end
 
-    Process.send_after(self(), :batch_flush, @batch_interval)
+    _ = Process.send_after(self(), :batch_flush, @batch_interval)
     {:noreply, new_state, @idle_timeout}
   end
 
@@ -272,7 +273,7 @@ defmodule Slackex.Messaging.ChannelServer do
         )
 
         new_ref = make_ref()
-        BatchWriter.async_insert_batch(messages, new_ref, epoch_opts(state))
+        _ = BatchWriter.async_insert_batch(messages, new_ref, epoch_opts(state))
 
         updated_in_flight =
           Map.put(new_in_flight, new_ref, %{messages: messages, retry_count: count + 1})

@@ -22,6 +22,8 @@ Always run `mix format` before committing Elixir code. CI enforces formatting an
 
 Always run `mix test` before committing. Verify zero failures before staging changes. If CI includes `docker-compose` tests, ensure those configurations are updated too.
 
+Run `mix dialyzer` after making code changes to catch type errors locally before CI. Fix all warnings — CI treats dialyzer warnings as failures. Common fix: use `_ = expr` to explicitly discard return values from fire-and-forget calls (PubSub.broadcast, Process.send_after, etc.).
+
 ## Test Environment
 
 **Never dismiss test failures.** If tests fail due to infrastructure (database not running, Redis unavailable, etc.), fix the environment first, then re-run tests. Do not treat infrastructure failures as "not our problem."

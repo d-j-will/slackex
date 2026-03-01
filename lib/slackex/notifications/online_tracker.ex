@@ -28,21 +28,21 @@ defmodule Slackex.Notifications.OnlineTracker do
   @doc "Marks a user as online with a 2-minute TTL."
   @spec mark_online(integer()) :: :ok
   def mark_online(user_id) do
-    redis_command(["SET", redis_key(user_id), "1", "EX", @ttl_seconds], nil)
+    _ = redis_command(["SET", redis_key(user_id), "1", "EX", @ttl_seconds], nil)
     :ok
   end
 
   @doc "Removes the online marker for a user."
   @spec mark_offline(integer()) :: :ok
   def mark_offline(user_id) do
-    redis_command(["DEL", redis_key(user_id)], nil)
+    _ = redis_command(["DEL", redis_key(user_id)], nil)
     :ok
   end
 
   @doc "Refreshes the TTL for an already-online user."
   @spec refresh(integer()) :: :ok
   def refresh(user_id) do
-    redis_command(["EXPIRE", redis_key(user_id), @ttl_seconds], nil)
+    _ = redis_command(["EXPIRE", redis_key(user_id), @ttl_seconds], nil)
     :ok
   end
 

@@ -28,7 +28,7 @@ defmodule SlackexWeb.ChatChannel do
             messages = Chat.list_messages(channel_id, limit: 50)
             Chat.mark_as_read(user_id, channel_id)
             serialized = Enum.map(messages, &MessageJSON.data/1)
-            Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel_id}")
+            _ = Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel_id}")
             {:ok, %{messages: serialized}, assign(socket, :channel_id, channel_id)}
         end
 

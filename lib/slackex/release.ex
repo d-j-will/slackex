@@ -11,7 +11,7 @@ defmodule Slackex.Release do
   @app :slackex
 
   def migrate do
-    load_app()
+    _ = load_app()
 
     for repo <- repos() do
       {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
@@ -19,7 +19,7 @@ defmodule Slackex.Release do
   end
 
   def rollback(repo, version) do
-    load_app()
+    _ = load_app()
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
@@ -28,7 +28,7 @@ defmodule Slackex.Release do
   end
 
   defp load_app do
-    Application.ensure_all_started(:ssl)
-    Application.load(@app)
+    _ = Application.ensure_all_started(:ssl)
+    _ = Application.load(@app)
   end
 end

@@ -61,7 +61,7 @@ defmodule Slackex.Messaging do
       target = message_target(message)
       payload = %{id: message.id, content: message.content, edited_at: message.edited_at}
 
-      broadcast_envelope("message.edited", target, payload)
+      _ = broadcast_envelope("message.edited", target, payload)
 
       Cache.update_message(target, message.id, %{
         content: message.content,
@@ -85,7 +85,7 @@ defmodule Slackex.Messaging do
       target = message_target(message)
       payload = %{id: message.id, deleted_at: message.deleted_at}
 
-      broadcast_envelope("message.deleted", target, payload)
+      _ = broadcast_envelope("message.deleted", target, payload)
       Cache.remove_message(target, message.id)
 
       {:ok, message}

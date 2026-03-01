@@ -99,9 +99,10 @@ defmodule Slackex.ReadRepo.LagMonitor do
     :persistent_term.put(@lag_key, false)
     :persistent_term.put(@no_replica_key, no_replica)
 
-    unless no_replica do
-      schedule_check()
-    end
+    _ =
+      unless no_replica do
+        schedule_check()
+      end
 
     {:ok, %{no_replica: no_replica}}
   end
