@@ -39,3 +39,6 @@ npm-debug.log
 .omc/
 
 .nwave/
+
+# Production secrets
+.env

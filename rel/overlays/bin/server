@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+cd -P -- "$(dirname -- "$0")/.."
+
+echo "Running migrations..."
+./bin/slackex eval "Slackex.Release.migrate()"
+
+echo "Starting server..."
+exec ./bin/slackex start

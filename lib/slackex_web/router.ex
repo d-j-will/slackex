@@ -17,6 +17,9 @@ defmodule SlackexWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # Health check — outside auth pipelines
+  get "/health", SlackexWeb.HealthController, :index
+
   scope "/", SlackexWeb do
     pipe_through :browser
 

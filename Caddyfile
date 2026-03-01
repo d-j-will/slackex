@@ -1,0 +1,18 @@
+{
+	# Cloudflare handles SSL termination
+	auto_https off
+}
+
+:80 {
+	# Compression
+	encode gzip zstd
+
+	# Reverse proxy to Phoenix app
+	reverse_proxy app:4000 {
+		# Long timeouts for WebSocket connections (LiveView + UserSocket)
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+}

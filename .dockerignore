@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+_build
+deps
+
+# Test
+test
+
+# Documentation
+docs
+doc
+reviews
+specs
+
+# Secrets
+.env
+
+# IDE / Editor
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dev tools
+.omc
+.nwave
+tmp
+
+# Docker compose (dev)
+docker-compose.yml
