@@ -2,7 +2,7 @@ defmodule Slackex.AccountsTest do
   use Slackex.DataCase, async: true
 
   alias Slackex.Accounts
-  alias Slackex.Accounts.{Auth, Guardian}
+  alias Slackex.Accounts.{Auth, Guardian, User}
   alias Slackex.Repo
 
   describe "user registration" do
@@ -117,7 +117,7 @@ defmodule Slackex.AccountsTest do
 
       results = Accounts.search_users("john")
 
-      assert length(results) >= 1
+      assert results != []
       assert Enum.any?(results, fn user -> user.username == "johndoe" end)
     end
 
@@ -127,7 +127,7 @@ defmodule Slackex.AccountsTest do
 
       results = Accounts.search_users("John")
 
-      assert length(results) >= 1
+      assert results != []
       assert Enum.any?(results, fn user -> user.display_name == "John Doe" end)
     end
 
@@ -171,7 +171,7 @@ defmodule Slackex.AccountsTest do
       user = insert(:user)
 
       changeset =
-        Slackex.Accounts.User.profile_changeset(user, %{
+        User.profile_changeset(user, %{
           display_name: "New Name",
           status: "Away"
         })
@@ -185,7 +185,7 @@ defmodule Slackex.AccountsTest do
       user = insert(:user)
       long_name = String.duplicate("a", 51)
 
-      changeset = Slackex.Accounts.User.profile_changeset(user, %{display_name: long_name})
+      changeset = User.profile_changeset(user, %{display_name: long_name})
 
       refute changeset.valid?
       assert %{display_name: [_]} = errors_on(changeset)
@@ -195,7 +195,7 @@ defmodule Slackex.AccountsTest do
       user = insert(:user)
       long_status = String.duplicate("b", 101)
 
-      changeset = Slackex.Accounts.User.profile_changeset(user, %{status: long_status})
+      changeset = User.profile_changeset(user, %{status: long_status})
 
       refute changeset.valid?
       assert %{status: [_]} = errors_on(changeset)

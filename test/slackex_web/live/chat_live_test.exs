@@ -5,6 +5,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
   alias Slackex.Chat
   alias Slackex.Messaging.Envelope
+  alias Slackex.Notifications.OnlineTracker
 
   setup %{conn: conn} do
     # Clean ETS cache between tests
@@ -787,7 +788,7 @@ defmodule SlackexWeb.ChatLiveTest do
       # Click Join on dev-talk
       lv
       |> element(
-        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{dev_channel.id}\"]"
+        ~s(#browse-channels-modal [phx-click="join"][phx-value-channel-id="#{dev_channel.id}"])
       )
       |> render_click()
 
@@ -877,7 +878,7 @@ defmodule SlackexWeb.ChatLiveTest do
       # Join dev-talk
       lv
       |> element(
-        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{dev_channel.id}\"]"
+        ~s(#browse-channels-modal [phx-click="join"][phx-value-channel-id="#{dev_channel.id}"])
       )
       |> render_click()
 
@@ -976,7 +977,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
       lv
       |> element(
-        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{browsable_channel.id}\"]"
+        ~s(#browse-channels-modal [phx-click="join"][phx-value-channel-id="#{browsable_channel.id}"])
       )
       |> render_click()
 
@@ -993,7 +994,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
       lv
       |> element(
-        "#browse-channels-modal [phx-click=\"join\"][phx-value-channel-id=\"#{browsable_channel.id}\"]"
+        ~s(#browse-channels-modal [phx-click="join"][phx-value-channel-id="#{browsable_channel.id}"])
       )
       |> render_click()
 
@@ -1329,7 +1330,7 @@ defmodule SlackexWeb.ChatLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/chat")
 
       lv
-      |> element("[phx-click=\"accept_request\"][phx-value-id=\"#{req1.id}\"]")
+      |> element(~s([phx-click="accept_request"][phx-value-id="#{req1.id}"]))
       |> render_click()
 
       html = render(lv)
@@ -1351,7 +1352,7 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ sender1.display_name
 
       lv
-      |> element("[phx-click=\"decline_request\"][phx-value-id=\"#{req1.id}\"]")
+      |> element(~s([phx-click="decline_request"][phx-value-id="#{req1.id}"]))
       |> render_click()
 
       html = render(lv)
@@ -1372,7 +1373,7 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ sender1.display_name
 
       lv
-      |> element("[phx-click=\"block_request_sender\"][phx-value-id=\"#{req1.id}\"]")
+      |> element(~s([phx-click="block_request_sender"][phx-value-id="#{req1.id}"]))
       |> render_click()
 
       html = render(lv)
@@ -1582,7 +1583,7 @@ defmodule SlackexWeb.ChatLiveTest do
       _dm = create_dm_between(alice, bob)
 
       # Mark bob as online in Redis
-      Slackex.Notifications.OnlineTracker.mark_online(bob.id)
+      OnlineTracker.mark_online(bob.id)
 
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
@@ -1643,7 +1644,7 @@ defmodule SlackexWeb.ChatLiveTest do
       _dm = create_dm_between(alice, bob)
 
       # Mark bob as online so he shows up initially
-      Slackex.Notifications.OnlineTracker.mark_online(bob.id)
+      OnlineTracker.mark_online(bob.id)
 
       {:ok, lv, html} = live(conn, ~p"/chat")
 
@@ -1768,7 +1769,7 @@ defmodule SlackexWeb.ChatLiveTest do
       bob: bob,
       dm: _dm
     } do
-      Slackex.Notifications.OnlineTracker.mark_online(bob.id)
+      OnlineTracker.mark_online(bob.id)
 
       {:ok, lv, _html} = live(conn, ~p"/chat")
 

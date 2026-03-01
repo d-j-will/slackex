@@ -423,16 +423,20 @@ defmodule Slackex.Chat do
           %DMConversation{}
           |> DMConversation.changeset(%{user_a_id: lower_id, user_b_id: higher_id})
           |> Repo.insert()
-          |> tap(fn
-            {:ok, dm} -> broadcast_new_dm(dm)
-            _error -> :ok
-          end)
+          |> maybe_broadcast_new_dm()
         end
 
       dm ->
         {:ok, dm}
     end
   end
+
+  defp maybe_broadcast_new_dm({:ok, dm} = result) do
+    broadcast_new_dm(dm)
+    result
+  end
+
+  defp maybe_broadcast_new_dm(error), do: error
 
   defp check_rate_limit(_initiator_id, true = _is_self_dm), do: :ok
   defp check_rate_limit(initiator_id, false = _is_self_dm), do: DMRateLimiter.check(initiator_id)

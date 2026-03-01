@@ -15,6 +15,7 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
 
   use Mix.Task
 
+  alias Slackex.Encrypted
   alias Slackex.Repo
 
   @batch_size 500
@@ -54,8 +55,8 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
     total =
       fetch_batches("users", "email", "encrypted_email", fn rows ->
         Enum.each(rows, fn [id, plaintext_email] ->
-          {:ok, encrypted} = Slackex.Encrypted.Binary.dump(plaintext_email)
-          {:ok, hashed} = Slackex.Encrypted.HMAC.dump(plaintext_email)
+          {:ok, encrypted} = Encrypted.Binary.dump(plaintext_email)
+          {:ok, hashed} = Encrypted.HMAC.dump(plaintext_email)
 
           Repo.query!(
             "UPDATE users SET encrypted_email = $1, email_hash = $2 WHERE id = $3",
@@ -169,7 +170,7 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
   end
 
   defp encrypt_binary(plaintext) when is_binary(plaintext) do
-    {:ok, encrypted} = Slackex.Encrypted.Binary.dump(plaintext)
+    {:ok, encrypted} = Encrypted.Binary.dump(plaintext)
     encrypted
   end
 
@@ -182,7 +183,7 @@ defmodule Mix.Tasks.Slackex.EncryptExisting do
         true -> %{}
       end
 
-    {:ok, encrypted} = Slackex.Encrypted.Map.dump(map)
+    {:ok, encrypted} = Encrypted.Map.dump(map)
     encrypted
   end
 end

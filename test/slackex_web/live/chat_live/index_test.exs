@@ -2,6 +2,7 @@ defmodule SlackexWeb.ChatLive.IndexTest do
   use SlackexWeb.ConnCase, async: false
 
   alias Slackex.Chat
+  alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
 
   setup %{conn: conn} do
@@ -116,7 +117,7 @@ defmodule SlackexWeb.ChatLive.IndexTest do
 
       # Simulate a message arriving on channel PubSub topic
       envelope =
-        Slackex.Messaging.Envelope.wrap("message.new", {:channel, channel.id}, %{
+        Envelope.wrap("message.new", {:channel, channel.id}, %{
           id: System.unique_integer([:positive]),
           content: "Hello from bob",
           sender_id: bob.id,
@@ -140,7 +141,7 @@ defmodule SlackexWeb.ChatLive.IndexTest do
 
       # Simulate a message arriving on active channel
       envelope =
-        Slackex.Messaging.Envelope.wrap("message.new", {:channel, channel.id}, %{
+        Envelope.wrap("message.new", {:channel, channel.id}, %{
           id: System.unique_integer([:positive]),
           content: "Hello while active",
           sender_id: bob.id,
@@ -163,7 +164,7 @@ defmodule SlackexWeb.ChatLive.IndexTest do
 
       # Simulate a DM message arriving
       envelope =
-        Slackex.Messaging.Envelope.wrap("message.new", {:dm, dm.id}, %{
+        Envelope.wrap("message.new", {:dm, dm.id}, %{
           id: System.unique_integer([:positive]),
           content: "DM from bob",
           sender_id: bob.id,
@@ -185,7 +186,7 @@ defmodule SlackexWeb.ChatLive.IndexTest do
 
       # Send a message to create an unread
       envelope =
-        Slackex.Messaging.Envelope.wrap("message.new", {:channel, channel.id}, %{
+        Envelope.wrap("message.new", {:channel, channel.id}, %{
           id: System.unique_integer([:positive]),
           content: "Unread msg",
           sender_id: bob.id,

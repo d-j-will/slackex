@@ -22,6 +22,18 @@ Always run `mix format` before committing Elixir code. CI enforces formatting an
 
 Always run `mix test` before committing. Verify zero failures before staging changes. If CI includes `docker-compose` tests, ensure those configurations are updated too.
 
+## Test Environment
+
+**Never dismiss test failures.** If tests fail due to infrastructure (database not running, Redis unavailable, etc.), fix the environment first, then re-run tests. Do not treat infrastructure failures as "not our problem."
+
+Test infrastructure startup:
+1. Start Docker if not running: `open -a Docker` (wait for daemon with `docker info`)
+2. Start test services: `docker compose up -d postgres_test redis`
+3. Wait for readiness: `docker compose exec postgres_test pg_isready -U postgres`
+4. Then run: `mix test`
+
+Test database is `postgres_test` on port 5433 (configured in `config/test.exs`). Redis on port 6379.
+
 ## UI Component Conventions
 
 All modals and popovers must implement three dismiss mechanisms:

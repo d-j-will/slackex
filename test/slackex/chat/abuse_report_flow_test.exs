@@ -140,14 +140,14 @@ defmodule Slackex.Chat.AbuseReportFlowTest do
       attrs = %{
         category: "harassment",
         description: "Sending threatening messages",
-        message_id: 12345,
+        message_id: 12_345,
         metadata: %{"source" => "dm_conversation"}
       }
 
       {:ok, report} = Chat.create_abuse_report(reporter.id, reported.id, attrs)
 
       assert report.description == "Sending threatening messages"
-      assert report.message_id == 12345
+      assert report.message_id == 12_345
       assert report.metadata == %{"source" => "dm_conversation"}
     end
   end

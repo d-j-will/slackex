@@ -6,8 +6,19 @@ defmodule Slackex.Factory do
   import Ecto.Query, only: [from: 2]
 
   alias Slackex.Accounts.User
-  alias Slackex.Chat.{Channel, DMConversation, DMRequest, Message, ReadCursor, Subscription}
+
+  alias Slackex.Chat.{
+    AbuseReport,
+    Channel,
+    DMConversation,
+    DMRequest,
+    Message,
+    ReadCursor,
+    Subscription
+  }
+
   alias Slackex.Notifications.DeviceToken
+  alias Slackex.Repo
 
   def user_factory(attrs) do
     email = Map.get(attrs, :email, sequence(:email, &"user#{&1}@example.com"))
@@ -122,7 +133,7 @@ defmodule Slackex.Factory do
       |> DateTime.truncate(:microsecond)
 
     {1, _} =
-      Slackex.Repo.update_all(
+      Repo.update_all(
         from(u in Slackex.Accounts.User, where: u.id == ^user.id),
         set: [inserted_at: past]
       )
@@ -150,17 +161,17 @@ defmodule Slackex.Factory do
     }
 
     {:ok, report} =
-      %Slackex.Chat.AbuseReport{id: unique_bigint_id()}
-      |> Slackex.Chat.AbuseReport.changeset(report_attrs)
-      |> Slackex.Repo.insert()
+      %AbuseReport{id: unique_bigint_id()}
+      |> AbuseReport.changeset(report_attrs)
+      |> Repo.insert()
 
     past =
       DateTime.utc_now()
       |> DateTime.add(-hours_ago * 3600, :second)
       |> DateTime.truncate(:microsecond)
 
-    Slackex.Repo.update_all(
-      from(ar in Slackex.Chat.AbuseReport, where: ar.id == ^report.id),
+    Repo.update_all(
+      from(ar in AbuseReport, where: ar.id == ^report.id),
       set: [inserted_at: past]
     )
 

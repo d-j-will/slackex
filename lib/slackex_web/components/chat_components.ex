@@ -139,7 +139,7 @@ defmodule SlackexWeb.ChatComponents do
 
   def message_bubble(assigns) do
     message = assigns.message
-    is_own = is_own_message?(message, assigns.current_user_id)
+    is_own = own_message?(message, assigns.current_user_id)
     can_admin_delete = assigns.current_user_role in ["owner", "admin"]
 
     assigns =
@@ -244,7 +244,7 @@ defmodule SlackexWeb.ChatComponents do
   defp message_deleted?(message), do: Map.get(message, :deleted_at) != nil
   defp message_edited?(message), do: Map.get(message, :edited_at) != nil
 
-  defp is_own_message?(message, current_user_id) do
+  defp own_message?(message, current_user_id) do
     Map.get(message, :sender_id) == current_user_id
   end
 

@@ -961,19 +961,17 @@ defmodule SlackexWeb.ChatLive.Index do
     dm_conversations = socket.assigns.dm_conversations
 
     if Enum.any?(dm_conversations, fn dm -> dm.other_user.id == updated_user.id end) do
-      updated_dms =
-        Enum.map(dm_conversations, fn dm ->
-          if dm.other_user.id == updated_user.id do
-            %{dm | other_user: updated_user}
-          else
-            dm
-          end
-        end)
-
+      updated_dms = replace_other_user_in_dms(dm_conversations, updated_user)
       assign(socket, :dm_conversations, updated_dms)
     else
       socket
     end
+  end
+
+  defp replace_other_user_in_dms(dm_conversations, updated_user) do
+    Enum.map(dm_conversations, fn dm ->
+      if dm.other_user.id == updated_user.id, do: %{dm | other_user: updated_user}, else: dm
+    end)
   end
 
   defp restore_message_after_edit(socket, nil), do: socket

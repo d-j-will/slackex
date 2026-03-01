@@ -1,6 +1,7 @@
 defmodule Slackex.Accounts.UserEncryptionTest do
   use Slackex.DataCase, async: true
 
+  alias Ecto.Adapters.SQL
   alias Slackex.Accounts
   alias Slackex.Accounts.User
 
@@ -18,7 +19,7 @@ defmodule Slackex.Accounts.UserEncryptionTest do
 
       # Verify raw DB value for email column is not plaintext
       %{rows: [[raw_encrypted_email]]} =
-        Ecto.Adapters.SQL.query!(Repo, "SELECT encrypted_email FROM users WHERE id = $1", [
+        SQL.query!(Repo, "SELECT encrypted_email FROM users WHERE id = $1", [
           user.id
         ])
 

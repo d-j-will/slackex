@@ -111,11 +111,7 @@ defmodule Slackex.Cache.Local do
 
   @impl true
   def handle_call({:update_message, target, message_id, updates}, _from, state) do
-    transform_cached_messages(target, fn msgs ->
-      Enum.map(msgs, fn msg ->
-        if msg.id == message_id, do: Map.merge(msg, updates), else: msg
-      end)
-    end)
+    transform_cached_messages(target, &apply_message_update(&1, message_id, updates))
 
     {:reply, :ok, state}
   end
@@ -132,6 +128,12 @@ defmodule Slackex.Cache.Local do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  defp apply_message_update(msgs, message_id, updates) do
+    Enum.map(msgs, fn msg ->
+      if msg.id == message_id, do: Map.merge(msg, updates), else: msg
+    end)
+  end
 
   defp transform_cached_messages(target, transform_fn) do
     case :ets.lookup(@table, target) do

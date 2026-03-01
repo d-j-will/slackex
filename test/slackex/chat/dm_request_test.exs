@@ -2,6 +2,7 @@ defmodule Slackex.Chat.DMRequestTest do
   use Slackex.DataCase, async: true
 
   alias Slackex.Chat.DMRequest
+  alias Slackex.Infrastructure.Snowflake
 
   describe "changeset/2 validations" do
     test "valid attrs produce a valid changeset" do
@@ -92,7 +93,7 @@ defmodule Slackex.Chat.DMRequestTest do
       sender = insert(:user)
       recipient = insert(:user)
 
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
 
       assert {:ok, dm_request} =
                %DMRequest{id: id}
@@ -117,7 +118,7 @@ defmodule Slackex.Chat.DMRequestTest do
       sender = insert(:user)
       recipient = insert(:user)
 
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
 
       {:ok, dm_request} =
         %DMRequest{id: id}
@@ -138,7 +139,7 @@ defmodule Slackex.Chat.DMRequestTest do
       recipient = insert(:user)
       dm = insert(:dm_conversation)
 
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
 
       {:ok, dm_request} =
         %DMRequest{id: id}
@@ -158,8 +159,8 @@ defmodule Slackex.Chat.DMRequestTest do
       sender = insert(:user)
       recipient = insert(:user)
 
-      id1 = Slackex.Infrastructure.Snowflake.generate()
-      id2 = Slackex.Infrastructure.Snowflake.generate()
+      id1 = Snowflake.generate()
+      id2 = Snowflake.generate()
 
       {:ok, _} =
         %DMRequest{id: id1}
@@ -217,8 +218,8 @@ defmodule Slackex.Chat.DMRequestTest do
       sender = insert(:user)
       recipient = insert(:user)
 
-      id1 = Slackex.Infrastructure.Snowflake.generate()
-      id2 = Slackex.Infrastructure.Snowflake.generate()
+      id1 = Snowflake.generate()
+      id2 = Snowflake.generate()
 
       {:ok, first_request} =
         %DMRequest{id: id1}

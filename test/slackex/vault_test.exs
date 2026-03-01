@@ -1,8 +1,8 @@
 defmodule Slackex.VaultTest do
   use ExUnit.Case, async: true
 
-  alias Slackex.Vault
   alias Slackex.Encrypted
+  alias Slackex.Vault
 
   describe "Vault GenServer" do
     test "starts successfully and is alive in the supervision tree" do

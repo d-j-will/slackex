@@ -3,6 +3,9 @@ defmodule Slackex.VaultKeyRotationTest do
 
   import ExUnit.CaptureIO
 
+  alias Mix.Tasks.Slackex.RotateKey
+  alias Slackex.Accounts.User
+  alias Slackex.Chat.{AbuseReport, DMRequest, Message}
   alias Slackex.Repo
 
   @original_key Base.decode64!("AlhhcUBFZI1809fnVZuYlpT8GxESMBZ7XgtmRo16PA8=")
@@ -30,15 +33,15 @@ defmodule Slackex.VaultKeyRotationTest do
       user = insert(:user, email: "rotation@example.com")
 
       # Verify data is readable with original key
-      assert Repo.get!(Slackex.Chat.Message, message.id).content == "secret under original key"
-      assert Repo.get!(Slackex.Accounts.User, user.id).email == "rotation@example.com"
+      assert Repo.get!(Message, message.id).content == "secret under original key"
+      assert Repo.get!(User, user.id).email == "rotation@example.com"
 
       # Reconfigure Vault with new primary key + retired original key
       Slackex.Vault.reconfigure(dual_key_config())
 
       # Data encrypted with original key is still readable
-      assert Repo.get!(Slackex.Chat.Message, message.id).content == "secret under original key"
-      assert Repo.get!(Slackex.Accounts.User, user.id).email == "rotation@example.com"
+      assert Repo.get!(Message, message.id).content == "secret under original key"
+      assert Repo.get!(User, user.id).email == "rotation@example.com"
     end
 
     test "new data is encrypted with new primary key, not the retired key" do
@@ -54,8 +57,8 @@ defmodule Slackex.VaultKeyRotationTest do
       new_ciphertext = get_raw_encrypted("messages", "encrypted_content", new_message.id)
 
       # Both should be readable
-      assert Repo.get!(Slackex.Chat.Message, old_message.id).content == "old key data"
-      assert Repo.get!(Slackex.Chat.Message, new_message.id).content == "new key data"
+      assert Repo.get!(Message, old_message.id).content == "old key data"
+      assert Repo.get!(Message, new_message.id).content == "new key data"
 
       # Ciphertexts should differ (different cipher tags mean different binary prefixes)
       assert old_ciphertext != new_ciphertext
@@ -83,17 +86,17 @@ defmodule Slackex.VaultKeyRotationTest do
 
       # Run key rotation task
       capture_io(fn ->
-        Mix.Tasks.Slackex.RotateKey.run([])
+        RotateKey.run([])
       end)
 
       # All data should still be readable
-      assert Repo.get!(Slackex.Chat.Message, message.id).content == "rotate me message"
-      assert Repo.get!(Slackex.Accounts.User, user.id).email == "rotate@example.com"
+      assert Repo.get!(Message, message.id).content == "rotate me message"
+      assert Repo.get!(User, user.id).email == "rotate@example.com"
 
-      assert Repo.get!(Slackex.Chat.DMRequest, dm_request.id).preview_text ==
+      assert Repo.get!(DMRequest, dm_request.id).preview_text ==
                "rotate me preview"
 
-      report = Repo.get!(Slackex.Chat.AbuseReport, abuse_report.id)
+      report = Repo.get!(AbuseReport, abuse_report.id)
       assert report.description == "rotate me description"
       assert report.metadata == %{"evidence" => "screenshot.png"}
 
@@ -117,14 +120,14 @@ defmodule Slackex.VaultKeyRotationTest do
 
       # Rotate
       capture_io(fn ->
-        Mix.Tasks.Slackex.RotateKey.run([])
+        RotateKey.run([])
       end)
 
       # Remove retired key -- only new primary key remains
       Slackex.Vault.reconfigure(new_key_only_config())
 
       # Data should still be readable with only the new key
-      assert Repo.get!(Slackex.Chat.Message, message.id).content == "will survive rotation"
+      assert Repo.get!(Message, message.id).content == "will survive rotation"
     end
   end
 
@@ -166,8 +169,8 @@ defmodule Slackex.VaultKeyRotationTest do
     id = System.unique_integer([:positive]) + 1_000_000_000_000
 
     {:ok, report} =
-      %Slackex.Chat.AbuseReport{id: id}
-      |> Slackex.Chat.AbuseReport.changeset(%{
+      %AbuseReport{id: id}
+      |> AbuseReport.changeset(%{
         reporter_id: reporter.id,
         reported_user_id: reported.id,
         category: "spam",

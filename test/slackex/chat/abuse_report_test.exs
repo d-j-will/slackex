@@ -2,6 +2,7 @@ defmodule Slackex.Chat.AbuseReportTest do
   use Slackex.DataCase, async: true
 
   alias Slackex.Chat.AbuseReport
+  alias Slackex.Infrastructure.Snowflake
 
   @valid_categories ~w(spam harassment inappropriate_content phishing other)
   @valid_statuses ~w(open reviewed actioned dismissed)
@@ -105,7 +106,7 @@ defmodule Slackex.Chat.AbuseReportTest do
     test "inserting a valid abuse report succeeds with Snowflake ID" do
       reporter = insert(:user)
       reported = insert(:user)
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
 
       assert {:ok, report} =
                %AbuseReport{id: id}
@@ -133,7 +134,7 @@ defmodule Slackex.Chat.AbuseReportTest do
     test "belongs_to associations are defined" do
       reporter = insert(:user)
       reported = insert(:user)
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
 
       {:ok, report} =
         %AbuseReport{id: id}
@@ -154,7 +155,7 @@ defmodule Slackex.Chat.AbuseReportTest do
       reporter = insert(:user)
       reported = insert(:user)
       dm = insert(:dm_conversation)
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
 
       {:ok, report} =
         %AbuseReport{id: id}
@@ -174,7 +175,7 @@ defmodule Slackex.Chat.AbuseReportTest do
     test "message_id allows user-level reports without message context" do
       reporter = insert(:user)
       reported = insert(:user)
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
 
       assert {:ok, report} =
                %AbuseReport{id: id}
@@ -192,7 +193,7 @@ defmodule Slackex.Chat.AbuseReportTest do
     test "metadata stores JSONB data" do
       reporter = insert(:user)
       reported = insert(:user)
-      id = Slackex.Infrastructure.Snowflake.generate()
+      id = Snowflake.generate()
       meta = %{"source" => "dm_conversation", "flagged_words" => ["bad", "words"]}
 
       assert {:ok, report} =
@@ -211,8 +212,8 @@ defmodule Slackex.Chat.AbuseReportTest do
     test "unique partial index prevents duplicate open reports for same reporter-reported pair" do
       reporter = insert(:user)
       reported = insert(:user)
-      id1 = Slackex.Infrastructure.Snowflake.generate()
-      id2 = Slackex.Infrastructure.Snowflake.generate()
+      id1 = Snowflake.generate()
+      id2 = Snowflake.generate()
 
       {:ok, _} =
         %AbuseReport{id: id1}
@@ -239,8 +240,8 @@ defmodule Slackex.Chat.AbuseReportTest do
     test "reviewed report allows a new open report for same pair" do
       reporter = insert(:user)
       reported = insert(:user)
-      id1 = Slackex.Infrastructure.Snowflake.generate()
-      id2 = Slackex.Infrastructure.Snowflake.generate()
+      id1 = Snowflake.generate()
+      id2 = Snowflake.generate()
 
       {:ok, first_report} =
         %AbuseReport{id: id1}

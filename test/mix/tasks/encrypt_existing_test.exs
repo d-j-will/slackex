@@ -3,6 +3,9 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
 
   import ExUnit.CaptureIO
 
+  alias Mix.Tasks.Slackex.EncryptExisting
+  alias Slackex.Accounts.User
+  alias Slackex.Chat.{AbuseReport, DMRequest, Message}
   alias Slackex.Repo
 
   # ---------------------------------------------------------------------------
@@ -148,7 +151,7 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
       assert raw_before["encrypted_content"] == nil
 
       capture_io(fn ->
-        Mix.Tasks.Slackex.EncryptExisting.run([])
+        EncryptExisting.run([])
       end)
 
       # After migration: encrypted column populated
@@ -156,7 +159,7 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
       assert raw_after["encrypted_content"] != nil
 
       # Readable through normal Ecto schema
-      message = Repo.get!(Slackex.Chat.Message, msg_id)
+      message = Repo.get!(Message, msg_id)
       assert message.content == "Hello plaintext world"
     end
 
@@ -169,7 +172,7 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
       assert raw_before["email_hash"] == nil
 
       capture_io(fn ->
-        Mix.Tasks.Slackex.EncryptExisting.run([])
+        EncryptExisting.run([])
       end)
 
       raw_after = get_raw_row("users", user_id)
@@ -177,7 +180,7 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
       assert raw_after["email_hash"] != nil
 
       # Readable through normal Ecto schema
-      user = Repo.get!(Slackex.Accounts.User, user_id)
+      user = Repo.get!(User, user_id)
       assert user.email == "legacy@example.com"
     end
 
@@ -192,13 +195,13 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
       assert raw_before["encrypted_preview_text"] == nil
 
       capture_io(fn ->
-        Mix.Tasks.Slackex.EncryptExisting.run([])
+        EncryptExisting.run([])
       end)
 
       raw_after = get_raw_row("dm_requests", dm_id)
       assert raw_after["encrypted_preview_text"] != nil
 
-      dm_request = Repo.get!(Slackex.Chat.DMRequest, dm_id)
+      dm_request = Repo.get!(DMRequest, dm_id)
       assert dm_request.preview_text == "Hey, can we talk?"
     end
 
@@ -221,14 +224,14 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
       assert raw_before["encrypted_metadata"] == nil
 
       capture_io(fn ->
-        Mix.Tasks.Slackex.EncryptExisting.run([])
+        EncryptExisting.run([])
       end)
 
       raw_after = get_raw_row("abuse_reports", report_id)
       assert raw_after["encrypted_description"] != nil
       assert raw_after["encrypted_metadata"] != nil
 
-      report = Repo.get!(Slackex.Chat.AbuseReport, report_id)
+      report = Repo.get!(AbuseReport, report_id)
       assert report.description == "Spamming links"
       assert report.metadata == %{"evidence" => "screenshot.png"}
     end
@@ -244,7 +247,7 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
 
       log =
         capture_io(fn ->
-          Mix.Tasks.Slackex.EncryptExisting.run([])
+          EncryptExisting.run([])
         end)
 
       # Verify progress logging mentions row counts
@@ -262,11 +265,11 @@ defmodule Mix.Tasks.Slackex.EncryptExistingTest do
       plain_id = insert_plaintext_message(channel.id, user.id, "Needs encryption")
 
       capture_io(fn ->
-        Mix.Tasks.Slackex.EncryptExisting.run([])
+        EncryptExisting.run([])
       end)
 
       # The already-encrypted message should remain unchanged
-      reloaded = Repo.get!(Slackex.Chat.Message, message.id)
+      reloaded = Repo.get!(Message, message.id)
       assert reloaded.content == message.content
 
       # The plaintext row should now be encrypted
