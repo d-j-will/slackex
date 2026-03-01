@@ -21,6 +21,9 @@ services:
       GUARDIAN_SECRET_KEY: "${GUARDIAN_SECRET_KEY}"
     expose:
       - "4000"
+    networks:
+      - default
+      - proxy
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -52,21 +55,10 @@ services:
       timeout: 5s
       retries: 5
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on:
-      - app
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
 volumes:
   pgdata:
   redisdata:
-  caddy_data:
-  caddy_config:
+
+networks:
+  proxy:
+    external: true

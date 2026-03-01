@@ -1,18 +1,7 @@
-{
-	# Cloudflare handles SSL termination
-	auto_https off
-}
-
-:80 {
-	# Compression
-	encode gzip zstd
-
-	# Reverse proxy to Phoenix app
-	reverse_proxy app:4000 {
-		# Long timeouts for WebSocket connections (LiveView + UserSocket)
-		transport http {
-			read_timeout 0
-			write_timeout 0
-		}
-	}
-}
+# This block is added to the host-level Caddy at /opt/caddy/Caddyfile.
+# The host Caddy handles SSL via Cloudflare and proxies to the app container
+# on the shared "proxy" Docker network.
+#
+# chat.davewil.dev {
+#     reverse_proxy slackex-app-1:4000
+# }
