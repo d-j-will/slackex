@@ -23,20 +23,26 @@ RUN mix deps.compile
 # Copy config (needed before compile)
 COPY config config
 
-# Copy assets for frontend build
-COPY assets assets
+# Copy static assets (favicon, images, robots.txt)
 COPY priv priv
 
-# Download esbuild + tailwind binaries, then build & digest assets
-RUN mix assets.setup
-RUN mix assets.deploy
-
-# Copy application source
+# Copy application source (Tailwind @source scans lib/slackex_web for class usage)
 COPY lib lib
-COPY rel rel
 
 # Compile the application
 RUN mix compile
+
+# Install esbuild + tailwind binaries
+RUN mix assets.setup
+
+# Copy asset source files (JS, CSS, vendor)
+COPY assets assets
+
+# Build, minify, and digest assets (must come after lib/ is present)
+RUN mix assets.deploy
+
+# Copy release overlay files
+COPY rel rel
 
 # Build the release
 RUN mix release
