@@ -114,23 +114,12 @@ if config_env() == :prod do
 
   config :slackex, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
-  libcluster_topologies =
-    if System.get_env("LIBCLUSTER_ENABLED") == "true" do
-      [
-        k8s: [
-          strategy: Cluster.Strategy.Kubernetes.DNS,
-          config: [
-            service: System.get_env("LIBCLUSTER_K8S_SERVICE") || "slackex-nodes",
-            application_name: System.get_env("LIBCLUSTER_APP_NAME") || "slackex",
-            namespace: System.get_env("LIBCLUSTER_K8S_NAMESPACE") || "default"
-          ]
-        ]
+  config :libcluster,
+    topologies: [
+      gossip: [
+        strategy: Cluster.Strategy.Gossip
       ]
-    else
-      []
-    end
-
-  config :libcluster, topologies: libcluster_topologies
+    ]
 
   config :slackex, SlackexWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],

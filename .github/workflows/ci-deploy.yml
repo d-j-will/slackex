@@ -48,8 +48,8 @@ jobs:
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.17.3"
-          otp-version: "27.1"
+          elixir-version: "1.19.2"
+          otp-version: "28.1.1"
 
       - name: Cache deps
         uses: actions/cache@v4
@@ -164,8 +164,8 @@ jobs:
             # Prune old backups, keep last 10
             ls -t /root/slackex/backups/pre_deploy_*.dump 2>/dev/null | tail -n +11 | xargs -r rm --
 
-            # Pull new image and run migrations
+            # Pull new image and run migrations (once, via app1)
             docker pull ghcr.io/davewil/slackex:latest
-            docker compose -f docker-compose.prod.yml run --rm app bin/slackex eval "Slackex.Release.migrate()"
-            docker compose -f docker-compose.prod.yml up -d app
+            docker compose -f docker-compose.prod.yml run --rm app1 bin/slackex eval "Slackex.Release.migrate()"
+            docker compose -f docker-compose.prod.yml up -d app1 app2
           EOF

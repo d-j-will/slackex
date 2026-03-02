@@ -1,30 +1,44 @@
+x-app: &app-defaults
+  image: ghcr.io/davewil/slackex:latest
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  environment: &app-env
+    DATABASE_URL: "ecto://postgres:${POSTGRES_PASSWORD}@postgres/slackex_prod"
+    REDIS_URL: "redis://redis:6379"
+    PHX_HOST: "chat.davewil.dev"
+    PHX_SERVER: "true"
+    PORT: "4000"
+    SECRET_KEY_BASE: "${SECRET_KEY_BASE}"
+    CLOAK_KEY: "${CLOAK_KEY}"
+    CLOAK_HMAC_SECRET: "${CLOAK_HMAC_SECRET}"
+    GUARDIAN_SECRET_KEY: "${GUARDIAN_SECRET_KEY}"
+  expose:
+    - "4000"
+  networks:
+    - default
+    - proxy
+
 services:
-  app:
-    image: ghcr.io/davewil/slackex:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  app1:
+    <<: *app-defaults
+    hostname: app1
     environment:
-      DATABASE_URL: "ecto://postgres:${POSTGRES_PASSWORD}@postgres/slackex_prod"
-      REDIS_URL: "redis://redis:6379"
-      PHX_HOST: "chat.davewil.dev"
-      PHX_SERVER: "true"
-      PORT: "4000"
-      SECRET_KEY_BASE: "${SECRET_KEY_BASE}"
-      CLOAK_KEY: "${CLOAK_KEY}"
-      CLOAK_HMAC_SECRET: "${CLOAK_HMAC_SECRET}"
-      GUARDIAN_SECRET_KEY: "${GUARDIAN_SECRET_KEY}"
-    expose:
-      - "4000"
-    networks:
-      - default
-      - proxy
+      <<: *app-env
+      RELEASE_NODE: "slackex@app1"
+
+  app2:
+    <<: *app-defaults
+    hostname: app2
+    environment:
+      <<: *app-env
+      RELEASE_NODE: "slackex@app2"
 
   postgres:
     image: pgvector/pgvector:pg16
