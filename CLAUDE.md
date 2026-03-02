@@ -138,6 +138,10 @@ Production runs on a Docker host via SSH. The CI/CD pipeline (`.github/workflows
 - **Make pre-deploy operations non-fatal** (e.g., database backups). Use `cmd && echo "done" || echo "failed (non-fatal)"` instead of relying on `set -e` for best-effort steps. A failing backup should not block the entire deploy.
 - **Redirect stdin from `/dev/null`** on any `docker compose exec`, `docker compose run`, or interactive command inside an SSH heredoc (`ssh host << 'EOF'`). These commands read from stdin by default, which **consumes the rest of the heredoc** — silently eating all subsequent commands. The shell exits 0, CI reports success, but nothing after the offending command ever runs. Always use `docker compose exec ... < /dev/null` and `docker compose run ... < /dev/null`.
 - **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
+- **Use `docker restart caddy`, not `caddy reload`**, after recreating app containers. Caddy's `reload` compares the Caddyfile to its running config — if the file hasn't changed since the last reload, it reports "config is unchanged" and skips re-applying, retaining stale cached DNS for upstreams that were recreated with new IPs. A full `docker restart` forces Caddy to cold-start, re-read the bind-mounted Caddyfile, and resolve all upstream hostnames from scratch.
+- **Use `--remove-orphans`** with `docker compose up` to clean up containers from renamed/removed services. Orphan containers from old service names (e.g., `slackex-app-1` from a service once named `app`) continue running and can intercept traffic from reverse proxies that resolve by container name.
+- **Authenticate GHCR on the server** before pulling from private repos. Use `echo "$GITHUB_TOKEN" | ssh host docker login ghcr.io -u actor --password-stdin` before the SSH heredoc.
+- **Never dump Caddyfile contents to CI logs** — the Caddyfile contains API tokens (e.g., Cloudflare DNS challenge credentials). Use targeted checks (e.g., `grep reverse_proxy /opt/caddy/Caddyfile`) instead of `cat` when debugging.
 
 ## General Workflow
 

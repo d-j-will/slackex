@@ -185,56 +185,21 @@ jobs:
             # Recreate app containers with the new image (--remove-orphans cleans up stale containers)
             echo "Recreating containers..."
             docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build --remove-orphans app1 app2 2>&1
-            echo "Containers started. Waiting 10s for boot..."
-            sleep 10
+            echo "Containers started."
 
-            # ── Diagnostics: container health ──
-            echo "=== Container Status ==="
-            docker compose -f docker-compose.prod.yml ps 2>&1
-            echo "=== App1 Logs (last 50 lines) ==="
-            docker compose -f docker-compose.prod.yml logs --tail=50 app1 2>&1
-            echo "=== App2 Logs (last 50 lines) ==="
-            docker compose -f docker-compose.prod.yml logs --tail=50 app2 2>&1
-
-            # ── Diagnostics: network connectivity ──
-            echo "=== Proxy Network Members ==="
-            docker network inspect proxy --format '{{range .Containers}}{{.Name}} ({{.IPv4Address}}) {{end}}' 2>&1 || echo "proxy network not found"
-            echo ""
-            echo "=== All Docker Networks for app1 ==="
-            docker inspect slackex-app1-1 --format '{{range $net, $cfg := .NetworkSettings.Networks}}{{$net}}: {{$cfg.IPAddress}} aliases={{$cfg.Aliases}} {{end}}' 2>&1 || echo "app1 container not found"
-
-            # ── Diagnostics: Caddy config ──
-            echo "=== Caddy Config (bind-mounted at /opt/caddy/Caddyfile) ==="
-            cat /opt/caddy/Caddyfile 2>&1 || echo "File not found"
-
-            # Update Caddy config and restart (non-fatal — entire block is best-effort)
-            echo "=== Updating Caddy config ==="
+            # Update Caddy reverse proxy config and restart
+            # Full restart (not just reload) clears stale DNS/connection state after container recreation
+            echo "Updating Caddy config..."
             if [ -f /opt/caddy/Caddyfile ]; then
               sed -i 's|reverse_proxy .*:4000.*|reverse_proxy app1:4000 app2:4000|' /opt/caddy/Caddyfile
-              echo "=== Caddy Config After sed ==="
-              cat /opt/caddy/Caddyfile 2>&1
-
-              # Full restart (not just reload) — clears stale DNS/connection state after container recreation
-              echo "Restarting Caddy container..."
               docker restart caddy 2>&1 && echo "Caddy restarted." || echo "Caddy restart failed (non-fatal)"
-              sleep 5
             else
               echo "Caddy config not found at /opt/caddy/Caddyfile — skipping (manual setup required)"
             fi
 
-            # ── Diagnostics: Caddy logs after restart ──
-            echo "=== Caddy Logs (last 30 lines) ==="
-            docker logs caddy --tail=30 2>&1
-
-            # ── Diagnostics: end-to-end connectivity from Caddy to apps ──
-            echo "=== Connectivity Test: Caddy -> app1:4000 ==="
-            docker exec caddy sh -c 'wget -q -O /dev/null --timeout=5 http://app1:4000/ && echo "OK: app1 reachable" || echo "FAIL: app1 unreachable"' 2>&1
-            echo "=== Connectivity Test: Caddy -> app2:4000 ==="
-            docker exec caddy sh -c 'wget -q -O /dev/null --timeout=5 http://app2:4000/ && echo "OK: app2 reachable" || echo "FAIL: app2 unreachable"' 2>&1
-
-            # ── Diagnostics: end-to-end HTTPS test ──
-            echo "=== External-like Test: curl from host ==="
-            curl -sf --max-time 10 http://localhost:4000/ < /dev/null > /dev/null 2>&1 && echo "OK: localhost:4000 reachable" || echo "INFO: localhost:4000 not exposed (expected — apps are on Docker network only)"
-
+            # Verify containers are healthy
+            sleep 10
+            echo "=== Container Status ==="
+            docker compose -f docker-compose.prod.yml ps 2>&1
             echo "Deploy complete."
           EOF
