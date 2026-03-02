@@ -7,7 +7,7 @@ Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL 
 Key directories:
 - `lib/slackex/` — domain contexts (Chat, Messaging, Accounts)
 - `lib/slackex_web/` — LiveView, components, router
-- `test/` — ExUnit tests (currently 838 tests)
+- `test/` — ExUnit tests (currently 845 tests)
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
@@ -148,6 +148,7 @@ Production runs two app containers behind a Caddy reverse proxy on a Docker host
 
 ### General
 - **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
+- **Always check the latest tag before creating a new one** — run `git tag --sort=-creatordate | head -5` and increment from the highest existing version. Tags that are numerically lower than the latest will not trigger a deploy.
 
 ## General Workflow
 
