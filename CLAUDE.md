@@ -126,22 +126,28 @@ end
 
 ## Deployment Discipline
 
-Production runs on a Docker host via SSH. The CI/CD pipeline (`.github/workflows/ci-deploy.yml`) builds a Docker image, pushes to GHCR, then SSHes into the server to pull and restart containers using `docker-compose.prod.yml`.
+Production runs two app containers behind a Caddy reverse proxy on a Docker host. The CI/CD pipeline (`.github/workflows/ci-deploy.yml`) builds a Docker image, pushes to GHCR, SSHes into the server to pull and restart containers using `docker-compose.prod.yml`, then restarts Caddy to pick up new upstream IPs.
 
-### Deploy pipeline rules
+### Docker Compose rules
 - **Always use `docker compose pull`**, never bare `docker pull`. Docker Compose tracks image digests independently — a bare `docker pull` updates the local Docker cache but Compose may not recognise the change, silently running stale containers.
-- **Always pass `--force-recreate --no-build`** to `docker compose up`. Without `--force-recreate`, Compose may skip recreating containers when the `:latest` tag points to a new digest. `--no-build` prevents Compose from building from a local Dockerfile that may contain old source.
-- **Never define `build:` in `docker-compose.prod.yml`**. Production always uses pre-built images from GHCR. A `build` section risks Compose rebuilding from stale local source on the server.
-- **Keep the server's compose file in sync** with the repo. The deploy step must `scp docker-compose.prod.yml` to the server before running `docker compose` commands. The server has no `git pull` — if the compose file diverges, deploys silently misbehave.
-- **Redirect stderr to stdout (`2>&1`)** on all `docker compose` commands in the deploy script. Docker Compose writes progress and errors to stderr, which SSH heredocs don't forward to CI logs by default. Without this, deploy failures are invisible.
-- **Add echo markers** before and after every deploy step (`echo "Pulling latest image..."`, `echo "Deploy complete."`). These appear in CI logs and make it trivial to spot where a deploy stalled or failed.
-- **Make pre-deploy operations non-fatal** (e.g., database backups). Use `cmd && echo "done" || echo "failed (non-fatal)"` instead of relying on `set -e` for best-effort steps. A failing backup should not block the entire deploy.
-- **Redirect stdin from `/dev/null`** on any `docker compose exec`, `docker compose run`, or interactive command inside an SSH heredoc (`ssh host << 'EOF'`). These commands read from stdin by default, which **consumes the rest of the heredoc** — silently eating all subsequent commands. The shell exits 0, CI reports success, but nothing after the offending command ever runs. Always use `docker compose exec ... < /dev/null` and `docker compose run ... < /dev/null`.
-- **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
-- **Use `docker restart caddy`, not `caddy reload`**, after recreating app containers. Caddy's `reload` compares the Caddyfile to its running config — if the file hasn't changed since the last reload, it reports "config is unchanged" and skips re-applying, retaining stale cached DNS for upstreams that were recreated with new IPs. A full `docker restart` forces Caddy to cold-start, re-read the bind-mounted Caddyfile, and resolve all upstream hostnames from scratch.
-- **Use `--remove-orphans`** with `docker compose up` to clean up containers from renamed/removed services. Orphan containers from old service names (e.g., `slackex-app-1` from a service once named `app`) continue running and can intercept traffic from reverse proxies that resolve by container name.
+- **Always pass `--force-recreate --no-build --remove-orphans`** to `docker compose up`. `--force-recreate` ensures containers are replaced when the `:latest` digest changes. `--no-build` prevents rebuilding from stale local source. `--remove-orphans` cleans up containers from renamed/removed services that would otherwise keep running and intercept traffic.
+- **Never define `build:` in `docker-compose.prod.yml`**. Production always uses pre-built images from GHCR.
+- **Keep the server's compose file in sync** with the repo. The deploy step must `scp docker-compose.prod.yml` to the server before running `docker compose` commands — the server has no `git pull`.
 - **Authenticate GHCR on the server** before pulling from private repos. Use `echo "$GITHUB_TOKEN" | ssh host docker login ghcr.io -u actor --password-stdin` before the SSH heredoc.
-- **Never dump Caddyfile contents to CI logs** — the Caddyfile contains API tokens (e.g., Cloudflare DNS challenge credentials). Use targeted checks (e.g., `grep reverse_proxy /opt/caddy/Caddyfile`) instead of `cat` when debugging.
+
+### Caddy reverse proxy rules
+- **Use `docker restart caddy`, not `caddy reload`**, after recreating app containers. Caddy's `reload` compares the Caddyfile to its running config — if the file hasn't changed, it reports "config is unchanged" and retains stale cached DNS for upstreams that were recreated with new IPs. A full `docker restart` forces a cold start with fresh DNS resolution.
+- **The Caddyfile is bind-mounted** from `/opt/caddy/Caddyfile` on the host into the Caddy container at `/etc/caddy/Caddyfile`. Edit the host file; it's the same file inside the container.
+- **Never dump Caddyfile contents to CI logs** — it contains API tokens (e.g., Cloudflare DNS challenge credentials). Use targeted checks (e.g., `grep reverse_proxy /opt/caddy/Caddyfile`) when debugging.
+
+### SSH heredoc rules
+- **Redirect stdin from `/dev/null`** on any `docker compose exec`, `docker compose run`, or interactive command inside an SSH heredoc (`ssh host << 'EOF'`). These commands read from stdin by default, which **consumes the rest of the heredoc** — silently eating all subsequent commands. The shell exits 0, CI reports success, but nothing runs. Always use `docker compose exec ... < /dev/null`.
+- **Redirect stderr to stdout (`2>&1`)** on all `docker compose` commands. Docker Compose writes progress and errors to stderr, which SSH heredocs don't forward to CI logs by default.
+- **Add echo markers** before and after every deploy step. These appear in CI logs and make it trivial to spot where a deploy stalled or failed.
+- **Make pre-deploy operations non-fatal** (e.g., database backups). Use `cmd && echo "done" || echo "failed (non-fatal)"` instead of relying on `set -e` for best-effort steps.
+
+### General
+- **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
 
 ## General Workflow
 
