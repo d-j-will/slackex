@@ -203,38 +203,38 @@ jobs:
             echo "=== All Docker Networks for app1 ==="
             docker inspect slackex-app1-1 --format '{{range $net, $cfg := .NetworkSettings.Networks}}{{$net}}: {{$cfg.IPAddress}} aliases={{$cfg.Aliases}} {{end}}' 2>&1 || echo "app1 container not found"
 
-            # ── Diagnostics: Caddy config (host vs container) ──
-            echo "=== Host Caddy Config (/opt/caddy/Caddyfile) ==="
-            cat /opt/caddy/Caddyfile 2>&1 || echo "File not found on host"
-            echo "=== Container Caddy Config (/etc/caddy/Caddyfile) ==="
-            docker exec caddy cat /etc/caddy/Caddyfile 2>&1 || echo "File not found in container"
+            # ── Diagnostics: Caddy config ──
+            echo "=== Caddy Config (bind-mounted at /opt/caddy/Caddyfile) ==="
+            cat /opt/caddy/Caddyfile 2>&1 || echo "File not found"
 
-            # Update Caddy reverse proxy config and reload (non-fatal — Caddy config may need manual setup first time)
+            # Update Caddy config and restart (non-fatal — entire block is best-effort)
             echo "=== Updating Caddy config ==="
             if [ -f /opt/caddy/Caddyfile ]; then
               sed -i 's|reverse_proxy .*:4000.*|reverse_proxy app1:4000 app2:4000|' /opt/caddy/Caddyfile
-              echo "=== Host Config After sed ==="
+              echo "=== Caddy Config After sed ==="
               cat /opt/caddy/Caddyfile 2>&1
 
-              # Copy edited config INTO the container (host file may not be bind-mounted)
-              docker cp /opt/caddy/Caddyfile caddy:/etc/caddy/Caddyfile 2>&1
-              echo "=== Container Config After copy ==="
-              docker exec caddy cat /etc/caddy/Caddyfile 2>&1
-
-              docker exec caddy caddy reload --config /etc/caddy/Caddyfile 2>&1 && echo "Caddy reloaded." || echo "Caddy reload failed (non-fatal)"
+              # Full restart (not just reload) — clears stale DNS/connection state after container recreation
+              echo "Restarting Caddy container..."
+              docker restart caddy 2>&1 && echo "Caddy restarted." || echo "Caddy restart failed (non-fatal)"
+              sleep 5
             else
               echo "Caddy config not found at /opt/caddy/Caddyfile — skipping (manual setup required)"
             fi
 
-            # ── Diagnostics: Caddy error logs ──
-            echo "=== Caddy Logs (last 20 lines) ==="
-            docker logs caddy --tail=20 2>&1
+            # ── Diagnostics: Caddy logs after restart ──
+            echo "=== Caddy Logs (last 30 lines) ==="
+            docker logs caddy --tail=30 2>&1
 
             # ── Diagnostics: end-to-end connectivity from Caddy to apps ──
             echo "=== Connectivity Test: Caddy -> app1:4000 ==="
             docker exec caddy sh -c 'wget -q -O /dev/null --timeout=5 http://app1:4000/ && echo "OK: app1 reachable" || echo "FAIL: app1 unreachable"' 2>&1
             echo "=== Connectivity Test: Caddy -> app2:4000 ==="
             docker exec caddy sh -c 'wget -q -O /dev/null --timeout=5 http://app2:4000/ && echo "OK: app2 reachable" || echo "FAIL: app2 unreachable"' 2>&1
+
+            # ── Diagnostics: end-to-end HTTPS test ──
+            echo "=== External-like Test: curl from host ==="
+            curl -sf --max-time 10 http://localhost:4000/ < /dev/null > /dev/null 2>&1 && echo "OK: localhost:4000 reachable" || echo "INFO: localhost:4000 not exposed (expected — apps are on Docker network only)"
 
             echo "Deploy complete."
           EOF
