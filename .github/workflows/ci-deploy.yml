@@ -203,20 +203,32 @@ jobs:
             echo "=== All Docker Networks for app1 ==="
             docker inspect slackex-app1-1 --format '{{range $net, $cfg := .NetworkSettings.Networks}}{{$net}}: {{$cfg.IPAddress}} aliases={{$cfg.Aliases}} {{end}}' 2>&1 || echo "app1 container not found"
 
-            # ── Diagnostics: Caddy config ──
-            echo "=== Current Caddy Config (/opt/caddy/Caddyfile) ==="
-            cat /opt/caddy/Caddyfile 2>&1 || echo "File not found"
+            # ── Diagnostics: Caddy config (host vs container) ──
+            echo "=== Host Caddy Config (/opt/caddy/Caddyfile) ==="
+            cat /opt/caddy/Caddyfile 2>&1 || echo "File not found on host"
+            echo "=== Container Caddy Config (/etc/caddy/Caddyfile) ==="
+            docker exec caddy cat /etc/caddy/Caddyfile 2>&1 || echo "File not found in container"
 
             # Update Caddy reverse proxy config and reload (non-fatal — Caddy config may need manual setup first time)
             echo "=== Updating Caddy config ==="
             if [ -f /opt/caddy/Caddyfile ]; then
               sed -i 's|reverse_proxy .*:4000.*|reverse_proxy app1:4000 app2:4000|' /opt/caddy/Caddyfile
-              echo "=== Caddy Config After sed ==="
+              echo "=== Host Config After sed ==="
               cat /opt/caddy/Caddyfile 2>&1
+
+              # Copy edited config INTO the container (host file may not be bind-mounted)
+              docker cp /opt/caddy/Caddyfile caddy:/etc/caddy/Caddyfile 2>&1
+              echo "=== Container Config After copy ==="
+              docker exec caddy cat /etc/caddy/Caddyfile 2>&1
+
               docker exec caddy caddy reload --config /etc/caddy/Caddyfile 2>&1 && echo "Caddy reloaded." || echo "Caddy reload failed (non-fatal)"
             else
               echo "Caddy config not found at /opt/caddy/Caddyfile — skipping (manual setup required)"
             fi
+
+            # ── Diagnostics: Caddy error logs ──
+            echo "=== Caddy Logs (last 20 lines) ==="
+            docker logs caddy --tail=20 2>&1
 
             # ── Diagnostics: end-to-end connectivity from Caddy to apps ──
             echo "=== Connectivity Test: Caddy -> app1:4000 ==="
