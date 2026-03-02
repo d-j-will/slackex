@@ -146,6 +146,10 @@ Production runs two app containers behind a Caddy reverse proxy on a Docker host
 - **Add echo markers** before and after every deploy step. These appear in CI logs and make it trivial to spot where a deploy stalled or failed.
 - **Make pre-deploy operations non-fatal** (e.g., database backups). Use `cmd && echo "done" || echo "failed (non-fatal)"` instead of relying on `set -e` for best-effort steps.
 
+### Phoenix release config
+- **Compile-time endpoint keys must be set in `config/prod.exs`**, not only in `config/runtime.exs`. Phoenix validates that compile-time config matches runtime values at boot — a mismatch crashes the release. Keys like `force_ssl`, `url`, `server`, and `cache_static_manifest` are compile-time. Set the value in `prod.exs` and (if needed) repeat or override it in `runtime.exs`.
+- **After adding any endpoint config in `runtime.exs`**, check whether Phoenix treats it as compile-time by searching for `@compile_env` in the Phoenix source or testing with `MIX_ENV=prod mix compile` followed by a release boot.
+
 ### General
 - **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
 - **Always check the latest tag before creating a new one** — run `git tag --sort=-creatordate | head -5` and increment from the highest existing version. Tags that are numerically lower than the latest will not trigger a deploy.
