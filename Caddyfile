@@ -1,7 +1,8 @@
 # This block is added to the host-level Caddy at /opt/caddy/Caddyfile.
-# The host Caddy handles SSL via Cloudflare and proxies to the app container
-# on the shared "proxy" Docker network.
+# The host Caddy handles SSL via Cloudflare and proxies to the app containers
+# on the shared "proxy" Docker network. Service names (app1, app2) resolve via
+# Docker DNS aliases set by Compose on the external proxy network.
 #
 # chat.davewil.dev {
-#     reverse_proxy slackex-app-1:4000
+#     reverse_proxy app1:4000 app2:4000
 # }

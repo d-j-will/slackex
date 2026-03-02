@@ -151,8 +151,9 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-          # Copy the production compose file to the server (ensures it stays in sync with the repo)
+          # Copy deployment files to the server (ensures they stay in sync with the repo)
           scp docker-compose.prod.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/docker-compose.prod.yml
+          scp Caddyfile root@${{ secrets.DEPLOY_HOST }}:/root/slackex/Caddyfile
 
           # Authenticate Docker on the server to pull from private GHCR
           echo "${{ secrets.GITHUB_TOKEN }}" | ssh root@${{ secrets.DEPLOY_HOST }} docker login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -181,8 +182,18 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm --no-TTY app1 bin/slackex eval "Slackex.Release.migrate()" < /dev/null 2>&1
             echo "Migrations complete."
 
-            # Recreate app containers with the new image
+            # Recreate app containers with the new image (--remove-orphans cleans up stale containers)
             echo "Recreating containers..."
-            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build app1 app2 2>&1
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build --remove-orphans app1 app2 2>&1
+            echo "Containers started."
+
+            # Update Caddy reverse proxy config and reload (non-fatal — Caddy config may need manual setup first time)
+            echo "Updating Caddy config..."
+            if [ -f /opt/caddy/Caddyfile ]; then
+              sed -i 's|reverse_proxy .*:4000.*|reverse_proxy app1:4000 app2:4000|' /opt/caddy/Caddyfile
+              docker exec caddy caddy reload --config /etc/caddy/Caddyfile 2>&1 && echo "Caddy reloaded." || echo "Caddy reload failed (non-fatal)"
+            else
+              echo "Caddy config not found at /opt/caddy/Caddyfile — skipping (manual setup required)"
+            fi
             echo "Deploy complete."
           EOF
