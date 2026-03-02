@@ -26,6 +26,11 @@ services:
   app1:
     <<: *app-defaults
     hostname: app1
+    networks:
+      default:
+      proxy:
+        aliases:
+          - app1
     environment:
       <<: *app-env
       RELEASE_NODE: "slackex@app1"
@@ -33,6 +38,11 @@ services:
   app2:
     <<: *app-defaults
     hostname: app2
+    networks:
+      default:
+      proxy:
+        aliases:
+          - app2
     environment:
       <<: *app-env
       RELEASE_NODE: "slackex@app2"
