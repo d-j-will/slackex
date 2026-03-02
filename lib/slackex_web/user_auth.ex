@@ -11,9 +11,15 @@ defmodule SlackexWeb.UserAuth do
   alias Slackex.Accounts
 
   # How long after the user is logged out before the browser is redirected.
-  @max_age 60 * 60 * 24 * 60
+  @max_age 60 * 60 * 24 * 14
   @remember_me_cookie "_slackex_web_user_remember_me"
-  @remember_me_options [sign: true, max_age: @max_age, same_site: "Lax"]
+  @remember_me_options [
+    sign: true,
+    max_age: @max_age,
+    same_site: "Lax",
+    secure: Application.compile_env(:slackex, :env) == :prod,
+    http_only: true
+  ]
 
   @doc """
   Logs the user in.

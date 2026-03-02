@@ -9,12 +9,25 @@ defmodule SlackexWeb.Router do
     plug :fetch_live_flash
     plug :put_root_layout, html: {SlackexWeb.Layouts, :root}
     plug :protect_from_forgery
-    plug :put_secure_browser_headers
+
+    plug :put_secure_browser_headers, %{
+      "content-security-policy" =>
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss:; frame-ancestors 'none'"
+    }
+
     plug :fetch_current_user
   end
 
   pipeline :api do
     plug :accepts, ["json"]
+  end
+
+  pipeline :rate_limit_auth do
+    plug SlackexWeb.Plugs.RateLimit, max_requests: 10, window_seconds: 60
+  end
+
+  pipeline :rate_limit_api_auth do
+    plug SlackexWeb.Plugs.RateLimit, max_requests: 10, window_seconds: 60
   end
 
   # Health check — outside auth pipelines
@@ -29,7 +42,7 @@ defmodule SlackexWeb.Router do
   ## Authentication routes
 
   scope "/", SlackexWeb do
-    pipe_through :browser
+    pipe_through [:browser, :rate_limit_auth]
 
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
@@ -61,7 +74,7 @@ defmodule SlackexWeb.Router do
   end
 
   scope "/api", SlackexWeb.API do
-    pipe_through :api
+    pipe_through [:api, :rate_limit_api_auth]
 
     scope "/auth" do
       post "/login", AuthController, :login
@@ -77,15 +90,15 @@ defmodule SlackexWeb.Router do
     delete "/device-tokens", DeviceTokenController, :delete
   end
 
-  scope "/", SlackexWeb do
-    pipe_through :browser
-
-    live_session :mockups, layout: false do
-      live "/ui-mockups", MockupLive.Index, :index
-    end
-  end
-
   if Application.compile_env(:slackex, :dev_routes) do
+    scope "/", SlackexWeb do
+      pipe_through :browser
+
+      live_session :mockups, layout: false do
+        live "/ui-mockups", MockupLive.Index, :index
+      end
+    end
+
     scope "/dev" do
       pipe_through :browser
     end

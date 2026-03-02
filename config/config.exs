@@ -78,6 +78,8 @@ config :slackex, Slackex.Encrypted.HMAC,
   algorithm: :sha256,
   secret: "dev-only-hmac-secret-override-in-prod"
 
+config :bcrypt_elixir, log_rounds: 12
+
 config :libcluster, topologies: []
 
 config :slackex, :redis_url, "redis://localhost:6379"

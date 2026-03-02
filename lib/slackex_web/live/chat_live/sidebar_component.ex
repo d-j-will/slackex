@@ -44,7 +44,11 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
   end
 
   def handle_event("show_profile", %{"user-id" => user_id}, socket) do
-    send(self(), {:show_profile, String.to_integer(user_id)})
+    case Integer.parse(user_id) do
+      {int_id, ""} -> send(self(), {:show_profile, int_id})
+      _ -> :noop
+    end
+
     {:noreply, socket}
   end
 

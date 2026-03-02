@@ -165,9 +165,17 @@ defmodule Slackex.Cache.Redis do
     key = cursor_key(user_id, target)
 
     case command(["GET", key]) do
-      {:ok, nil} -> :miss
-      {:ok, val} -> {:ok, String.to_integer(val)}
-      _ -> :miss
+      {:ok, nil} ->
+        :miss
+
+      {:ok, val} ->
+        case Integer.parse(val) do
+          {int, ""} -> {:ok, int}
+          _ -> :miss
+        end
+
+      _ ->
+        :miss
     end
   end
 

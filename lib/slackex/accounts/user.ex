@@ -13,7 +13,6 @@ defmodule Slackex.Accounts.User do
              :id,
              :username,
              :display_name,
-             :email,
              :avatar_url,
              :status,
              :dm_preference,

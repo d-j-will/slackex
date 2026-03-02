@@ -1,14 +1,14 @@
 defmodule SlackexWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :slackex
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
     key: "_slackex_key",
     signing_salt: "Vx7ryvLt",
-    same_site: "Lax"
+    encryption_salt: "k8mR3qLw",
+    same_site: "Lax",
+    secure: Application.compile_env(:slackex, :env) == :prod,
+    http_only: true
   ]
 
   socket "/socket", SlackexWeb.UserSocket,
@@ -50,7 +50,8 @@ defmodule SlackexWeb.Endpoint do
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
+    json_decoder: Phoenix.json_library(),
+    length: 1_000_000
 
   plug Plug.MethodOverride
   plug Plug.Head

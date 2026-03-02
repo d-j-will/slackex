@@ -248,7 +248,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event("accept_request", %{"id" => request_id}, socket) do
     user = socket.assigns.current_user
-    request_id = String.to_integer(request_id)
+    request_id = safe_to_integer(request_id)
 
     case Chat.accept_dm_request(request_id, user.id) do
       {:ok, %{dm_conversation: dm}} ->
@@ -269,7 +269,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event("decline_request", %{"id" => request_id}, socket) do
     user = socket.assigns.current_user
-    request_id = String.to_integer(request_id)
+    request_id = safe_to_integer(request_id)
 
     case Chat.decline_dm_request(request_id, user.id) do
       {:ok, _request} ->
@@ -287,7 +287,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event("block_request_sender", %{"id" => request_id}, socket) do
     user = socket.assigns.current_user
-    request_id = String.to_integer(request_id)
+    request_id = safe_to_integer(request_id)
 
     request = Enum.find(socket.assigns.dm_requests, &(&1.id == request_id))
 
@@ -346,7 +346,7 @@ defmodule SlackexWeb.ChatLive.Index do
     {:noreply,
      socket
      |> assign(:show_report_modal, true)
-     |> assign(:report_message_id, String.to_integer(message_id))}
+     |> assign(:report_message_id, safe_to_integer(message_id))}
   end
 
   def handle_event("submit_report", %{"report" => report_params}, socket) do
@@ -389,8 +389,14 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("show_profile", %{"user-id" => user_id}, socket) do
-    user = Accounts.get_user!(String.to_integer(user_id))
-    {:noreply, assign(socket, :profile_user, user)}
+    user_id = safe_to_integer(user_id)
+
+    if is_nil(user_id) do
+      {:noreply, socket}
+    else
+      user = Accounts.get_user!(user_id)
+      {:noreply, assign(socket, :profile_user, user)}
+    end
   end
 
   def handle_event("close_profile", _params, socket) do
@@ -451,7 +457,7 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("edit_message", %{"msg-id" => message_id}, socket) do
-    message_id = String.to_integer(message_id)
+    message_id = safe_to_integer(message_id)
     user = socket.assigns.current_user
 
     # Only allow editing own messages
@@ -494,7 +500,7 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("delete_message", %{"msg-id" => message_id}, socket) do
-    message_id = String.to_integer(message_id)
+    message_id = safe_to_integer(message_id)
     user = socket.assigns.current_user
 
     case Messaging.delete_message(message_id, user.id) do
@@ -508,12 +514,22 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
-  defp extract_message_id(%{"msg-id" => id}, _fallback), do: String.to_integer(id)
+  defp extract_message_id(%{"msg-id" => id}, _fallback), do: safe_to_integer(id)
   defp extract_message_id(_params, fallback), do: fallback
 
   defp parse_message_id(nil), do: nil
   defp parse_message_id(""), do: nil
-  defp parse_message_id(id) when is_binary(id), do: String.to_integer(id)
+  defp parse_message_id(id) when is_binary(id), do: safe_to_integer(id)
+
+  defp safe_to_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ -> nil
+    end
+  end
+
+  defp safe_to_integer(value) when is_integer(value), do: value
+  defp safe_to_integer(_), do: nil
 
   # ---------------------------------------------------------------------------
   # PubSub / Info handlers

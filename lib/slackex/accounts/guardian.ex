@@ -18,8 +18,14 @@ defmodule Slackex.Accounts.Guardian do
 
   @impl Guardian
   def resource_from_claims(%{"sub" => id}) do
-    user = Accounts.get_user!(String.to_integer(id))
-    {:ok, user}
+    case Integer.parse(id) do
+      {int_id, ""} ->
+        user = Accounts.get_user!(int_id)
+        {:ok, user}
+
+      _ ->
+        {:error, :invalid_claims}
+    end
   rescue
     Ecto.NoResultsError -> {:error, :resource_not_found}
   end

@@ -1,5 +1,7 @@
 import Config
 
+config :slackex, env: :dev
+
 # Configure your database
 config :slackex, Slackex.Repo,
   username: "postgres",

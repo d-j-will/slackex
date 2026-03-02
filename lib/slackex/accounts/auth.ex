@@ -52,8 +52,10 @@ defmodule Slackex.Accounts.Auth do
                where: t.token == ^hashed_jti and t.context == "api_access"
            ),
          true <- not is_nil(token_record) do
-      user_id = String.to_integer(claims["sub"])
-      {:ok, user_id}
+      case Integer.parse(claims["sub"] || "") do
+        {user_id, ""} -> {:ok, user_id}
+        _ -> {:error, :invalid_subject}
+      end
     else
       false -> {:error, :token_revoked}
       {:error, reason} -> {:error, reason}

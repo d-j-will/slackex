@@ -39,7 +39,11 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
   end
 
   def handle_event("select_user", %{"user-id" => user_id}, socket) do
-    send(self(), {:start_dm_request, String.to_integer(user_id)})
+    case Integer.parse(user_id) do
+      {int_id, ""} -> send(self(), {:start_dm_request, int_id})
+      _ -> :noop
+    end
+
     {:noreply, socket}
   end
 

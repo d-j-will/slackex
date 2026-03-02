@@ -7,7 +7,7 @@ defmodule Slackex.Accounts.UserToken do
   import Ecto.Query
 
   @rand_size 32
-  @session_validity_in_days 60
+  @session_validity_in_days 14
 
   schema "user_tokens" do
     field :token, :binary
@@ -25,7 +25,8 @@ defmodule Slackex.Accounts.UserToken do
   """
   def build_session_token(user) do
     token = :crypto.strong_rand_bytes(@rand_size)
-    {token, %__MODULE__{token: token, context: "session", user_id: user.id}}
+    hashed = :crypto.hash(:sha256, token)
+    {token, %__MODULE__{token: hashed, context: "session", user_id: user.id}}
   end
 
   @doc """
@@ -40,11 +41,13 @@ defmodule Slackex.Accounts.UserToken do
   Checks if a session token is valid and returns the user query.
   """
   def verify_session_token_query(token) do
+    hashed = :crypto.hash(:sha256, token)
+
     query =
       from t in __MODULE__,
         join: user in assoc(t, :user),
         where:
-          t.token == ^token and t.context == "session" and
+          t.token == ^hashed and t.context == "session" and
             t.inserted_at > ago(@session_validity_in_days, "day"),
         select: user
 
@@ -54,6 +57,11 @@ defmodule Slackex.Accounts.UserToken do
   @doc """
   Query for looking up a user by session token.
   """
+  def token_and_context_query(token, "session") do
+    hashed = :crypto.hash(:sha256, token)
+    from __MODULE__, where: [token: ^hashed, context: "session"]
+  end
+
   def token_and_context_query(token, context) do
     from __MODULE__, where: [token: ^token, context: ^context]
   end

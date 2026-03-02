@@ -936,7 +936,10 @@ defmodule Slackex.Chat do
     upsert_read_cursor(user_id, :dm_conversation_id, dm_conversation_id)
   end
 
-  defp upsert_read_cursor(user_id, target_field, target_id) do
+  @valid_cursor_fields [:channel_id, :dm_conversation_id]
+
+  defp upsert_read_cursor(user_id, target_field, target_id)
+       when target_field in @valid_cursor_fields do
     latest_id = latest_message_id(target_field, target_id)
 
     attrs =
