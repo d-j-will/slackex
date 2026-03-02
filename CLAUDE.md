@@ -136,6 +136,7 @@ Production runs on a Docker host via SSH. The CI/CD pipeline (`.github/workflows
 - **Redirect stderr to stdout (`2>&1`)** on all `docker compose` commands in the deploy script. Docker Compose writes progress and errors to stderr, which SSH heredocs don't forward to CI logs by default. Without this, deploy failures are invisible.
 - **Add echo markers** before and after every deploy step (`echo "Pulling latest image..."`, `echo "Deploy complete."`). These appear in CI logs and make it trivial to spot where a deploy stalled or failed.
 - **Make pre-deploy operations non-fatal** (e.g., database backups). Use `cmd && echo "done" || echo "failed (non-fatal)"` instead of relying on `set -e` for best-effort steps. A failing backup should not block the entire deploy.
+- **Redirect stdin from `/dev/null`** on any `docker compose exec`, `docker compose run`, or interactive command inside an SSH heredoc (`ssh host << 'EOF'`). These commands read from stdin by default, which **consumes the rest of the heredoc** — silently eating all subsequent commands. The shell exits 0, CI reports success, but nothing after the offending command ever runs. Always use `docker compose exec ... < /dev/null` and `docker compose run ... < /dev/null`.
 - **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
 
 ## General Workflow

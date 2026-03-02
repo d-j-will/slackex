@@ -162,7 +162,7 @@ jobs:
             mkdir -p /root/slackex/backups
             echo "Creating pre-deploy database backup..."
             docker compose -f docker-compose.prod.yml exec -T postgres \
-              pg_dump -U postgres -Fc slackex_prod > /root/slackex/backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump \
+              pg_dump -U postgres -Fc slackex_prod < /dev/null > /root/slackex/backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump \
               && echo "Backup complete." || echo "Backup failed (non-fatal), continuing deploy..."
 
             # Prune old backups, keep last 10
@@ -175,7 +175,7 @@ jobs:
 
             # Run migrations (once, via app1)
             echo "Running migrations..."
-            docker compose -f docker-compose.prod.yml run --rm app1 bin/slackex eval "Slackex.Release.migrate()" 2>&1
+            docker compose -f docker-compose.prod.yml run --rm --no-TTY app1 bin/slackex eval "Slackex.Release.migrate()" < /dev/null 2>&1
             echo "Migrations complete."
 
             # Recreate app containers with the new image
