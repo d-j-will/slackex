@@ -155,12 +155,12 @@ jobs:
             set -e
             cd /root/slackex
 
-            # Backup database before any changes
+            # Backup database before any changes (best-effort — don't fail deploy if backup fails)
             mkdir -p /root/slackex/backups
             echo "Creating pre-deploy database backup..."
             docker compose -f docker-compose.prod.yml exec -T postgres \
-              pg_dump -U postgres -Fc slackex_prod > /root/slackex/backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump
-            echo "Backup complete."
+              pg_dump -U postgres -Fc slackex_prod > /root/slackex/backups/pre_deploy_$(date +%Y%m%d_%H%M%S).dump \
+              && echo "Backup complete." || echo "Backup failed (non-fatal), continuing deploy..."
 
             # Prune old backups, keep last 10
             ls -t /root/slackex/backups/pre_deploy_*.dump 2>/dev/null | tail -n +11 | xargs -r rm --
