@@ -154,6 +154,9 @@ jobs:
           # Copy the production compose file to the server (ensures it stays in sync with the repo)
           scp docker-compose.prod.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/docker-compose.prod.yml
 
+          # Authenticate Docker on the server to pull from private GHCR
+          echo "${{ secrets.GITHUB_TOKEN }}" | ssh root@${{ secrets.DEPLOY_HOST }} docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
           ssh -o StrictHostKeyChecking=accept-new root@${{ secrets.DEPLOY_HOST }} << 'EOF'
             set -e
             cd /root/slackex
