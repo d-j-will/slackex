@@ -141,7 +141,7 @@ jobs:
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          oauth-secret: ${{ secrets.TAILSCALE_AUTHKEY }}
           tags: tag:ci
 
       - name: Deploy to Docker host
