@@ -151,6 +151,9 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
+          # Copy the production compose file to the server (ensures it stays in sync with the repo)
+          scp docker-compose.prod.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/docker-compose.prod.yml
+
           ssh -o StrictHostKeyChecking=accept-new root@${{ secrets.DEPLOY_HOST }} << 'EOF'
             set -e
             cd /root/slackex
@@ -165,8 +168,18 @@ jobs:
             # Prune old backups, keep last 10
             ls -t /root/slackex/backups/pre_deploy_*.dump 2>/dev/null | tail -n +11 | xargs -r rm --
 
-            # Pull new image and run migrations (once, via app1)
-            docker pull ghcr.io/davewil/slackex:latest
-            docker compose -f docker-compose.prod.yml run --rm app1 bin/slackex eval "Slackex.Release.migrate()"
-            docker compose -f docker-compose.prod.yml up -d --force-recreate app1 app2
+            # Pull new image via Compose (ensures Compose tracks the updated digest)
+            echo "Pulling latest image..."
+            docker compose -f docker-compose.prod.yml pull app1 app2 2>&1
+            echo "Pull complete."
+
+            # Run migrations (once, via app1)
+            echo "Running migrations..."
+            docker compose -f docker-compose.prod.yml run --rm app1 bin/slackex eval "Slackex.Release.migrate()" 2>&1
+            echo "Migrations complete."
+
+            # Recreate app containers with the new image
+            echo "Recreating containers..."
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build app1 app2 2>&1
+            echo "Deploy complete."
           EOF

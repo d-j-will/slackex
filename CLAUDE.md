@@ -124,6 +124,20 @@ def some_action(user, params) do
 end
 ```
 
+## Deployment Discipline
+
+Production runs on a Docker host via SSH. The CI/CD pipeline (`.github/workflows/ci-deploy.yml`) builds a Docker image, pushes to GHCR, then SSHes into the server to pull and restart containers using `docker-compose.prod.yml`.
+
+### Deploy pipeline rules
+- **Always use `docker compose pull`**, never bare `docker pull`. Docker Compose tracks image digests independently — a bare `docker pull` updates the local Docker cache but Compose may not recognise the change, silently running stale containers.
+- **Always pass `--force-recreate --no-build`** to `docker compose up`. Without `--force-recreate`, Compose may skip recreating containers when the `:latest` tag points to a new digest. `--no-build` prevents Compose from building from a local Dockerfile that may contain old source.
+- **Never define `build:` in `docker-compose.prod.yml`**. Production always uses pre-built images from GHCR. A `build` section risks Compose rebuilding from stale local source on the server.
+- **Keep the server's compose file in sync** with the repo. The deploy step must `scp docker-compose.prod.yml` to the server before running `docker compose` commands. The server has no `git pull` — if the compose file diverges, deploys silently misbehave.
+- **Redirect stderr to stdout (`2>&1`)** on all `docker compose` commands in the deploy script. Docker Compose writes progress and errors to stderr, which SSH heredocs don't forward to CI logs by default. Without this, deploy failures are invisible.
+- **Add echo markers** before and after every deploy step (`echo "Pulling latest image..."`, `echo "Deploy complete."`). These appear in CI logs and make it trivial to spot where a deploy stalled or failed.
+- **Make pre-deploy operations non-fatal** (e.g., database backups). Use `cmd && echo "done" || echo "failed (non-fatal)"` instead of relying on `set -e` for best-effort steps. A failing backup should not block the entire deploy.
+- **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
+
 ## General Workflow
 
 When the user provides a specific URL, package name, or configuration detail, use it immediately rather than exploring the codebase first. Ask for missing specifics upfront before starting work.
