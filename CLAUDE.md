@@ -60,6 +60,23 @@ Rules:
 - **Never stuff synthetic data into GenServer state** without cleaning it up. If a test replaces `pending_writes` with fake data, clear it before the test exits so `terminate/2` doesn't try to flush garbage through BatchWriter.
 - **`async: false` does NOT isolate across modules** — it only serializes tests within the same module. Multiple `async: false` modules can interleave. Centralized cleanup in `DataCase` is the only reliable isolation mechanism.
 
+### Ecto upsert safety
+
+**Never use `on_conflict: :nothing` without handling the nil-id ghost struct.** When a conflict occurs, Ecto returns `{:ok, %Struct{id: nil}}` — a struct that looks successful but has no database identity. Downstream code using the nil id will hit FK constraint violations.
+
+Safe pattern:
+```elixir
+case Repo.insert(changeset, on_conflict: :nothing, conflict_target: [...]) do
+  {:ok, %MySchema{id: nil}} ->
+    # Conflict: re-fetch the existing record
+    {:ok, Repo.get_by!(MySchema, unique_field: value)}
+  other ->
+    other
+end
+```
+
+This applies to any `Repo.insert` with `on_conflict: :nothing`. The race window exists even with a prior `get_by` check — in READ COMMITTED isolation, concurrent transactions can both see nil and both attempt the insert.
+
 ## UI Component Conventions
 
 All modals and popovers must implement three dismiss mechanisms:
