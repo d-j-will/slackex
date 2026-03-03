@@ -681,24 +681,29 @@ defmodule Slackex.Chat do
       |> Repo.update()
     end)
     |> Multi.run(:message, fn _repo, %{request: request, dm_conversation: dm} ->
-      id = Snowflake.generate()
-      sanitized = HtmlSanitizeEx.strip_tags(request.preview_text)
+      sanitized = HtmlSanitizeEx.strip_tags(request.preview_text || "")
 
-      %Message{}
-      |> Message.changeset(%{
-        id: id,
-        content: sanitized,
-        sender_id: request.sender_id,
-        dm_conversation_id: dm.id
-      })
-      |> Repo.insert()
+      if String.trim(sanitized) == "" do
+        {:ok, nil}
+      else
+        id = Snowflake.generate()
+
+        %Message{}
+        |> Message.changeset(%{
+          id: id,
+          content: sanitized,
+          sender_id: request.sender_id,
+          dm_conversation_id: dm.id
+        })
+        |> Repo.insert()
+      end
     end)
     |> Repo.transaction()
     |> case do
-      {:ok, %{accept: accepted_request, dm_conversation: dm, message: message} = _changes} ->
+      {:ok, %{accept: accepted_request, dm_conversation: dm} = changes} ->
         _ = broadcast_dm_request_accepted(accepted_request)
         _ = broadcast_new_dm(dm)
-        {:ok, %{request: accepted_request, dm_conversation: dm, message: message}}
+        {:ok, %{request: accepted_request, dm_conversation: dm, message: changes[:message]}}
 
       {:error, :request, :not_found, _} ->
         {:error, :not_found}
