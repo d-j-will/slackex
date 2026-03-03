@@ -108,3 +108,6 @@ config :libcluster,
 config :slackex, :flags_admin_auth,
   username: "admin",
   password: "devpassword"
+
+# Use deterministic stub for embeddings in development
+config :slackex, :embedding_client, Slackex.Embeddings.StubClient

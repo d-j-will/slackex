@@ -68,3 +68,6 @@ config :fun_with_flags, :cache_bust_notifications, enabled: false
 config :slackex, :flags_admin_auth,
   username: "admin",
   password: "testpassword"
+
+# Use deterministic stub for embeddings in tests
+config :slackex, :embedding_client, Slackex.Embeddings.StubClient

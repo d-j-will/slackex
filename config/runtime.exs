@@ -121,6 +121,15 @@ if config_env() == :prod do
       ]
     ]
 
+  openai_api_key =
+    System.get_env("OPENAI_API_KEY") ||
+      raise """
+      environment variable OPENAI_API_KEY is missing.
+      Required for embedding generation via the OpenAI API.
+      """
+
+  config :slackex, :openai_api_key, openai_api_key
+
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",
     password:

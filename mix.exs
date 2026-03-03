@@ -114,6 +114,9 @@ defmodule Slackex.MixProject do
       # Vector embeddings
       {:pgvector, "~> 0.3"},
 
+      # HTTP client (OpenAI embeddings API)
+      {:req, "~> 0.5"},
+
       # Dev & Test
       {:tidewave, "~> 0.5", only: :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

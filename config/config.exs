@@ -96,6 +96,9 @@ config :libcluster, topologies: []
 
 config :slackex, :redis_url, "redis://localhost:6379"
 
+# Embedding client — overridden to StubClient in dev/test
+config :slackex, :embedding_client, Slackex.Embeddings.OpenAIClient
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

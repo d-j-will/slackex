@@ -99,5 +99,30 @@ events:
   s: EXECUTED
   sid: 03-01
   t: '2026-03-03T19:13:33Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-03-03T19:14:19Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-03T19:15:39Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-03T19:16:15Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-03T19:16:16Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-03T19:18:54Z'
 project_id: intelligence-search
 schema_version: '3.0'

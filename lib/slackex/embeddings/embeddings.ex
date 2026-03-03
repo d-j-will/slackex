@@ -6,5 +6,5 @@ defmodule Slackex.Embeddings do
 
   use Boundary,
     deps: [Slackex.Chat],
-    exports: [MessageEmbedding]
+    exports: [MessageEmbedding, EmbeddingClient, StubClient, OpenAIClient]
 end
