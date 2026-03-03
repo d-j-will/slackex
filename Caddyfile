@@ -1,19 +1,34 @@
-# This block is added to the host-level Caddy at /opt/caddy/Caddyfile.
-# The host Caddy handles SSL via Cloudflare and proxies to the app containers
-# on the shared "proxy" Docker network. Service names (app1, app2) resolve via
-# Docker DNS aliases set by Compose on the external proxy network.
+# Caddy reverse proxy configuration for chat.davewil.dev.
+# Deployed to /opt/caddy/Caddyfile on the server during CI/CD — the CI step
+# substitutes ${CADDY_CF_TOKEN} with the CADDY_CF_TOKEN GitHub secret before SCPing.
 #
-# Active health checks ensure Caddy stops routing to a downed node and fails
-# over to the healthy one automatically (prevents 502 when a node is stopped).
+# IMPORTANT: Do NOT use `import` directives. Only the Caddyfile itself is
+# bind-mounted into the Caddy container (/opt/caddy/Caddyfile → /etc/caddy/Caddyfile).
+# Imported files written to the host are not visible inside the container.
 #
-# chat.davewil.dev {
-#     reverse_proxy app1:4000 app2:4000 {
-#         health_uri /health
-#         health_interval 5s
-#         health_timeout 3s
-#         fail_duration 15s
-#     }
-# }
-#
-# The deploy script writes this block to /opt/caddy/slackex-proxy and imports it
-# from the main Caddyfile automatically. No manual server changes needed.
+# Active health checks use `health_headers { X-Forwarded-Proto https }` because
+# Phoenix force_ssl redirects plain HTTP requests (301). Sending the forwarded
+# proto header makes the health checker look like a legitimate proxied HTTPS
+# request, so the app returns 200 instead of 301.
+
+davewil.dev {
+    tls {
+        dns cloudflare ${CADDY_CF_TOKEN}
+    }
+    respond "Hello from tono!"
+}
+
+chat.davewil.dev {
+    tls {
+        dns cloudflare ${CADDY_CF_TOKEN}
+    }
+    reverse_proxy app1:4000 app2:4000 {
+        health_uri /health
+        health_interval 5s
+        health_timeout 3s
+        fail_duration 15s
+        health_headers {
+            X-Forwarded-Proto https
+        }
+    }
+}

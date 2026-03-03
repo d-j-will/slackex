@@ -148,6 +148,7 @@ jobs:
         env:
           FLAGS_ADMIN_USER: ${{ secrets.FLAGS_ADMIN_USER }}
           FLAGS_ADMIN_PASSWORD: ${{ secrets.FLAGS_ADMIN_PASSWORD }}
+          CADDY_CF_TOKEN: ${{ secrets.CADDY_CF_TOKEN }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
@@ -156,7 +157,11 @@ jobs:
 
           # Copy deployment files to the server (ensures they stay in sync with the repo)
           scp docker-compose.prod.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/docker-compose.prod.yml
-          scp Caddyfile root@${{ secrets.DEPLOY_HOST }}:/root/slackex/Caddyfile
+          # Render Caddyfile template (substitute token) and deploy directly to the Caddy config path.
+          # Do NOT use `import` directives — only the Caddyfile itself is bind-mounted into the
+          # Caddy container; files written alongside it on the host are invisible inside.
+          sed "s|\${CADDY_CF_TOKEN}|${CADDY_CF_TOKEN}|g" Caddyfile > /tmp/Caddyfile.rendered
+          scp /tmp/Caddyfile.rendered root@${{ secrets.DEPLOY_HOST }}:/opt/caddy/Caddyfile
 
           # Ensure FLAGS_ADMIN credentials are in the server .env
           ssh root@${{ secrets.DEPLOY_HOST }} "
@@ -200,27 +205,10 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build --remove-orphans app1 app2 2>&1
             echo "Containers started."
 
-            # Update Caddy reverse proxy config with health checks and restart
-            # Full restart (not just reload) clears stale DNS/connection state after container recreation
-            echo "Updating Caddy config..."
-            if [ -f /opt/caddy/Caddyfile ]; then
-              # Write proxy snippet with active health checks for automatic failover
-              printf '%s\n' \
-                '    reverse_proxy app1:4000 app2:4000 {' \
-                '        health_uri /health' \
-                '        health_interval 5s' \
-                '        health_timeout 3s' \
-                '        fail_duration 15s' \
-                '    }' > /opt/caddy/slackex-proxy
-              # Replace single-line reverse_proxy with import (idempotent)
-              if ! grep -q 'import /opt/caddy/slackex-proxy' /opt/caddy/Caddyfile; then
-                sed -i 's|.*reverse_proxy.*app[12]:4000.*|    import /opt/caddy/slackex-proxy|' /opt/caddy/Caddyfile
-                echo "Caddy config migrated to use health-checked proxy snippet."
-              fi
-              docker restart caddy 2>&1 && echo "Caddy restarted." || echo "Caddy restart failed (non-fatal)"
-            else
-              echo "Caddy config not found at /opt/caddy/Caddyfile — skipping (manual setup required)"
-            fi
+            # Restart Caddy to pick up the new config (rendered and SCPed above).
+            # Full restart (not reload) clears stale DNS/connection state after container recreation.
+            echo "Restarting Caddy..."
+            docker restart caddy 2>&1 && echo "Caddy restarted." || echo "Caddy restart failed (non-fatal)"
 
             # Verify containers are healthy
             echo "Waiting for containers to start..."
