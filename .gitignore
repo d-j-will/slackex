@@ -40,5 +40,8 @@ npm-debug.log
 
 .nwave/
 
+# Dialyzer PLT files
+/priv/plts/
+
 # Production secrets
 .env
