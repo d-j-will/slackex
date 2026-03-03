@@ -1,6 +1,8 @@
 defmodule Slackex.NodeListenerTest do
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias Slackex.NodeListener
 
   describe "start_link/1" do
@@ -32,6 +34,17 @@ defmodule Slackex.NodeListenerTest do
       send(pid, {:nodedown, :"other@127.0.0.1", []})
       :timer.sleep(10)
       assert Process.alive?(pid)
+    end
+
+    test "logs cluster status as single node when no peers discovered", %{pid: pid} do
+      log =
+        capture_log(fn ->
+          send(pid, :log_cluster_status)
+          # :sys.get_state is synchronous — ensures the message has been processed
+          :sys.get_state(pid)
+        end)
+
+      assert log =~ "running as single node"
     end
   end
 end

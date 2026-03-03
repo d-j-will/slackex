@@ -3,6 +3,18 @@
 # on the shared "proxy" Docker network. Service names (app1, app2) resolve via
 # Docker DNS aliases set by Compose on the external proxy network.
 #
+# Active health checks ensure Caddy stops routing to a downed node and fails
+# over to the healthy one automatically (prevents 502 when a node is stopped).
+#
 # chat.davewil.dev {
-#     reverse_proxy app1:4000 app2:4000
+#     reverse_proxy app1:4000 app2:4000 {
+#         health_uri /health
+#         health_interval 5s
+#         health_timeout 3s
+#         fail_duration 15s
+#     }
 # }
+#
+# ONE-TIME SERVER SETUP:
+# SSH into the server and update /opt/caddy/Caddyfile to match the block above.
+# The deploy script restarts Caddy on each deploy; this change persists across deploys.

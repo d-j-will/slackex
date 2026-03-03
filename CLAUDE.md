@@ -7,7 +7,7 @@ Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL 
 Key directories:
 - `lib/slackex/` — domain contexts (Chat, Messaging, Accounts)
 - `lib/slackex_web/` — LiveView, components, router
-- `test/` — ExUnit tests (currently 849 tests)
+- `test/` — ExUnit tests (currently 850 tests)
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
@@ -147,6 +147,7 @@ Production runs two app containers behind a Caddy reverse proxy on a Docker host
 - **Use `docker restart caddy`, not `caddy reload`**, after recreating app containers. Caddy's `reload` compares the Caddyfile to its running config — if the file hasn't changed, it reports "config is unchanged" and retains stale cached DNS for upstreams that were recreated with new IPs. A full `docker restart` forces a cold start with fresh DNS resolution.
 - **The Caddyfile is bind-mounted** from `/opt/caddy/Caddyfile` on the host into the Caddy container at `/etc/caddy/Caddyfile`. Edit the host file; it's the same file inside the container.
 - **Never dump Caddyfile contents to CI logs** — it contains API tokens (e.g., Cloudflare DNS challenge credentials). Use targeted checks (e.g., `grep reverse_proxy /opt/caddy/Caddyfile`) when debugging.
+- **Enable active health checks** on `reverse_proxy` for automatic failover. Use `health_uri /health`, `health_interval 5s`, `health_timeout 3s`, `fail_duration 15s` inside the `reverse_proxy` block. Without health checks, stopping one node returns 502 for requests routed to it. The reference config is in the repo's `Caddyfile`.
 
 ### SSH heredoc rules
 - **Redirect stdin from `/dev/null`** on any `docker compose exec`, `docker compose run`, or interactive command inside an SSH heredoc (`ssh host << 'EOF'`). These commands read from stdin by default, which **consumes the rest of the heredoc** — silently eating all subsequent commands. The shell exits 0, CI reports success, but nothing runs. Always use `docker compose exec ... < /dev/null`.

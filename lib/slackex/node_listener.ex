@@ -14,13 +14,31 @@ defmodule Slackex.NodeListener do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @cluster_check_delay_ms 30_000
+
   @impl true
   def init(_opts) do
     _ = :net_kernel.monitor_nodes(true, node_type: :visible)
+    Process.send_after(self(), :log_cluster_status, @cluster_check_delay_ms)
     {:ok, %{}}
   end
 
   @impl true
+  def handle_info(:log_cluster_status, state) do
+    peers = Node.list()
+    cluster_size = length(peers) + 1
+
+    if peers == [] do
+      Logger.warning("Cluster status: running as single node (no peers discovered after 30s)")
+    else
+      Logger.info(
+        "Cluster status: #{cluster_size} nodes — #{Enum.map_join(peers, ", ", &Atom.to_string/1)}"
+      )
+    end
+
+    {:noreply, state}
+  end
+
   def handle_info({:nodeup, node, _info}, state) do
     Logger.info("Node joined cluster: #{node}")
     {:noreply, state}
