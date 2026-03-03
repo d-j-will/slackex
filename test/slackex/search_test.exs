@@ -5,6 +5,11 @@ defmodule Slackex.SearchTest do
   alias Slackex.Embeddings.{EmbeddingClient, MessageEmbedding}
   alias Slackex.Search
 
+  setup do
+    FunWithFlags.enable(:message_search)
+    :ok
+  end
+
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------

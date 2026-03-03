@@ -8,9 +8,11 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Messaging
   alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
+  alias Slackex.Search
   alias SlackexWeb.ChatLive.BrowseChannelsModal
   alias SlackexWeb.ChatLive.CreateChannelModal
   alias SlackexWeb.ChatLive.NewDmModal
+  alias SlackexWeb.ChatLive.SearchComponent
   alias SlackexWeb.ChatLive.SidebarComponent
 
   import SlackexWeb.ChatComponents
@@ -78,6 +80,8 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:editing_message_id, nil)
      |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
      |> assign(:node_name, short_node_name())
+     |> assign(:search_open, false)
+     |> assign(:search_enabled, FunWithFlags.enabled?(:message_search))
      |> stream(:messages, [])}
   end
 
@@ -209,6 +213,10 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event("toggle_sidebar", _params, socket) do
     {:noreply, assign(socket, :sidebar_open, !socket.assigns.sidebar_open)}
+  end
+
+  def handle_event("toggle_search", _params, socket) do
+    {:noreply, assign(socket, :search_open, !socket.assigns.search_open)}
   end
 
   def handle_event("join_channel", _params, socket) do
@@ -714,6 +722,93 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
+  def handle_info({:perform_search, query, mode, component_id}, socket) do
+    user = socket.assigns.current_user
+
+    case Search.search_messages(user.id, query, mode: mode) do
+      {:ok, results} ->
+        send_update(SearchComponent, id: component_id, results: results, searching: false)
+        {:noreply, socket}
+
+      {:error, _reason} ->
+        send_update(SearchComponent, id: component_id, results: [], searching: false)
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:search_results, _query, results}, socket) do
+    send_update(SearchComponent, id: "search", results: results, searching: false)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:search_started}, socket) do
+    send_update(SearchComponent, id: "search", searching: true)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(:close_search, socket) do
+    {:noreply, assign(socket, :search_open, false)}
+  end
+
+  @impl true
+  def handle_info({:jump_to_message, _message_id, channel_id, nil}, socket)
+      when is_integer(channel_id) do
+    channel = Chat.get_channel!(channel_id)
+
+    {:noreply,
+     socket
+     |> assign(:search_open, false)
+     |> push_patch(to: ~p"/chat/#{channel.slug}")}
+  end
+
+  @impl true
+  def handle_info({:jump_to_message, _message_id, nil, dm_id}, socket) when is_integer(dm_id) do
+    {:noreply,
+     socket
+     |> assign(:search_open, false)
+     |> push_patch(to: ~p"/chat/dm/#{dm_id}")}
+  end
+
+  @impl true
+  def handle_info({:jump_to_message, _message_id, channel_id, nil}, socket)
+      when is_binary(channel_id) do
+    case Integer.parse(channel_id) do
+      {id, ""} ->
+        channel = Chat.get_channel!(id)
+
+        {:noreply,
+         socket
+         |> assign(:search_open, false)
+         |> push_patch(to: ~p"/chat/#{channel.slug}")}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:jump_to_message, _message_id, nil, dm_id}, socket) when is_binary(dm_id) do
+    case Integer.parse(dm_id) do
+      {id, ""} ->
+        {:noreply,
+         socket
+         |> assign(:search_open, false)
+         |> push_patch(to: ~p"/chat/dm/#{id}")}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:jump_to_message, _message_id, _channel_id, _dm_id}, socket) do
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
   end
@@ -1109,6 +1204,22 @@ defmodule SlackexWeb.ChatLive.Index do
             subtitle={@active_channel.description}
           >
             <:actions>
+              <%= if @search_enabled do %>
+                <button
+                  phx-click="toggle_search"
+                  class={["btn btn-ghost btn-xs btn-square", @search_open && "btn-active"]}
+                  aria-label="Search messages"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </button>
+              <% end %>
               <%= if @user_role == nil and not @active_channel.is_private do %>
                 <button phx-click="join_channel" class="btn btn-primary btn-xs">
                   Join Channel
@@ -1143,6 +1254,22 @@ defmodule SlackexWeb.ChatLive.Index do
           <%= if @active_dm do %>
             <.conversation_header title={@page_title}>
               <:actions>
+                <%= if @search_enabled do %>
+                  <button
+                    phx-click="toggle_search"
+                    class={["btn btn-ghost btn-xs btn-square", @search_open && "btn-active"]}
+                    aria-label="Search messages"
+                  >
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </button>
+                <% end %>
                 <%= if @active_dm.user_a_id != @active_dm.user_b_id do %>
                   <button
                     phx-click="open_report_modal"
@@ -1182,6 +1309,14 @@ defmodule SlackexWeb.ChatLive.Index do
           <% end %>
         <% end %>
       </div>
+
+      <%!-- Search panel --%>
+      <.live_component
+        :if={@search_open and @search_enabled}
+        module={SearchComponent}
+        id="search"
+        current_user={@current_user}
+      />
     </div>
 
     <.live_component

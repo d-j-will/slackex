@@ -30,12 +30,16 @@ defmodule Slackex.Search do
   @spec search_messages(integer(), String.t(), keyword()) ::
           {:ok, [Slackex.Chat.Message.t()]} | {:error, term()}
   def search_messages(user_id, query, opts \\ []) do
-    {mode, search_opts} = Keyword.pop(opts, :mode, :hybrid)
+    if FunWithFlags.enabled?(:message_search) do
+      {mode, search_opts} = Keyword.pop(opts, :mode, :hybrid)
 
-    case mode do
-      :text -> MessageSearch.text_search(user_id, query, search_opts)
-      :semantic -> MessageSearch.semantic_search(user_id, query, search_opts)
-      :hybrid -> MessageSearch.hybrid_search(user_id, query, search_opts)
+      case mode do
+        :text -> MessageSearch.text_search(user_id, query, search_opts)
+        :semantic -> MessageSearch.semantic_search(user_id, query, search_opts)
+        :hybrid -> MessageSearch.hybrid_search(user_id, query, search_opts)
+      end
+    else
+      {:error, :feature_disabled}
     end
   end
 end
