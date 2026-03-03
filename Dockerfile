@@ -59,7 +59,7 @@ ENV LANG=en_US.UTF-8 \
 # Install minimal runtime dependencies
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
-      libstdc++6 openssl libncurses5 locales ca-certificates && \
+      libstdc++6 openssl libncurses5 locales ca-certificates curl && \
     sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
