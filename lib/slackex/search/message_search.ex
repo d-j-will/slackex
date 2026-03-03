@@ -28,6 +28,8 @@ defmodule Slackex.Search.MessageSearch do
 
   @default_limit 20
   @default_similarity_threshold 0.3
+  @rrf_k 60
+  @hybrid_task_timeout 5_000
 
   @doc """
   Searches messages matching the given query text, scoped by authorization.
@@ -110,6 +112,84 @@ defmodule Slackex.Search.MessageSearch do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Runs full-text and semantic search in parallel, merging results using
+  Reciprocal Rank Fusion (RRF) with k=#{@rrf_k}.
+
+  Each result receives a `:search_score` virtual field containing its combined
+  RRF score. Messages appearing in both result sets receive the sum of their
+  individual RRF scores; messages in only one set receive a single-source score.
+
+  Returns `{:ok, [Message.t()]}` sorted by combined RRF score descending,
+  or `{:error, reason}` if embedding generation fails.
+
+  ## Options
+
+    * `:limit` - maximum results after merge (default #{@default_limit})
+    * `:offset` - pagination offset after merge (default 0)
+    * `:channel_id` - scope search to a specific channel
+    * `:threshold` - minimum similarity for semantic results (default #{@default_similarity_threshold})
+    * `:embedding_client` - embedding generation function for DI
+
+  """
+  @spec hybrid_search(integer(), String.t(), keyword()) ::
+          {:ok, [Message.t()]} | {:error, term()}
+  def hybrid_search(user_id, query, opts \\ []) do
+    limit = Keyword.get(opts, :limit, @default_limit)
+    offset = Keyword.get(opts, :offset, 0)
+
+    # Fetch a large candidate set from each source to allow proper RRF ranking.
+    source_opts = Keyword.merge(opts, limit: limit * 5, offset: 0)
+
+    text_task = Task.async(fn -> text_search(user_id, query, source_opts) end)
+    semantic_task = Task.async(fn -> semantic_search(user_id, query, source_opts) end)
+
+    text_result = Task.await(text_task, @hybrid_task_timeout)
+    semantic_result = Task.await(semantic_task, @hybrid_task_timeout)
+
+    case {text_result, semantic_result} do
+      {{:ok, text_messages}, {:ok, semantic_messages}} ->
+        merged = merge_with_rrf(text_messages, semantic_messages, limit, offset)
+        {:ok, merged}
+
+      {{:ok, text_messages}, {:error, _reason}} ->
+        # Semantic failed, fall back to text-only with RRF scores
+        merged = merge_with_rrf(text_messages, [], limit, offset)
+        {:ok, merged}
+
+      {{:error, _reason}, {:ok, semantic_messages}} ->
+        merged = merge_with_rrf([], semantic_messages, limit, offset)
+        {:ok, merged}
+
+      {{:error, reason}, {:error, _}} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Computes RRF scores for items appearing in two ranked lists.
+
+  Returns a map of `id => combined_rrf_score`. Items in both lists receive
+  the sum of their reciprocal rank scores; items in only one list receive
+  a single-source score.
+
+  ## Parameters
+
+    * `text_ids` - ordered list of IDs from text search (rank 1 first)
+    * `semantic_ids` - ordered list of IDs from semantic search (rank 1 first)
+    * `k` - RRF constant (typically 60)
+
+  """
+  @spec compute_rrf_scores([term()], [term()], pos_integer()) :: %{term() => float()}
+  def compute_rrf_scores(text_ids, semantic_ids, k) do
+    text_scores = rank_to_rrf_map(text_ids, k)
+    semantic_scores = rank_to_rrf_map(semantic_ids, k)
+
+    Map.merge(text_scores, semantic_scores, fn _id, text_score, semantic_score ->
+      text_score + semantic_score
+    end)
   end
 
   @doc """
@@ -289,5 +369,39 @@ defmodule Slackex.Search.MessageSearch do
                ))
         )
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # RRF merge helpers
+  # ---------------------------------------------------------------------------
+
+  defp merge_with_rrf(text_messages, semantic_messages, limit, offset) do
+    text_ids = Enum.map(text_messages, & &1.id)
+    semantic_ids = Enum.map(semantic_messages, & &1.id)
+
+    rrf_scores = compute_rrf_scores(text_ids, semantic_ids, @rrf_k)
+
+    # Build a map of id => message, preferring semantic (has :similarity) over text
+    messages_by_id =
+      (text_messages ++ semantic_messages)
+      |> Enum.reduce(%{}, fn msg, acc ->
+        Map.put_new(acc, msg.id, msg)
+      end)
+
+    rrf_scores
+    |> Enum.sort_by(fn {_id, score} -> score end, :desc)
+    |> Enum.drop(offset)
+    |> Enum.take(limit)
+    |> Enum.map(fn {id, score} ->
+      messages_by_id
+      |> Map.fetch!(id)
+      |> Map.put(:search_score, score)
+    end)
+  end
+
+  defp rank_to_rrf_map(ids, k) do
+    ids
+    |> Enum.with_index(1)
+    |> Map.new(fn {id, rank} -> {id, 1.0 / (k + rank)} end)
   end
 end

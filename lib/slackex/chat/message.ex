@@ -22,6 +22,7 @@ defmodule Slackex.Chat.Message do
     belongs_to :sender, Slackex.Accounts.User
 
     field :similarity, :float, virtual: true
+    field :search_score, :float, virtual: true
   end
 
   def changeset(message, attrs) do

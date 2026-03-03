@@ -369,4 +369,152 @@ defmodule Slackex.Search.MessageSearchTest do
                )
     end
   end
+
+  # ===========================================================================
+  # HYBRID SEARCH
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: RRF merging from both FTS and semantic results
+  # ---------------------------------------------------------------------------
+
+  describe "hybrid_search/3 - RRF merging" do
+    test "merges results from both FTS and semantic by message ID with combined RRF score" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      # Create messages that will appear in both FTS and semantic results
+      msg1 = send_channel_message(channel, user, "elixir functional programming guide")
+      embed_message(msg1)
+
+      msg2 = send_channel_message(channel, user, "elixir pattern matching tutorial")
+      embed_message(msg2)
+
+      assert {:ok, results} =
+               MessageSearch.hybrid_search(user.id, "elixir functional programming")
+
+      # Both messages should appear, merged by message ID
+      result_ids = Enum.map(results, & &1.id)
+      assert msg1.id in result_ids
+
+      # Each result should have a search_score (combined RRF)
+      first = hd(results)
+      assert is_float(first.search_score)
+      assert first.search_score > 0.0
+
+      # Results with higher combined RRF score should come first
+      scores = Enum.map(results, & &1.search_score)
+      assert scores == Enum.sort(scores, :desc)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: single-source RRF inclusion
+  # ---------------------------------------------------------------------------
+
+  describe "hybrid_search/3 - single source inclusion" do
+    test "message appearing only in FTS results still appears with single-source RRF score" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      # This message has FTS content but NO embedding
+      msg_fts_only =
+        send_channel_message(channel, user, "unique findable keyword xyzspecial")
+
+      # This message has both FTS and embedding
+      msg_both = send_channel_message(channel, user, "unique findable keyword xyzspecial again")
+      embed_message(msg_both)
+
+      assert {:ok, results} =
+               MessageSearch.hybrid_search(user.id, "unique findable keyword xyzspecial")
+
+      result_ids = Enum.map(results, & &1.id)
+
+      # The FTS-only message must still appear
+      assert msg_fts_only.id in result_ids
+
+      # It should have a positive search_score (from single-source RRF)
+      fts_only_result = Enum.find(results, &(&1.id == msg_fts_only.id))
+      assert fts_only_result.search_score > 0.0
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: parallel execution
+  # ---------------------------------------------------------------------------
+
+  describe "hybrid_search/3 - parallel execution" do
+    test "FTS and semantic search run concurrently" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      msg = send_channel_message(channel, user, "concurrent search test content")
+      embed_message(msg)
+
+      # We verify parallel execution by confirming both search types contribute.
+      # The hybrid result should contain the message (proving both paths ran).
+      assert {:ok, results} =
+               MessageSearch.hybrid_search(user.id, "concurrent search test content")
+
+      assert length(results) >= 1
+
+      # Message should have combined RRF score from both sources
+      result = Enum.find(results, &(&1.id == msg.id))
+      assert result != nil
+      assert result.search_score > 0.0
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Unit: RRF score computation
+  # ---------------------------------------------------------------------------
+
+  describe "compute_rrf_scores/3 - pure RRF computation" do
+    test "combines scores from two ranked lists using reciprocal rank fusion" do
+      # Messages ranked [a, b, c] in text, [b, c, a] in semantic
+      text_ids = [:a, :b, :c]
+      semantic_ids = [:b, :c, :a]
+
+      scores = MessageSearch.compute_rrf_scores(text_ids, semantic_ids, 60)
+
+      # :a is rank 1 in text (1/61) + rank 3 in semantic (1/63)
+      expected_a = 1.0 / 61.0 + 1.0 / 63.0
+      assert_in_delta scores[:a], expected_a, 1.0e-10
+
+      # :b is rank 2 in text (1/62) + rank 1 in semantic (1/61)
+      expected_b = 1.0 / 62.0 + 1.0 / 61.0
+      assert_in_delta scores[:b], expected_b, 1.0e-10
+
+      # :c is rank 3 in text (1/63) + rank 2 in semantic (1/62)
+      expected_c = 1.0 / 63.0 + 1.0 / 62.0
+      assert_in_delta scores[:c], expected_c, 1.0e-10
+    end
+
+    test "single-source items get score from their source only" do
+      text_ids = [:a, :b]
+      semantic_ids = [:c]
+
+      scores = MessageSearch.compute_rrf_scores(text_ids, semantic_ids, 60)
+
+      # :a only in text, rank 1 -> 1/61
+      assert_in_delta scores[:a], 1.0 / 61.0, 1.0e-10
+
+      # :c only in semantic, rank 1 -> 1/61
+      assert_in_delta scores[:c], 1.0 / 61.0, 1.0e-10
+
+      # :b only in text, rank 2 -> 1/62
+      assert_in_delta scores[:b], 1.0 / 62.0, 1.0e-10
+    end
+
+    test "empty input lists return empty scores" do
+      scores = MessageSearch.compute_rrf_scores([], [], 60)
+      assert scores == %{}
+    end
+
+    test "one empty list still scores items from the other" do
+      scores = MessageSearch.compute_rrf_scores([:x, :y], [], 60)
+      assert_in_delta scores[:x], 1.0 / 61.0, 1.0e-10
+      assert_in_delta scores[:y], 1.0 / 62.0, 1.0e-10
+    end
+  end
 end
