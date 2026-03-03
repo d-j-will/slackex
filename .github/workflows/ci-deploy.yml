@@ -200,11 +200,24 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build --remove-orphans app1 app2 2>&1
             echo "Containers started."
 
-            # Update Caddy reverse proxy config and restart
+            # Update Caddy reverse proxy config with health checks and restart
             # Full restart (not just reload) clears stale DNS/connection state after container recreation
             echo "Updating Caddy config..."
             if [ -f /opt/caddy/Caddyfile ]; then
-              sed -i 's|reverse_proxy .*:4000.*|reverse_proxy app1:4000 app2:4000|' /opt/caddy/Caddyfile
+              # Write proxy snippet with active health checks for automatic failover
+              cat > /opt/caddy/slackex-proxy << 'PROXY'
+    reverse_proxy app1:4000 app2:4000 {
+        health_uri /health
+        health_interval 5s
+        health_timeout 3s
+        fail_duration 15s
+    }
+PROXY
+              # Replace single-line reverse_proxy with import (idempotent)
+              if ! grep -q 'import /opt/caddy/slackex-proxy' /opt/caddy/Caddyfile; then
+                sed -i 's|.*reverse_proxy.*app[12]:4000.*|    import /opt/caddy/slackex-proxy|' /opt/caddy/Caddyfile
+                echo "Caddy config migrated to use health-checked proxy snippet."
+              fi
               docker restart caddy 2>&1 && echo "Caddy restarted." || echo "Caddy restart failed (non-fatal)"
             else
               echo "Caddy config not found at /opt/caddy/Caddyfile — skipping (manual setup required)"

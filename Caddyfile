@@ -15,6 +15,5 @@
 #     }
 # }
 #
-# ONE-TIME SERVER SETUP:
-# SSH into the server and update /opt/caddy/Caddyfile to match the block above.
-# The deploy script restarts Caddy on each deploy; this change persists across deploys.
+# The deploy script writes this block to /opt/caddy/slackex-proxy and imports it
+# from the main Caddyfile automatically. No manual server changes needed.

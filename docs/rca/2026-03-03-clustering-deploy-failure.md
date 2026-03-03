@@ -52,7 +52,7 @@ The clustering setup was attempted ~5 times across multiple sessions. Each attem
 - [x] Add `/health` cluster info endpoint (v0.5.16)
 - [x] Add CI smoke test that fails deploy on unhealthy containers (v0.5.16)
 - [x] Add pre-deploy verification rules to CLAUDE.md (v0.5.16)
-- [x] Add Caddy active health checks so failover works when a node goes down (v0.5.17 — Caddyfile updated with `health_uri /health`, requires one-time server update)
+- [x] Add Caddy active health checks so failover works when a node goes down (v0.5.17 — deploy script writes health-checked proxy snippet and auto-migrates Caddyfile)
 - [x] Add startup log line that confirms cluster formation — `NodeListener` logs peer count after 30s delay (v0.5.17)
 
 ## Lessons
