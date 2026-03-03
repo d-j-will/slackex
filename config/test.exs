@@ -61,3 +61,10 @@ config :slackex, Slackex.Vault,
 config :slackex, Slackex.Encrypted.HMAC,
   algorithm: :sha256,
   secret: "test-only-hmac-secret"
+
+config :fun_with_flags, :cache, enabled: false
+config :fun_with_flags, :cache_bust_notifications, enabled: false
+
+config :slackex, :flags_admin_auth,
+  username: "admin",
+  password: "testpassword"

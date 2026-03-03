@@ -80,6 +80,18 @@ config :slackex, Slackex.Encrypted.HMAC,
 
 config :bcrypt_elixir, log_rounds: 12
 
+config :fun_with_flags, :persistence,
+  adapter: FunWithFlags.Store.Persistent.Ecto,
+  repo: Slackex.Repo
+
+config :fun_with_flags, :cache_bust_notifications,
+  adapter: FunWithFlags.Notifications.PhoenixPubSub,
+  client: Slackex.PubSub
+
+config :fun_with_flags, :cache,
+  enabled: true,
+  ttl: 900
+
 config :libcluster, topologies: []
 
 config :slackex, :redis_url, "redis://localhost:6379"

@@ -145,6 +145,9 @@ jobs:
           tags: tag:ci
 
       - name: Deploy to Docker host
+        env:
+          FLAGS_ADMIN_USER: ${{ secrets.FLAGS_ADMIN_USER }}
+          FLAGS_ADMIN_PASSWORD: ${{ secrets.FLAGS_ADMIN_PASSWORD }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
@@ -154,6 +157,16 @@ jobs:
           # Copy deployment files to the server (ensures they stay in sync with the repo)
           scp docker-compose.prod.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/docker-compose.prod.yml
           scp Caddyfile root@${{ secrets.DEPLOY_HOST }}:/root/slackex/Caddyfile
+
+          # Ensure FLAGS_ADMIN credentials are in the server .env
+          ssh root@${{ secrets.DEPLOY_HOST }} "
+            grep -q '^FLAGS_ADMIN_USER=' /root/slackex/.env 2>/dev/null && \
+              sed -i 's/^FLAGS_ADMIN_USER=.*/FLAGS_ADMIN_USER=${FLAGS_ADMIN_USER}/' /root/slackex/.env || \
+              echo 'FLAGS_ADMIN_USER=${FLAGS_ADMIN_USER}' >> /root/slackex/.env
+            grep -q '^FLAGS_ADMIN_PASSWORD=' /root/slackex/.env 2>/dev/null && \
+              sed -i 's|^FLAGS_ADMIN_PASSWORD=.*|FLAGS_ADMIN_PASSWORD=${FLAGS_ADMIN_PASSWORD}|' /root/slackex/.env || \
+              echo 'FLAGS_ADMIN_PASSWORD=${FLAGS_ADMIN_PASSWORD}' >> /root/slackex/.env
+          "
 
           # Authenticate Docker on the server to pull from private GHCR
           echo "${{ secrets.GITHUB_TOKEN }}" | ssh root@${{ secrets.DEPLOY_HOST }} docker login ghcr.io -u ${{ github.actor }} --password-stdin

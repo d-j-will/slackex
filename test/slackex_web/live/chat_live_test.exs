@@ -2428,4 +2428,28 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ "report_message"
     end
   end
+
+  describe "cluster node indicator" do
+    test "node badge is hidden when :show_cluster_node flag is off", %{conn: conn, alice: alice} do
+      FunWithFlags.disable(:show_cluster_node, for_actor: alice)
+
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      refute html =~ ~s(data-testid="node-badge")
+      refute html =~ "nohost"
+    end
+
+    test "node badge is visible when :show_cluster_node flag is on", %{conn: conn, alice: alice} do
+      FunWithFlags.enable(:show_cluster_node, for_actor: alice)
+
+      {:ok, _lv, html} = live(conn, ~p"/chat")
+
+      assert html =~ ~s(data-testid="node-badge")
+      # Node name should appear (in test it's "nonode@nohost" -> "nohost")
+      assert html =~ "nohost"
+
+      # Clean up
+      FunWithFlags.disable(:show_cluster_node)
+    end
+  end
 end

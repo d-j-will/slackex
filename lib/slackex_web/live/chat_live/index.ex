@@ -76,6 +76,8 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:show_edit_profile, false)
      |> assign(:edit_profile_form, build_profile_form(user))
      |> assign(:editing_message_id, nil)
+     |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
+     |> assign(:node_name, short_node_name())
      |> stream(:messages, [])}
   end
 
@@ -741,6 +743,13 @@ defmodule SlackexWeb.ChatLive.Index do
     to_form(changeset, as: :profile)
   end
 
+  defp short_node_name do
+    node()
+    |> Atom.to_string()
+    |> String.split("@")
+    |> List.last()
+  end
+
   defp dismiss_report_modal(socket) do
     socket
     |> assign(:show_report_modal, false)
@@ -1087,6 +1096,8 @@ defmodule SlackexWeb.ChatLive.Index do
           dm_request_count={@dm_request_count}
           unread_counts={@unread_counts}
           online_user_ids={@online_user_ids}
+          show_node={@show_node}
+          node_name={@node_name}
         />
       </div>
 

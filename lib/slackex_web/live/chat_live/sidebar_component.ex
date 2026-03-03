@@ -262,6 +262,13 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
         <span class="text-sm font-medium truncate flex-1">
           {@current_user.display_name || @current_user.username}
         </span>
+        <span
+          :if={@show_node}
+          data-testid="node-badge"
+          class="badge badge-info badge-sm font-mono shrink-0"
+        >
+          {@node_name}
+        </span>
         <button
           phx-click="edit_profile"
           class="btn btn-ghost btn-xs btn-circle"

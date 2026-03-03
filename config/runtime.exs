@@ -121,6 +121,12 @@ if config_env() == :prod do
       ]
     ]
 
+  config :slackex, :flags_admin_auth,
+    username: System.get_env("FLAGS_ADMIN_USER") || "admin",
+    password:
+      System.get_env("FLAGS_ADMIN_PASSWORD") ||
+        raise("environment variable FLAGS_ADMIN_PASSWORD is missing.")
+
   config :slackex, SlackexWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [

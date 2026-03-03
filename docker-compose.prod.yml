@@ -16,6 +16,8 @@ x-app: &app-defaults
     CLOAK_KEY: "${CLOAK_KEY}"
     CLOAK_HMAC_SECRET: "${CLOAK_HMAC_SECRET}"
     GUARDIAN_SECRET_KEY: "${GUARDIAN_SECRET_KEY}"
+    FLAGS_ADMIN_USER: "${FLAGS_ADMIN_USER:-admin}"
+    FLAGS_ADMIN_PASSWORD: "${FLAGS_ADMIN_PASSWORD}"
   expose:
     - "4000"
   networks:

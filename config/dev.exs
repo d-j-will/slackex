@@ -104,3 +104,7 @@ config :libcluster,
       config: [port: 45892]
     ]
   ]
+
+config :slackex, :flags_admin_auth,
+  username: "admin",
+  password: "devpassword"
