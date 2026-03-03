@@ -177,5 +177,32 @@ events:
   s: EXECUTED
   sid: 03-02
   t: '2026-03-03T19:32:57Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-03-03T19:33:58Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-03-03T19:35:40Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-03-03T19:36:35Z'
+- d: 'NOT_APPLICABLE: acceptance tests already cover unit-level behaviors (lookback
+    query, batch chunking, PubSub handling) through the driving ports. Test budget
+    satisfied.'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 02-03
+  t: '2026-03-03T19:36:44Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-03-03T19:39:03Z'
 project_id: intelligence-search
 schema_version: '3.0'

@@ -26,6 +26,7 @@ defmodule Slackex.Application do
       Slackex.Messaging.ChannelSupervisor,
       {Task.Supervisor, name: Slackex.WriteSupervisor},
       {Oban, Application.fetch_env!(:slackex, Oban)},
+      Slackex.Embeddings.PersistenceListener,
       # FunWithFlags auto-starts via OTP app dependency ordering (before Slackex.Application).
       # Its Ecto adapter queries are lazy, so the Repo being started here first is safe.
       # Start to serve requests, typically the last entry

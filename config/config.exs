@@ -63,7 +63,8 @@ config :slackex, Oban,
     Oban.Plugins.Pruner,
     {Oban.Plugins.Cron,
      crontab: [
-       {"0 * * * *", Slackex.Workers.CacheWarmer}
+       {"0 * * * *", Slackex.Workers.CacheWarmer},
+       {"*/15 * * * *", Slackex.Embeddings.ReconciliationWorker}
      ]}
   ]
 
