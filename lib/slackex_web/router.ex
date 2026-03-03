@@ -30,8 +30,9 @@ defmodule SlackexWeb.Router do
     plug SlackexWeb.Plugs.RateLimit, max_requests: 10, window_seconds: 60
   end
 
-  # Health check — outside auth pipelines
+  # Health/readiness endpoints — outside auth pipelines
   get "/health", SlackexWeb.HealthController, :index
+  get "/ready", SlackexWeb.HealthController, :ready
 
   scope "/", SlackexWeb do
     pipe_through :browser

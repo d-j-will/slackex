@@ -712,10 +712,13 @@ defmodule Slackex.Messaging.ChannelServerTest do
       assert map_size(state_before.sender_cache) > 0
       assert map_size(state_before.rate_limiters) > 0
 
-      # Trigger idle timeout by sending :timeout directly
+      # Trigger idle timeout by sending :timeout directly.
+      # Follow with a GenServer call to synchronize — the call is queued after
+      # :timeout in the mailbox, so it only returns once :timeout is fully
+      # processed. This avoids the race where Process.sleep/1 expires before
+      # the timeout handler runs (e.g. during Horde teardown under test load).
       send(pid, :timeout)
-      # Allow the message to be processed
-      Process.sleep(100)
+      ChannelServer.get_recent_messages(server, 1)
 
       state_after = :sys.get_state(pid)
       assert state_after.sender_cache == %{}

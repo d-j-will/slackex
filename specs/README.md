@@ -9,7 +9,7 @@
 |-------|--------|-------|------|
 | [Phase 1 — Foundation](#phase-1--foundation) | **COMPLETE** | 211 | [01-phase-1-foundation.md](01-phase-1-foundation.md) |
 | [Phase 2 — Real-time & CQRS](#phase-2--real-time--cqrs) | **COMPLETE** | +45 | [02-phase-2-realtime-cqrs.md](02-phase-2-realtime-cqrs.md) |
-| [Phase 3 — Distribution & Scale](#phase-3--distribution--scale) | **IN PROGRESS** | +55 | [03-phase-3-distribution.md](03-phase-3-distribution.md) |
+| [Phase 3 — Distribution & Scale](#phase-3--distribution--scale) | **COMPLETE** | +55 | [03-phase-3-distribution.md](03-phase-3-distribution.md) |
 | [Phase 4 — Intelligence & Search](#phase-4--intelligence--search) | Not started | — | [04-phase-4-intelligence.md](04-phase-4-intelligence.md) |
 | [Phase 5 — Full-Feature UI](#phase-5--full-feature-ui) | **IN PROGRESS** | +355 | [07-phase-5-ui.md](07-phase-5-ui.md) |
 | [Unplanned Features](#unplanned-features) | **COMPLETE** | (included above) | `docs/evolution/` |
@@ -61,7 +61,7 @@
 
 ## Phase 3 — Distribution & Scale
 
-**Status: IN PROGRESS** | Spec: [03-phase-3-distribution.md](03-phase-3-distribution.md)
+**Status: COMPLETE** | Spec: [03-phase-3-distribution.md](03-phase-3-distribution.md)
 
 | Step | Description | Status |
 |------|-------------|--------|
@@ -75,22 +75,23 @@
 | 3.5 | Read Replica Support (ReadRepo, lag detection) | **Done** |
 | 4 | Push Notifications (PushWorker, Oban) | **Done** |
 | 4.5 | Device Tokens Table | **Done** |
-| 5 | Message Table Partitioning | Not started |
+| 5 | Message Table Partitioning | **Deferred** (scale-dependent; requires maintenance window — revisit at >10M rows) |
 | 6 | Reconnection & Catch-Up (CatchupServer) | **Done** |
-| 7 | Update Application Supervisor (Phase 3) | Partial (Horde + libcluster added) |
-| 8 | Kubernetes Deployment (Dockerfile, manifests, health endpoints) | Partial (Dockerfile + health endpoints done; K8s manifests not started) |
+| 7 | Update Application Supervisor (Phase 3) | **Done** |
+| 8 | Kubernetes Deployment | **N/A** (deployment target is Docker Compose + Proxmox homelab, not K8s) |
+| 8.3 | Health (`/health`) + Readiness (`/ready`) endpoints | **Done** |
 
 ### Next recommended task
 
 **Phase 5 Step 6 — Reactions** (new `message_reactions` table, emoji picker JS hook, reaction bar component, real-time toggle). Composite score 6.85 — highest remaining feature. See `docs/research/next-feature-priority-2026-02-28-v2.md` for full analysis.
 
-Alternative: **Phase 5 Step 8 — Channel Members & Pinned Messages** (member management modal, `pinned_messages` table, channel header). Composite 6.60. For infrastructure: **Phase 3 Step 5 — Message Table Partitioning** (DB-only, requires maintenance window).
+Alternative: **Phase 4 — Intelligence & Search** (Phase 3 prereq now cleared). **Phase 5 Step 8 — Channel Members & Pinned Messages** (member management modal, `pinned_messages` table, channel header). Composite 6.60.
 
 ---
 
 ## Phase 4 — Intelligence & Search
 
-**Status: NOT STARTED** | Spec: [04-phase-4-intelligence.md](04-phase-4-intelligence.md) | Prereq: Phase 3 complete
+**Status: NOT STARTED** | Spec: [04-phase-4-intelligence.md](04-phase-4-intelligence.md) | Prereq: ~~Phase 3 complete~~ ✓ cleared
 
 | Step | Description | Status |
 |------|-------------|--------|

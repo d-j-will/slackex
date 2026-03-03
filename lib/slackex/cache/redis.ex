@@ -179,6 +179,14 @@ defmodule Slackex.Cache.Redis do
     end
   end
 
+  @spec ping() :: :ok | :error
+  def ping do
+    case command(["PING"], 2_000) do
+      {:ok, "PONG"} -> :ok
+      _ -> :error
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
