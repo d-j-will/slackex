@@ -725,28 +725,27 @@ defmodule Slackex.Chat do
     {lower_id, higher_id} = normalize_user_pair(user_a_id, user_b_id)
 
     case Repo.get_by(DMConversation, user_a_id: lower_id, user_b_id: higher_id) do
-      nil ->
-        result =
-          %DMConversation{}
-          |> DMConversation.changeset(%{user_a_id: lower_id, user_b_id: higher_id})
-          |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_a_id, :user_b_id])
-
-        case result do
-          {:ok, %DMConversation{id: nil}} ->
-            # Conflict: another transaction inserted first. Re-fetch the existing record.
-            case Repo.get_by(DMConversation, user_a_id: lower_id, user_b_id: higher_id) do
-              nil -> {:error, :conversation_conflict}
-              dm -> {:ok, dm}
-            end
-
-          other ->
-            other
-        end
-
-      dm ->
-        {:ok, dm}
+      nil -> insert_dm_conversation(lower_id, higher_id)
+      dm -> {:ok, dm}
     end
   end
+
+  defp insert_dm_conversation(lower_id, higher_id) do
+    %DMConversation{}
+    |> DMConversation.changeset(%{user_a_id: lower_id, user_b_id: higher_id})
+    |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_a_id, :user_b_id])
+    |> handle_upsert_result(lower_id, higher_id)
+  end
+
+  defp handle_upsert_result({:ok, %DMConversation{id: nil}}, lower_id, higher_id) do
+    # Conflict: another transaction inserted first. Re-fetch the existing record.
+    case Repo.get_by(DMConversation, user_a_id: lower_id, user_b_id: higher_id) do
+      nil -> {:error, :conversation_conflict}
+      dm -> {:ok, dm}
+    end
+  end
+
+  defp handle_upsert_result(result, _lower_id, _higher_id), do: result
 
   defp broadcast_dm_request_accepted(request) do
     Phoenix.PubSub.broadcast(
