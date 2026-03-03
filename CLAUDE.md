@@ -50,6 +50,16 @@ Test infrastructure startup:
 
 Test database is `postgres_test` on port 5433 (configured in `config/test.exs`). Redis on port 6379.
 
+### ETS cache isolation
+
+Shared ETS tables (`:slackex_message_cache`, `:dm_rate_limits`) persist across tests and cause flaky failures when stale entries leak between modules. `DataCase.setup_sandbox/1` clears `:slackex_message_cache` before and after every test automatically.
+
+Rules:
+- **Never write incomplete maps to ETS in tests.** Always include at minimum `%{id: N, content: "...", sender_id: N}`. Incomplete maps leak to `ChannelServer.init` → `BatchWriter.to_row/1` and crash.
+- **Tests using `ExUnit.Case` directly** (not `DataCase`/`ConnCase`) must add `on_exit(fn -> :ets.delete_all_objects(:slackex_message_cache) end)` in their setup block.
+- **Never stuff synthetic data into GenServer state** without cleaning it up. If a test replaces `pending_writes` with fake data, clear it before the test exits so `terminate/2` doesn't try to flush garbage through BatchWriter.
+- **`async: false` does NOT isolate across modules** — it only serializes tests within the same module. Multiple `async: false` modules can interleave. Centralized cleanup in `DataCase` is the only reliable isolation mechanism.
+
 ## UI Component Conventions
 
 All modals and popovers must implement three dismiss mechanisms:
@@ -176,6 +186,20 @@ Production runs two app containers behind a Caddy reverse proxy on a Docker host
 - **Before tagging, check every file in `rel/`** (`env.sh.eex`, overlays) — these control Erlang distribution, node naming, and cookie derivation. A misconfigured `RELEASE_DISTRIBUTION` or `RELEASE_NODE` will crash the cluster silently.
 - **If the change touches clustering, distribution, or node naming**, SSH into the server after deploy and verify with `docker compose -f docker-compose.prod.yml exec -T app1 curl -sf http://localhost:4000/health`. The `/health` endpoint returns JSON with `node`, `cluster_nodes`, and `cluster_size`. Cluster size must be 2.
 - **The CI deploy workflow includes a smoke test** that hits `/health` on both app1 and app2 after container recreation. If either fails, the deploy step exits non-zero. A cluster size check warns if nodes haven't joined.
+
+### Pre-tag checklist (mandatory before every version tag)
+
+Every deploy is triggered by a version tag. Before tagging, verify the full production surface locally. `mix test` passing is necessary but not sufficient.
+
+1. **Tests pass**: `mix test` — zero failures, zero flaky warnings.
+2. **Formatting**: `mix format --check-formatted` — CI will reject unformatted code.
+3. **Credo**: `mix credo` — no new warnings.
+4. **Dialyzer**: `mix dialyzer` — zero warnings (CI treats these as failures).
+5. **Docker image builds**: `docker build -t slackex:local .` — verifies the Dockerfile, runtime deps (curl, openssl, etc.), and asset compilation all work.
+6. **Docker image boots**: `docker run --rm -e SECRET_KEY_BASE=test -e DATABASE_URL=ecto://x:x@host/db slackex:local bin/slackex eval "IO.puts(:ok)"` — verifies the release boots without crashing on missing compile-time config.
+7. **YAML valid**: `ruby -ryaml -e "YAML.safe_load(File.read('.github/workflows/ci-deploy.yml'))"` — caught by pre-commit hook, but verify if editing CI config outside the hook.
+
+Run `scripts/pre-deploy` to execute steps 1-7 automatically. If any step fails, do not tag.
 
 ### General
 - **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.

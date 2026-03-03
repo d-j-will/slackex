@@ -8,9 +8,6 @@ defmodule SlackexWeb.ChatLiveTest do
   alias Slackex.Notifications.OnlineTracker
 
   setup %{conn: conn} do
-    # Clean ETS cache between tests
-    :ets.delete_all_objects(:slackex_message_cache)
-
     # Create users
     alice = insert(:user, username: "alice")
     bob = insert(:user, username: "bob")

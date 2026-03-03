@@ -5,9 +5,19 @@ defmodule Slackex.Cache.LocalTest do
 
   # Cache.Local is started by the application supervisor.
   # Clear all ETS entries between tests to ensure isolation.
+  # on_exit ensures cleanup even if a test crashes mid-way through,
+  # preventing incomplete maps from leaking to other test modules.
   setup do
     :ets.delete_all_objects(:slackex_message_cache)
+    on_exit(fn -> :ets.delete_all_objects(:slackex_message_cache) end)
     :ok
+  end
+
+  # Helper to build a minimal realistic message map.
+  # Using complete maps prevents cross-test contamination when ETS
+  # entries leak to modules that expect :content and :sender_id keys.
+  defp msg(id, content \\ "test msg") do
+    %{id: id, content: content, sender_id: 0}
   end
 
   describe "get_messages/1" do
@@ -22,15 +32,15 @@ defmodule Slackex.Cache.LocalTest do
 
   describe "put_message/2 and get_messages/1" do
     test "stores and retrieves a single message" do
-      msg = %{id: 1, content: "hello"}
-      assert :ok = Local.put_message({:channel, 1}, msg)
-      assert {:ok, [^msg]} = Local.get_messages({:channel, 1})
+      m = %{id: 1, content: "hello", sender_id: 0}
+      assert :ok = Local.put_message({:channel, 1}, m)
+      assert {:ok, [^m]} = Local.get_messages({:channel, 1})
     end
 
     test "returns messages in chronological order (oldest first)" do
-      msg1 = %{id: 1, content: "first"}
-      msg2 = %{id: 2, content: "second"}
-      msg3 = %{id: 3, content: "third"}
+      msg1 = %{id: 1, content: "first", sender_id: 0}
+      msg2 = %{id: 2, content: "second", sender_id: 0}
+      msg3 = %{id: 3, content: "third", sender_id: 0}
 
       Local.put_message({:channel, 1}, msg1)
       Local.put_message({:channel, 1}, msg2)
@@ -40,8 +50,8 @@ defmodule Slackex.Cache.LocalTest do
     end
 
     test "channel and dm targets with the same id are independent" do
-      ch_msg = %{id: 1, content: "channel"}
-      dm_msg = %{id: 2, content: "dm"}
+      ch_msg = %{id: 1, content: "channel", sender_id: 0}
+      dm_msg = %{id: 2, content: "dm", sender_id: 0}
 
       Local.put_message({:channel, 42}, ch_msg)
       Local.put_message({:dm, 42}, dm_msg)
@@ -51,18 +61,20 @@ defmodule Slackex.Cache.LocalTest do
     end
 
     test "different targets do not interfere with each other" do
-      Local.put_message({:channel, 1}, %{id: 1})
-      Local.put_message({:channel, 2}, %{id: 2})
+      m1 = msg(1)
+      m2 = msg(2)
+      Local.put_message({:channel, 1}, m1)
+      Local.put_message({:channel, 2}, m2)
 
-      assert {:ok, [%{id: 1}]} = Local.get_messages({:channel, 1})
-      assert {:ok, [%{id: 2}]} = Local.get_messages({:channel, 2})
+      assert {:ok, [^m1]} = Local.get_messages({:channel, 1})
+      assert {:ok, [^m2]} = Local.get_messages({:channel, 2})
     end
 
     test "trims to 200 messages, keeping the newest" do
       target = {:channel, 99}
 
       for i <- 1..205 do
-        Local.put_message(target, %{id: i, content: "msg #{i}"})
+        Local.put_message(target, msg(i, "msg #{i}"))
       end
 
       {:ok, messages} = Local.get_messages(target)
@@ -81,7 +93,7 @@ defmodule Slackex.Cache.LocalTest do
 
   describe "invalidate/1" do
     test "removes an existing target's cache entry" do
-      Local.put_message({:channel, 1}, %{id: 1, content: "hello"})
+      Local.put_message({:channel, 1}, msg(1, "hello"))
       assert :ok = Local.invalidate({:channel, 1})
       assert {:ok, []} = Local.get_messages({:channel, 1})
     end
@@ -91,13 +103,15 @@ defmodule Slackex.Cache.LocalTest do
     end
 
     test "only removes the specified target" do
-      Local.put_message({:channel, 1}, %{id: 1})
-      Local.put_message({:channel, 2}, %{id: 2})
+      m1 = msg(1)
+      m2 = msg(2)
+      Local.put_message({:channel, 1}, m1)
+      Local.put_message({:channel, 2}, m2)
 
       Local.invalidate({:channel, 1})
 
       assert {:ok, []} = Local.get_messages({:channel, 1})
-      assert {:ok, [%{id: 2}]} = Local.get_messages({:channel, 2})
+      assert {:ok, [^m2]} = Local.get_messages({:channel, 2})
     end
   end
 
@@ -108,16 +122,16 @@ defmodule Slackex.Cache.LocalTest do
     end
 
     test "size reflects the number of distinct targets" do
-      Local.put_message({:channel, 1}, %{id: 1})
-      Local.put_message({:channel, 2}, %{id: 2})
-      Local.put_message({:dm, 1}, %{id: 3})
+      Local.put_message({:channel, 1}, msg(1))
+      Local.put_message({:channel, 2}, msg(2))
+      Local.put_message({:dm, 1}, msg(3))
 
       assert %{size: 3} = Local.stats()
     end
 
     test "size decreases after invalidation" do
-      Local.put_message({:channel, 1}, %{id: 1})
-      Local.put_message({:channel, 2}, %{id: 2})
+      Local.put_message({:channel, 1}, msg(1))
+      Local.put_message({:channel, 2}, msg(2))
       Local.invalidate({:channel, 1})
 
       assert %{size: 1} = Local.stats()
@@ -127,24 +141,25 @@ defmodule Slackex.Cache.LocalTest do
   describe "LRU eviction" do
     test "keeps table size at or below 1000 targets" do
       for i <- 1..1000 do
-        Local.put_message({:channel, i}, %{id: i})
+        Local.put_message({:channel, i}, msg(i))
       end
 
       assert Local.stats().size == 1000
 
       # One more write triggers eviction — size must not exceed the limit
-      Local.put_message({:channel, 1001}, %{id: 1001})
+      Local.put_message({:channel, 1001}, msg(1001))
 
       assert Local.stats().size == 1000
     end
 
     test "newly written target is retained after eviction" do
       for i <- 1..1001 do
-        Local.put_message({:channel, i}, %{id: i})
+        Local.put_message({:channel, i}, msg(i))
       end
 
       # The last-written target must survive eviction
-      assert {:ok, [%{id: 1001}]} = Local.get_messages({:channel, 1001})
+      {:ok, [m]} = Local.get_messages({:channel, 1001})
+      assert m.id == 1001
     end
   end
 end

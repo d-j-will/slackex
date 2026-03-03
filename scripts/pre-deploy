@@ -1,0 +1,76 @@
+#!/bin/sh
+# Pre-deploy verification: run before tagging a new version.
+#
+# Usage: scripts/pre-deploy
+#
+# Exits non-zero on first failure. Do not tag if any step fails.
+
+set -e
+
+echo "=== Pre-deploy verification ==="
+echo ""
+
+# 1. Tests
+echo "Step 1/7: Running tests..."
+mix test --max-failures 3
+echo "PASS: Tests"
+echo ""
+
+# 2. Formatting
+echo "Step 2/7: Checking formatting..."
+mix format --check-formatted
+echo "PASS: Formatting"
+echo ""
+
+# 3. Credo
+echo "Step 3/7: Running Credo..."
+mix credo
+echo "PASS: Credo"
+echo ""
+
+# 4. Dialyzer
+echo "Step 4/7: Running Dialyzer..."
+mix dialyzer
+echo "PASS: Dialyzer"
+echo ""
+
+# 5. YAML validation
+echo "Step 5/7: Validating CI YAML..."
+for f in .github/workflows/*.yml; do
+  ruby -ryaml -e "YAML.safe_load(File.read('$f'))" 2>&1
+  if [ $? -ne 0 ]; then
+    echo "FAIL: YAML validation failed: $f"
+    exit 1
+  fi
+done
+echo "PASS: YAML valid"
+echo ""
+
+# 6. Docker image builds
+echo "Step 6/7: Building Docker image..."
+docker build -t slackex:pre-deploy-check . >/dev/null 2>&1
+echo "PASS: Docker image builds"
+echo ""
+
+# 7. Docker image boots
+echo "Step 7/7: Verifying release boots..."
+BOOT_OUTPUT=$(docker run --rm \
+  -e SECRET_KEY_BASE=pre-deploy-check-key-that-is-at-least-64-bytes-long-for-phoenix-to-accept \
+  -e DATABASE_URL=ecto://postgres:postgres@host/slackex_prod \
+  -e GUARDIAN_SECRET_KEY=test \
+  -e CLOAK_KEY=dGVzdC1rZXktMzItYnl0ZXMtbG9uZy4u \
+  -e CLOAK_HMAC_SECRET=test-hmac-secret \
+  -e FLAGS_ADMIN_PASSWORD=test \
+  slackex:pre-deploy-check bin/slackex eval "IO.puts(:ok)" 2>&1) || true
+
+if echo "$BOOT_OUTPUT" | grep -q "^ok$"; then
+  echo "PASS: Release boots"
+else
+  echo "FAIL: Release did not boot cleanly:"
+  echo "$BOOT_OUTPUT" | tail -20
+  exit 1
+fi
+echo ""
+
+echo "=== All pre-deploy checks passed ==="
+echo "Safe to tag and push."

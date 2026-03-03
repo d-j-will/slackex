@@ -10,7 +10,6 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
 
   setup %{conn: conn} do
     Redix.command!(:redix_0, ["FLUSHDB"])
-    :ets.delete_all_objects(:slackex_message_cache)
 
     user = insert(:user, username: "routeuser", display_name: "Route User")
     conn = log_in_user(conn, user)

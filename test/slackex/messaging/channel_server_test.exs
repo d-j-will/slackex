@@ -32,7 +32,6 @@ defmodule Slackex.Messaging.ChannelServerTest do
   # Start a fresh ChannelServer backed by a unique channel for each test.
   # The channel creator gets the "owner" role and can send messages.
   setup do
-    :ets.delete_all_objects(:slackex_message_cache)
     Redix.command!(:redix_0, ["FLUSHDB"])
     user = insert(:user)
 
@@ -119,6 +118,10 @@ defmodule Slackex.Messaging.ChannelServerTest do
       end)
 
       assert {:error, :backpressure} = ChannelServer.send_message(server, user.id, "overflow")
+
+      # Clear synthetic pending_writes so terminate/2 doesn't try to flush
+      # 1000 empty maps through BatchWriter on test cleanup.
+      :sys.replace_state(pid, fn state -> %{state | pending_writes: []} end)
     end
 
     test "returns {:error, :invalid_content} for empty content",

@@ -41,7 +41,14 @@ defmodule Slackex.DataCase do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.Repo, shared: not tags[:async])
     read_pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.ReadRepo, shared: not tags[:async])
 
+    # Clear shared ETS caches to prevent cross-test contamination.
+    # These named tables are owned by application-supervised processes and
+    # persist across tests — stale entries cause flaky failures when a
+    # ChannelServer picks up incomplete maps from a prior test's writes.
+    :ets.delete_all_objects(:slackex_message_cache)
+
     on_exit(fn ->
+      :ets.delete_all_objects(:slackex_message_cache)
       Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
       Ecto.Adapters.SQL.Sandbox.stop_owner(read_pid)
     end)

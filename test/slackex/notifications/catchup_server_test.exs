@@ -8,7 +8,6 @@ defmodule Slackex.Notifications.CatchupServerTest do
   setup do
     # Clean Redis state between tests
     Redix.command!(:redix_0, ["FLUSHDB"])
-    :ets.delete_all_objects(:slackex_message_cache)
 
     user = insert(:user)
     %{user: user}

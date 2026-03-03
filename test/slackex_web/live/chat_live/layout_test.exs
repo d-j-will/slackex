@@ -12,7 +12,6 @@ defmodule SlackexWeb.ChatLive.LayoutTest do
 
   setup %{conn: conn} do
     Redix.command!(:redix_0, ["FLUSHDB"])
-    :ets.delete_all_objects(:slackex_message_cache)
 
     alice = insert(:user, username: "alice", display_name: "Alice A")
     bob = insert(:user, username: "bob", display_name: "Bob B")

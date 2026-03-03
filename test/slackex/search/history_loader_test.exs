@@ -6,7 +6,6 @@ defmodule Slackex.Search.HistoryLoaderTest do
   alias Slackex.Search.HistoryLoader
 
   setup do
-    :ets.delete_all_objects(:slackex_message_cache)
     Redix.command!(:redix_0, ["FLUSHDB"])
     :ok
   end

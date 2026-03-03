@@ -7,7 +7,6 @@ defmodule SlackexWeb.ChatLive.IndexTest do
 
   setup %{conn: conn} do
     Redix.command!(:redix_0, ["FLUSHDB"])
-    :ets.delete_all_objects(:slackex_message_cache)
     %{conn: conn, user: user} = register_and_log_in_user(%{conn: conn})
     %{conn: conn, user: user}
   end

@@ -50,7 +50,7 @@ defmodule Slackex.Pipeline.BatchWriter do
           Repo.rollback(:epoch_stale)
 
         %{rows: [[_db_epoch]]} ->
-          entries = Enum.map(messages, &to_row/1)
+          entries = messages |> Enum.map(&to_row/1) |> Enum.reject(&is_nil/1)
           {count, _} = Repo.insert_all(Message, entries, on_conflict: :nothing)
           count
 
@@ -95,17 +95,22 @@ defmodule Slackex.Pipeline.BatchWriter do
 
   @milliseconds_to_microseconds 1_000
 
-  defp to_row(%{id: id} = message) do
+  defp to_row(%{id: id, content: content, sender_id: sender_id} = message) do
     timestamp_ms = Snowflake.extract_timestamp(id)
     inserted_at = DateTime.from_unix!(timestamp_ms * @milliseconds_to_microseconds, :microsecond)
 
     %{
       id: id,
-      content: message.content,
-      sender_id: message.sender_id,
+      content: content,
+      sender_id: sender_id,
       channel_id: Map.get(message, :channel_id),
       dm_conversation_id: Map.get(message, :dm_conversation_id),
       inserted_at: inserted_at
     }
+  end
+
+  defp to_row(incomplete) do
+    Logger.warning("BatchWriter skipped incomplete message: #{inspect(Map.keys(incomplete))}")
+    nil
   end
 end
