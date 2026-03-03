@@ -11,20 +11,6 @@ defmodule Slackex.Embeddings.ConfigurationWiringTest do
   alias Slackex.Embeddings.{MessageEmbedding, PersistenceListener}
 
   # ---------------------------------------------------------------------------
-  # Helpers
-  # ---------------------------------------------------------------------------
-
-  defp insert_channel_message(channel, sender, content) do
-    msg = insert(:message, channel: channel, sender: sender, content: content)
-
-    {1, _} =
-      from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
-      |> Repo.update_all(set: [search_content: content])
-
-    Repo.get!(Slackex.Chat.Message, msg.id)
-  end
-
-  # ---------------------------------------------------------------------------
   # Acceptance: Supervisor ordering
   # ---------------------------------------------------------------------------
 

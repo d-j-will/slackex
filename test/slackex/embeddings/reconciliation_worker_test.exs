@@ -7,20 +7,9 @@ defmodule Slackex.Embeddings.ReconciliationWorkerTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
-  defp insert_channel_message(channel, sender, content) do
-    msg = insert(:message, channel: channel, sender: sender, content: content)
-
-    {1, _} =
-      from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
-      |> Repo.update_all(set: [search_content: content])
-
-    Repo.get!(Slackex.Chat.Message, msg.id)
-  end
-
   defp insert_embedding_for(message) do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
-    hash = :crypto.hash(:sha256, message.search_content) |> Base.encode16(case: :lower)
-    # Deterministic stub vector (matches StubClient dimensions)
+    hash = compute_content_hash(message.search_content)
     vector = List.duplicate(0.1, Slackex.Embeddings.EmbeddingClient.dimensions())
 
     %MessageEmbedding{}

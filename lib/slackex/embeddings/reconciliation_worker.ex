@@ -25,7 +25,7 @@ defmodule Slackex.Embeddings.ReconciliationWorker do
   alias Slackex.Repo
 
   @batch_size 50
-  @lookback_seconds 3600
+  @lookback_window_seconds 3_600
 
   # ---------------------------------------------------------------------------
   # Oban callback
@@ -54,7 +54,7 @@ defmodule Slackex.Embeddings.ReconciliationWorker do
   defp find_unembedded_message_ids do
     lookback_cutoff =
       DateTime.utc_now()
-      |> DateTime.add(-@lookback_seconds, :second)
+      |> DateTime.add(-@lookback_window_seconds, :second)
       |> DateTime.truncate(:microsecond)
 
     from(m in Message,

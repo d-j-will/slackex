@@ -8,39 +8,6 @@ defmodule Slackex.Embeddings.EmbeddingWorkerTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
-  defp insert_channel_message(channel, sender, content) do
-    msg = insert(:message, channel: channel, sender: sender, content: content)
-
-    # ExMachina bypasses changesets, so search_content is not set automatically.
-    # Update the row directly to populate the plaintext search field.
-    {1, _} =
-      from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
-      |> Repo.update_all(set: [search_content: content])
-
-    Repo.get!(Slackex.Chat.Message, msg.id)
-  end
-
-  defp insert_dm_message(dm_conversation, sender, content) do
-    msg =
-      insert(:message,
-        channel: nil,
-        channel_id: nil,
-        dm_conversation: dm_conversation,
-        sender: sender,
-        content: content
-      )
-
-    {1, _} =
-      from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
-      |> Repo.update_all(set: [search_content: content])
-
-    Repo.get!(Slackex.Chat.Message, msg.id)
-  end
-
-  defp content_hash(text) do
-    :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
-  end
-
   defp perform_batch(message_ids) do
     EmbeddingWorker.perform(%Oban.Job{args: %{"message_ids" => message_ids}})
   end
@@ -65,8 +32,8 @@ defmodule Slackex.Embeddings.EmbeddingWorkerTest do
       assert emb2 != nil
 
       # Verify content hashes are SHA-256 of the search_content
-      assert emb1.content_hash == content_hash("Hello world")
-      assert emb2.content_hash == content_hash("Goodbye world")
+      assert emb1.content_hash == compute_content_hash("Hello world")
+      assert emb2.content_hash == compute_content_hash("Goodbye world")
 
       # Verify embeddings are present and have correct dimensions
       # Pgvector wraps the list; convert to list for length check

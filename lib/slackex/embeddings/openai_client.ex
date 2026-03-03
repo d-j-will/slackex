@@ -17,6 +17,7 @@ defmodule Slackex.Embeddings.OpenAIClient do
   @model "text-embedding-3-small"
   @max_batch_size 100
   @api_url "https://api.openai.com/v1/embeddings"
+  @receive_timeout_ms 30_000
 
   @impl true
   @spec generate(String.t()) :: {:ok, [float()]} | {:error, term()}
@@ -47,7 +48,7 @@ defmodule Slackex.Embeddings.OpenAIClient do
              {"authorization", "Bearer #{api_key}"},
              {"content-type", "application/json"}
            ],
-           receive_timeout: 30_000
+           receive_timeout: @receive_timeout_ms
          ) do
       {:ok, %Req.Response{status: 200, body: response_body}} ->
         vectors =

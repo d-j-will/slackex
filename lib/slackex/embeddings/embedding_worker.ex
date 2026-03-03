@@ -98,12 +98,12 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
   end
 
   def perform(%Oban.Job{args: %{"channel_id" => channel_id, "backfill" => true}}) do
-    backfill_channel(channel_id)
+    backfill_conversation({:channel_id, channel_id})
     :ok
   end
 
   def perform(%Oban.Job{args: %{"dm_conversation_id" => dm_id, "backfill" => true}}) do
-    backfill_dm(dm_id)
+    backfill_conversation({:dm_conversation_id, dm_id})
     :ok
   end
 
@@ -171,38 +171,30 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
   # Backfill pipeline
   # ---------------------------------------------------------------------------
 
-  defp backfill_channel(channel_id) do
-    unembedded_message_ids_query(channel_id: channel_id)
+  defp backfill_conversation(scope) do
+    scope
+    |> unembedded_message_ids_query()
     |> process_backfill_stream()
   end
 
-  defp backfill_dm(dm_id) do
-    unembedded_message_ids_query(dm_conversation_id: dm_id)
-    |> process_backfill_stream()
-  end
+  defp unembedded_message_ids_query(scope) do
+    base_query =
+      from(m in Message,
+        left_join: me in MessageEmbedding,
+        on: me.message_id == m.id,
+        where: is_nil(m.deleted_at),
+        where: is_nil(me.message_id),
+        select: m.id,
+        order_by: [asc: m.id]
+      )
 
-  defp unembedded_message_ids_query(channel_id: channel_id) do
-    from(m in Message,
-      left_join: me in MessageEmbedding,
-      on: me.message_id == m.id,
-      where: m.channel_id == ^channel_id,
-      where: is_nil(m.deleted_at),
-      where: is_nil(me.message_id),
-      select: m.id,
-      order_by: [asc: m.id]
-    )
-  end
+    case scope do
+      {:channel_id, id} ->
+        from(m in base_query, where: m.channel_id == ^id)
 
-  defp unembedded_message_ids_query(dm_conversation_id: dm_id) do
-    from(m in Message,
-      left_join: me in MessageEmbedding,
-      on: me.message_id == m.id,
-      where: m.dm_conversation_id == ^dm_id,
-      where: is_nil(m.deleted_at),
-      where: is_nil(me.message_id),
-      select: m.id,
-      order_by: [asc: m.id]
-    )
+      {:dm_conversation_id, id} ->
+        from(m in base_query, where: m.dm_conversation_id == ^id)
+    end
   end
 
   defp process_backfill_stream(query) do

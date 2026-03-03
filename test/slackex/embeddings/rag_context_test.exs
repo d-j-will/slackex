@@ -1,40 +1,7 @@
 defmodule Slackex.Embeddings.RAGContextTest do
   use Slackex.DataCase, async: false
 
-  alias Slackex.Chat
-  alias Slackex.Embeddings.{EmbeddingClient, MessageEmbedding, RAGContext}
-
-  # ---------------------------------------------------------------------------
-  # Helpers
-  # ---------------------------------------------------------------------------
-
-  defp create_public_channel(creator) do
-    channel = insert(:channel, creator: creator, is_private: false)
-    insert(:subscription, user: creator, channel: channel, role: "owner")
-    channel
-  end
-
-  defp send_channel_message(channel, sender, content) do
-    {:ok, message} = Chat.send_message(channel.id, sender.id, content)
-    message
-  end
-
-  defp embed_message(message) do
-    content = message.content || message.search_content || ""
-    {:ok, vector} = EmbeddingClient.generate(content)
-    content_hash = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
-
-    %MessageEmbedding{
-      message_id: message.id,
-      message_inserted_at: message.inserted_at,
-      channel_id: message.channel_id,
-      dm_conversation_id: message.dm_conversation_id,
-      embedding: Pgvector.new(vector),
-      content_hash: content_hash,
-      inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
-    }
-    |> Repo.insert!()
-  end
+  alias Slackex.Embeddings.RAGContext
 
   # ---------------------------------------------------------------------------
   # Acceptance: formatted output with "[YYYY-MM-DD HH:MM] username: content"

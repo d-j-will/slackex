@@ -24,6 +24,8 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
   """
   use SlackexWeb, :live_component
 
+  @min_query_length 2
+
   @impl true
   def mount(socket) do
     {:ok,
@@ -31,7 +33,8 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
      |> assign(:query, "")
      |> assign(:results, [])
      |> assign(:search_mode, :hybrid)
-     |> assign(:searching, false)}
+     |> assign(:searching, false)
+     |> assign(:min_query_length, @min_query_length)}
   end
 
   @impl true
@@ -43,7 +46,7 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
   def handle_event("search", %{"query" => query}, socket) do
     query = String.trim(query)
 
-    if String.length(query) >= 2 do
+    if searchable_query?(query) do
       send(
         self(),
         {:perform_search, query, socket.assigns.search_mode, socket.assigns.id}
@@ -68,7 +71,7 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
 
     socket = assign(socket, :search_mode, search_mode)
 
-    if String.length(query) >= 2 do
+    if searchable_query?(query) do
       send(
         self(),
         {:perform_search, query, search_mode, socket.assigns.id}
@@ -178,13 +181,13 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
               </li>
             </ul>
           <% else %>
-            <%= if @query != "" and String.length(@query) >= 2 do %>
+            <%= if @query != "" and searchable_query?(@query) do %>
               <p class="text-sm text-base-content/50 text-center py-8">
                 No results found
               </p>
             <% else %>
               <p class="text-sm text-base-content/40 text-center py-8">
-                Type at least 2 characters to search
+                Type at least {@min_query_length} characters to search
               </p>
             <% end %>
           <% end %>
@@ -193,6 +196,8 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
     </div>
     """
   end
+
+  defp searchable_query?(query), do: String.length(query) >= @min_query_length
 
   defp sender_name(%{sender: %{username: username}}), do: username
   defp sender_name(%{sender: %{"username" => username}}), do: username

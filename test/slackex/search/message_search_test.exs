@@ -1,46 +1,7 @@
 defmodule Slackex.Search.MessageSearchTest do
   use Slackex.DataCase, async: false
 
-  alias Slackex.Chat
   alias Slackex.Search.MessageSearch
-
-  # ---------------------------------------------------------------------------
-  # Helpers
-  # ---------------------------------------------------------------------------
-
-  defp create_public_channel(creator) do
-    channel = insert(:channel, creator: creator, is_private: false)
-    insert(:subscription, user: creator, channel: channel, role: "owner")
-    channel
-  end
-
-  defp create_private_channel(creator) do
-    channel = insert(:channel, creator: creator, is_private: true)
-    insert(:subscription, user: creator, channel: channel, role: "owner")
-    channel
-  end
-
-  defp subscribe_user(channel, user) do
-    insert(:subscription, user: user, channel: channel, role: "member")
-  end
-
-  defp send_channel_message(channel, sender, content) do
-    {:ok, message} = Chat.send_message(channel.id, sender.id, content)
-    message
-  end
-
-  defp send_dm_message(dm, sender, content) do
-    {:ok, message} = Chat.send_dm(dm.id, sender.id, content)
-    message
-  end
-
-  defp create_dm_conversation(user_a, user_b) do
-    {a, b} = if user_a.id < user_b.id, do: {user_a, user_b}, else: {user_b, user_a}
-
-    %Slackex.Chat.DMConversation{}
-    |> Ecto.Changeset.change(%{user_a_id: a.id, user_b_id: b.id})
-    |> Repo.insert!()
-  end
 
   # ---------------------------------------------------------------------------
   # Acceptance: public channel search with ranking and sender preload
@@ -99,7 +60,7 @@ defmodule Slackex.Search.MessageSearchTest do
       member = insert(:user)
 
       private = create_private_channel(owner)
-      subscribe_user(private, member)
+      subscribe_user_to_channel(private, member)
 
       _msg = send_channel_message(private, owner, "secret project discussion")
 
@@ -191,53 +152,6 @@ defmodule Slackex.Search.MessageSearchTest do
   # ===========================================================================
   # SEMANTIC SEARCH
   # ===========================================================================
-
-  # ---------------------------------------------------------------------------
-  # Helpers: semantic search
-  # ---------------------------------------------------------------------------
-
-  alias Slackex.Embeddings.{EmbeddingClient, MessageEmbedding}
-
-  defp embed_message(message) do
-    content = message.content || message.search_content || ""
-    {:ok, vector} = EmbeddingClient.generate(content)
-    content_hash = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
-
-    %MessageEmbedding{
-      message_id: message.id,
-      message_inserted_at: message.inserted_at,
-      channel_id: message.channel_id,
-      dm_conversation_id: message.dm_conversation_id,
-      embedding: Pgvector.new(vector),
-      content_hash: content_hash,
-      inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
-    }
-    |> Repo.insert!()
-  end
-
-  defp embed_message_with_vector(message, vector) do
-    content = message.content || message.search_content || ""
-    content_hash = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
-
-    %MessageEmbedding{
-      message_id: message.id,
-      message_inserted_at: message.inserted_at,
-      channel_id: message.channel_id,
-      dm_conversation_id: message.dm_conversation_id,
-      embedding: Pgvector.new(vector),
-      content_hash: content_hash,
-      inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
-    }
-    |> Repo.insert!()
-  end
-
-  # Builds a unit vector with value 1.0 at the given index, 0.0 elsewhere.
-  # Useful for creating orthogonal vectors with known cosine similarity.
-  defp basis_vector(index, dimensions \\ 1536) do
-    Enum.map(0..(dimensions - 1), fn i ->
-      if i == index, do: 1.0, else: 0.0
-    end)
-  end
 
   # ---------------------------------------------------------------------------
   # Acceptance: semantic search returns similar messages

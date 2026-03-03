@@ -295,80 +295,102 @@ defmodule Slackex.Search.MessageSearch do
 
   defp build_authorization_condition(user_id, opts) do
     case Keyword.get(opts, :channel_id) do
-      nil ->
-        # User can see messages from:
-        # 1. Public channels (is_private = false)
-        # 2. Private channels they are subscribed to
-        # 3. DM conversations they participate in
-        dynamic(
-          [m],
-          # Public channel messages
-          # Private channel messages where user is subscribed
-          # DM messages where user is a participant
-          fragment(
-            """
-            (
-              ? IS NOT NULL AND EXISTS (
-                SELECT 1 FROM channels c
-                WHERE c.id = ? AND c.is_private = false
-              )
-            )
-            """,
-            m.channel_id,
-            m.channel_id
-          ) or
-            fragment(
-              """
-              (
-                ? IS NOT NULL AND EXISTS (
-                  SELECT 1 FROM channels c
-                  INNER JOIN subscriptions s ON s.channel_id = c.id
-                  WHERE c.id = ? AND c.is_private = true
-                    AND s.user_id = ?
-                )
-              )
-              """,
-              m.channel_id,
-              m.channel_id,
-              ^user_id
-            ) or
-            fragment(
-              """
-              (
-                ? IS NOT NULL AND EXISTS (
-                  SELECT 1 FROM dm_conversations d
-                  WHERE d.id = ? AND (d.user_a_id = ? OR d.user_b_id = ?)
-                )
-              )
-              """,
-              m.dm_conversation_id,
-              m.dm_conversation_id,
-              ^user_id,
-              ^user_id
-            )
-        )
-
-      channel_id ->
-        # Scoped to a specific channel -- still enforce authorization
-        dynamic(
-          [m],
-          m.channel_id == ^channel_id and
-            (fragment(
-               "EXISTS (SELECT 1 FROM channels c WHERE c.id = ? AND c.is_private = false)",
-               m.channel_id
-             ) or
-               fragment(
-                 """
-                 EXISTS (
-                   SELECT 1 FROM subscriptions s
-                   WHERE s.channel_id = ? AND s.user_id = ?
-                 )
-                 """,
-                 m.channel_id,
-                 ^user_id
-               ))
-        )
+      nil -> global_authorization_filter(user_id)
+      channel_id -> scoped_channel_authorization_filter(user_id, channel_id)
     end
+  end
+
+  # User can see messages from:
+  # 1. Public channels (is_private = false)
+  # 2. Private channels they are subscribed to
+  # 3. DM conversations they participate in
+  defp global_authorization_filter(user_id) do
+    dynamic(
+      [m],
+      ^public_channel_condition() or
+        ^private_channel_member_condition(user_id) or
+        ^dm_participant_condition(user_id)
+    )
+  end
+
+  defp scoped_channel_authorization_filter(user_id, channel_id) do
+    dynamic(
+      [m],
+      m.channel_id == ^channel_id and
+        (fragment(
+           "EXISTS (SELECT 1 FROM channels c WHERE c.id = ? AND c.is_private = false)",
+           m.channel_id
+         ) or
+           fragment(
+             """
+             EXISTS (
+               SELECT 1 FROM subscriptions s
+               WHERE s.channel_id = ? AND s.user_id = ?
+             )
+             """,
+             m.channel_id,
+             ^user_id
+           ))
+    )
+  end
+
+  defp public_channel_condition do
+    dynamic(
+      [m],
+      fragment(
+        """
+        (
+          ? IS NOT NULL AND EXISTS (
+            SELECT 1 FROM channels c
+            WHERE c.id = ? AND c.is_private = false
+          )
+        )
+        """,
+        m.channel_id,
+        m.channel_id
+      )
+    )
+  end
+
+  defp private_channel_member_condition(user_id) do
+    dynamic(
+      [m],
+      fragment(
+        """
+        (
+          ? IS NOT NULL AND EXISTS (
+            SELECT 1 FROM channels c
+            INNER JOIN subscriptions s ON s.channel_id = c.id
+            WHERE c.id = ? AND c.is_private = true
+              AND s.user_id = ?
+          )
+        )
+        """,
+        m.channel_id,
+        m.channel_id,
+        ^user_id
+      )
+    )
+  end
+
+  defp dm_participant_condition(user_id) do
+    dynamic(
+      [m],
+      fragment(
+        """
+        (
+          ? IS NOT NULL AND EXISTS (
+            SELECT 1 FROM dm_conversations d
+            WHERE d.id = ? AND (d.user_a_id = ? OR d.user_b_id = ?)
+          )
+        )
+        """,
+        m.dm_conversation_id,
+        m.dm_conversation_id,
+        ^user_id,
+        ^user_id
+      )
+    )
   end
 
   # ---------------------------------------------------------------------------
