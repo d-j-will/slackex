@@ -78,95 +78,48 @@ When fixing bugs in Phoenix LiveView:
 
 ## Migration Discipline
 
-All database migrations must be **deploy-safe** — the old application code must continue working while the new migration is applied. Follow the expand/contract pattern:
+All migrations must be **deploy-safe** — follow the expand/contract pattern. **Always invoke `/new-migration` when a migration is needed** — do not create migration files directly.
 
-### Expand phase (deploy N)
-- **Add columns as nullable** (or with defaults). Never add `NOT NULL` columns without a default in a single step.
-- **Add new tables** freely — old code simply ignores them.
-- **Add new indexes** concurrently: use `@disable_ddl_transaction true` and `@disable_migration_lock true` with `CREATE INDEX CONCURRENTLY`.
-- **Keep old columns/tables in place** — do not rename or remove anything the running code still references.
-
-### Contract phase (deploy N+1 or later)
-- **Remove old columns/tables** only after all code referencing them has been deployed and is stable.
-- **Add NOT NULL constraints** only after backfilling existing rows (use a data migration or separate step).
-- **Drop indexes** that are no longer needed.
-
-### Never in a single migration
-- Rename a column or table (expand: add new, migrate data, contract: drop old)
-- Change a column type (expand: add new column, backfill, contract: drop old)
-- Add a NOT NULL column without a default
-- Drop a column still referenced by running code
-
-### Ecto-specific rules
-- Use `Ecto.Migration.execute/2` for reversible raw SQL.
-- Long-running data migrations belong in a separate task/script, not in a schema migration — avoid locking tables.
-- Test migrations both directions: `mix ecto.migrate` then `mix ecto.rollback` to verify reversibility.
-- Prefix migration filenames descriptively: `add_`, `create_`, `drop_`, `backfill_`, `remove_`.
+Key rules (hook-enforced for the most dangerous cases):
+- **Expand phase**: add nullable columns or columns with defaults; add indexes concurrently; never rename or drop.
+- **Contract phase**: remove columns/tables only after all referencing code is deployed and stable.
+- **Never in one migration**: rename a column/table, change a column type, add `NOT NULL` without a default, drop a column still in use.
+- **Reversibility**: always test `mix ecto.migrate` + `mix ecto.rollback` + `mix ecto.migrate`.
+- **Backfills** belong in a separate Mix task, not in the schema migration (avoid table locks).
 
 ### Deployment order
-1. Deploy code that handles both old and new schema (expand-compatible)
-2. Run the expand migration
-3. Deploy code that uses only the new schema
-4. Run the contract migration (if any)
+1. Deploy expand-compatible code
+2. Run expand migration
+3. Deploy code using only new schema
+4. Run contract migration (if any)
 
 ## Feature Flag Discipline
 
-FunWithFlags is installed and configured. Persistence is Ecto (via `Slackex.Repo`), cache is ETS with 15-min TTL, and cross-node cache busting uses `Slackex.PubSub`. The Actor protocol is implemented for `Slackex.Accounts.User` (returns `"user:<id>"`).
+All new user-facing features must be deployed behind a FunWithFlags feature flag and remain hidden until PO-approved. **Always invoke `/new-feature` when starting a user-facing feature** — do not add flag guards manually.
 
-### Infrastructure
-- **Admin UI**: `/admin/flags` — basic auth (dev: `admin`/`devpassword`, prod: `FLAGS_ADMIN_USER`/`FLAGS_ADMIN_PASSWORD` env vars)
-- **Config**: `config/config.exs` (persistence, cache, notifications), `config/test.exs` (cache + notifications disabled)
-- **Supervision**: FunWithFlags auto-starts as an OTP application — do NOT add `FunWithFlags.Supervisor` to `application.ex`
-- **Table**: `fun_with_flags_toggles` (flag_name, gate_type, target, enabled)
+Key rules:
+- **Guard both UI and logic** — flag check in the LiveView template (hide UI) AND in the context module (reject the action). Never rely on UI hiding alone.
+- **One flag per feature** — no nested flags or dependencies.
+- **Name flags descriptively** — snake_case atoms: `:threaded_replies`, `:message_reactions`.
+- **Clean up promptly** — remove flag and old code path after global enable (contract phase).
 
-All new user-facing features must be deployed behind a feature flag (FunWithFlags) and remain hidden until the Product Owner is satisfied. This applies to the expand/contract workflow:
+Lifecycle: develop (flag off) → deploy (invisible) → PO validates → global enable → remove flag.
 
-### Lifecycle
-1. **Develop** — implement the feature behind `FunWithFlags.enabled?(:feature_name, for: user)`. The flag defaults to off.
-2. **Deploy** — code ships to production but is invisible to users.
-3. **PO validation** — enable the flag for specific test users or groups via the admin UI. PO validates the feature in production.
-4. **Release** — PO approves, flag is enabled globally.
-5. **Contract** — remove the flag check and any old code path in a follow-up PR. Delete the flag from the admin UI.
-
-### Rules
-- **Never expose unfinished features** — if it's not behind a flag, it must be complete and approved.
-- **One flag per feature** — don't nest flags or create complex flag dependencies.
-- **Name flags descriptively** — use snake_case atoms: `:threaded_replies`, `:message_reactions`, not `:feature_1`.
-- **Clean up promptly** — flags that have been globally enabled for more than one release cycle should be removed (contract phase).
-- **Guard both UI and logic** — check the flag in the LiveView (to hide UI elements) and in the context module (to reject API calls). Don't rely on UI hiding alone.
-- **Flag checks are cheap** — FunWithFlags uses ETS cache, so checking flags in hot paths is fine.
-
-### In templates
-```elixir
-<%= if FunWithFlags.enabled?(:new_feature, for: @current_user) do %>
-  <.new_feature_component />
-<% end %>
-```
-
-### In context modules
-```elixir
-def some_action(user, params) do
-  if FunWithFlags.enabled?(:new_feature, for: user) do
-    # new behaviour
-  else
-    {:error, :not_available}
-  end
-end
-```
+Infrastructure: admin UI at `/admin/flags` (dev: `admin`/`devpassword`). FunWithFlags auto-starts — never add its supervisor to `application.ex`.
 
 ## Deployment Discipline
 
 Production runs two app containers behind a Caddy reverse proxy on a Docker host. The CI/CD pipeline (`.github/workflows/ci-deploy.yml`) builds a Docker image, pushes to GHCR, SSHes into the server to pull and restart containers using `docker-compose.prod.yml`, then restarts Caddy to pick up new upstream IPs.
 
 ### Docker Compose rules
-- **Always use `docker compose pull`**, never bare `docker pull`. Docker Compose tracks image digests independently — a bare `docker pull` updates the local Docker cache but Compose may not recognise the change, silently running stale containers.
+- **Always use `docker compose pull`**, never bare `docker pull` — hook-enforced. Compose tracks digests independently; bare pull silently leaves containers on the old image.
 - **Always pass `--force-recreate --no-build --remove-orphans`** to `docker compose up`. `--force-recreate` ensures containers are replaced when the `:latest` digest changes. `--no-build` prevents rebuilding from stale local source. `--remove-orphans` cleans up containers from renamed/removed services that would otherwise keep running and intercept traffic.
-- **Never define `build:` in `docker-compose.prod.yml`**. Production always uses pre-built images from GHCR.
+- **Never define `build:` in `docker-compose.prod.yml`** — hook-enforced. Production always uses pre-built images from GHCR.
 - **Keep the server's compose file in sync** with the repo. The deploy step must `scp docker-compose.prod.yml` to the server before running `docker compose` commands — the server has no `git pull`.
 - **Authenticate GHCR on the server** before pulling from private repos. Use `echo "$GITHUB_TOKEN" | ssh host docker login ghcr.io -u actor --password-stdin` before the SSH heredoc.
 
 ### Caddy reverse proxy rules
-- **Use `docker restart caddy`, not `caddy reload`**, after recreating app containers. Caddy's `reload` compares the Caddyfile to its running config — if the file hasn't changed, it reports "config is unchanged" and retains stale cached DNS for upstreams that were recreated with new IPs. A full `docker restart` forces a cold start with fresh DNS resolution.
+- **Use `docker restart caddy`, not `caddy reload`** — hook-enforced. Full restart forces fresh DNS; `reload` retains stale upstream IPs when the Caddyfile is unchanged.
 - **The Caddyfile is bind-mounted** from `/opt/caddy/Caddyfile` on the host into the Caddy container at `/etc/caddy/Caddyfile`. Edit the host file; it's the same file inside the container.
 - **Never use `import` directives in the Caddyfile.** Only the single Caddyfile file is bind-mounted — files written alongside it on the host (e.g., `/opt/caddy/slackex-proxy`) are not visible inside the container. `import` references to host paths cause Caddy to crash-loop on startup. Keep the full config inline.
 - **Never dump Caddyfile contents to CI logs** — it contains API tokens (e.g., Cloudflare DNS challenge credentials). Use targeted checks (e.g., `grep reverse_proxy /opt/caddy/Caddyfile`) when debugging.
