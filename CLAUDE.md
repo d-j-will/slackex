@@ -7,7 +7,7 @@ Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL 
 Key directories:
 - `lib/slackex/` — domain contexts (Chat, Messaging, Accounts)
 - `lib/slackex_web/` — LiveView, components, router
-- `test/` — ExUnit tests (currently 845 tests)
+- `test/` — ExUnit tests (currently 849 tests)
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
@@ -88,6 +88,14 @@ All database migrations must be **deploy-safe** — the old application code mus
 4. Run the contract migration (if any)
 
 ## Feature Flag Discipline
+
+FunWithFlags is installed and configured. Persistence is Ecto (via `Slackex.Repo`), cache is ETS with 15-min TTL, and cross-node cache busting uses `Slackex.PubSub`. The Actor protocol is implemented for `Slackex.Accounts.User` (returns `"user:<id>"`).
+
+### Infrastructure
+- **Admin UI**: `/admin/flags` — basic auth (dev: `admin`/`devpassword`, prod: `FLAGS_ADMIN_USER`/`FLAGS_ADMIN_PASSWORD` env vars)
+- **Config**: `config/config.exs` (persistence, cache, notifications), `config/test.exs` (cache + notifications disabled)
+- **Supervision**: FunWithFlags auto-starts as an OTP application — do NOT add `FunWithFlags.Supervisor` to `application.ex`
+- **Table**: `fun_with_flags_toggles` (flag_name, gate_type, target, enabled)
 
 All new user-facing features must be deployed behind a feature flag (FunWithFlags) and remain hidden until the Product Owner is satisfied. This applies to the expand/contract workflow:
 
