@@ -211,8 +211,48 @@ jobs:
             fi
 
             # Verify containers are healthy
-            sleep 10
+            echo "Waiting for containers to start..."
+            sleep 15
+
             echo "=== Container Status ==="
             docker compose -f docker-compose.prod.yml ps 2>&1
+
+            # Smoke test: hit health endpoint on each app container
+            echo "=== Smoke Test ==="
+            SMOKE_FAILED=0
+
+            for APP in app1 app2; do
+              echo "Checking $APP..."
+              HEALTH=$(docker compose -f docker-compose.prod.yml exec -T "$APP" curl -sf http://localhost:4000/health < /dev/null 2>&1) || {
+                echo "FAIL: $APP health check unreachable"
+                SMOKE_FAILED=1
+                continue
+              }
+              echo "$APP: $HEALTH"
+
+              # Verify response contains "ok"
+              echo "$HEALTH" | grep -q '"status":"ok"' || {
+                echo "FAIL: $APP returned unhealthy response"
+                SMOKE_FAILED=1
+              }
+            done
+
+            # Check clustering (allow 30s for nodes to discover each other)
+            sleep 15
+            echo "=== Cluster Check ==="
+            CLUSTER=$(docker compose -f docker-compose.prod.yml exec -T app1 curl -sf http://localhost:4000/health < /dev/null 2>&1) || echo "Could not reach app1 for cluster check"
+            echo "app1 cluster view: $CLUSTER"
+            CLUSTER_SIZE=$(echo "$CLUSTER" | grep -o '"cluster_size":[0-9]*' | cut -d: -f2)
+            if [ "$CLUSTER_SIZE" = "2" ]; then
+              echo "PASS: Cluster formed (2 nodes)"
+            else
+              echo "WARN: Cluster size is ${CLUSTER_SIZE:-unknown}, expected 2 (nodes may still be joining)"
+            fi
+
+            if [ "$SMOKE_FAILED" = "1" ]; then
+              echo "DEPLOY SMOKE TEST FAILED — containers may need manual intervention"
+              exit 1
+            fi
+
             echo "Deploy complete."
           EOF

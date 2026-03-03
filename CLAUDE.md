@@ -158,6 +158,12 @@ Production runs two app containers behind a Caddy reverse proxy on a Docker host
 - **Compile-time endpoint keys must be set in `config/prod.exs`**, not only in `config/runtime.exs`. Phoenix validates that compile-time config matches runtime values at boot — a mismatch crashes the release. Keys like `force_ssl`, `url`, `server`, and `cache_static_manifest` are compile-time. Set the value in `prod.exs` and (if needed) repeat or override it in `runtime.exs`.
 - **After adding any endpoint config in `runtime.exs`**, check whether Phoenix treats it as compile-time by searching for `@compile_env` in the Phoenix source or testing with `MIX_ENV=prod mix compile` followed by a release boot.
 
+### Pre-deploy verification
+- **Never tag a deploy without verifying the full production surface.** Passing `mix test` locally is necessary but not sufficient — it does not test clustering, Docker networking, release boot, or env var availability.
+- **Before tagging, check every file in `rel/`** (`env.sh.eex`, overlays) — these control Erlang distribution, node naming, and cookie derivation. A misconfigured `RELEASE_DISTRIBUTION` or `RELEASE_NODE` will crash the cluster silently.
+- **If the change touches clustering, distribution, or node naming**, SSH into the server after deploy and verify with `docker compose -f docker-compose.prod.yml exec -T app1 curl -sf http://localhost:4000/health`. The `/health` endpoint returns JSON with `node`, `cluster_nodes`, and `cluster_size`. Cluster size must be 2.
+- **The CI deploy workflow includes a smoke test** that hits `/health` on both app1 and app2 after container recreation. If either fails, the deploy step exits non-zero. A cluster size check warns if nodes haven't joined.
+
 ### General
 - **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
 - **Always check the latest tag before creating a new one** — run `git tag --sort=-creatordate | head -5` and increment from the highest existing version. Tags that are numerically lower than the latest will not trigger a deploy.
