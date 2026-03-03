@@ -64,11 +64,14 @@ defmodule Slackex.Embeddings.RAGContext do
 
   defp format_line(message) do
     timestamp = format_timestamp(message.inserted_at)
-    username = message.sender.username
+    username = sender_name(message.sender)
     content = message.search_content || ""
 
     "[#{timestamp}] #{username}: #{content}"
   end
+
+  defp sender_name(nil), do: "[deleted user]"
+  defp sender_name(%{username: username}), do: username
 
   defp format_timestamp(datetime) do
     Calendar.strftime(datetime, "%Y-%m-%d %H:%M")

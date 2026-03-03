@@ -22,7 +22,7 @@ defmodule Slackex.Embeddings.RAGContextTest do
 
       # Each line should match the expected format
       lines = String.split(context, "\n", trim: true)
-      assert length(lines) >= 1
+      assert lines != []
 
       for line <- lines do
         assert Regex.match?(
@@ -173,6 +173,36 @@ defmodule Slackex.Embeddings.RAGContextTest do
                  "xyznonexistentquerythatwontmatch",
                  user_id: user.id
                )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # D9: nil sender does not crash format_line
+  # ---------------------------------------------------------------------------
+
+  describe "retrieve/2 - nil sender safety" do
+    test "formats messages with nil sender as [deleted user]" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      msg = send_channel_message(channel, user, "message from deleted user")
+      embed_message(msg)
+
+      # Null out the sender_id to simulate a deleted user
+      from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
+      |> Repo.update_all(set: [sender_id: nil])
+
+      assert {:ok, context, count} =
+               RAGContext.retrieve("message from deleted user", user_id: user.id)
+
+      assert count >= 1
+
+      lines = String.split(context, "\n", trim: true)
+      first_line = hd(lines)
+
+      # Should use "[deleted user]" instead of crashing on nil sender
+      assert first_line =~ "[deleted user]"
+      assert first_line =~ "message from deleted user"
     end
   end
 

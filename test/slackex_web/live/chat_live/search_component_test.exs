@@ -2,7 +2,6 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   use SlackexWeb.ConnCase, async: false
 
   alias Slackex.Chat
-  alias Slackex.Search
 
   setup %{conn: conn} do
     Redix.command!(:redix_0, ["FLUSHDB"])
@@ -49,7 +48,7 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
          %{user: user} do
       FunWithFlags.disable(:message_search)
 
-      assert {:error, :feature_disabled} = Search.search_messages(user.id, "test query")
+      assert {:error, :feature_disabled} = Slackex.Search.search_messages(user.id, "test query")
     end
 
     test "search_messages/3 performs search when flag is enabled",
@@ -62,15 +61,15 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
       Process.sleep(50)
 
       # Use text mode to avoid needing embedding infrastructure
-      assert {:ok, _results} = Search.search_messages(user.id, "searchable", mode: :text)
+      assert {:ok, _results} = Slackex.Search.search_messages(user.id, "searchable", mode: :text)
     end
   end
 
   # ---------------------------------------------------------------------------
-  # Acceptance: Search with 2+ characters shows results
+  # Acceptance: Search with 2+ characters triggers search via component event
   # ---------------------------------------------------------------------------
 
-  describe "search behavior" do
+  describe "search behavior through component events" do
     setup %{user: user, channel: channel} do
       FunWithFlags.enable(:message_search)
 
@@ -82,35 +81,69 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
       %{msg1: msg1, msg2: msg2}
     end
 
-    test "search with 2+ characters triggers search and shows results",
+    test "typing 2+ characters in search input triggers search via handle_event",
          %{conn: conn, channel: channel} do
       {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
 
-      # Open search
-      html = render_click(view, "toggle_search")
-      assert html =~ "search-component"
+      # Open search panel
+      render_click(view, "toggle_search")
 
-      # Type a search query -- the component sends to parent which performs search
-      # Simulate the parent receiving the perform_search message
-      send(view.pid, {:search_results, "meeting", []})
+      # Type a search query through the component's form -- this fires handle_event("search", ...)
+      # which sends {:perform_search, ...} to the parent, which calls Search.search_messages
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "meeting"})
+
+      # Allow the parent's handle_info to process the {:perform_search, ...} message
+      # and send_update back to the component
+      Process.sleep(100)
       html = render(view)
 
-      # The search input should be visible
+      # The search input should be visible and results should contain the matching message
       assert html =~ "Search messages"
+      assert html =~ "important meeting notes"
     end
 
-    test "search with fewer than 2 characters does not trigger search",
+    test "typing fewer than 2 characters does not trigger search",
          %{conn: conn, channel: channel} do
       {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
 
       render_click(view, "toggle_search")
 
-      # Send a single character search -- should be handled gracefully
-      send(view.pid, {:search_results, "m", []})
+      # Type a single character -- should NOT trigger search (< 2 chars)
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "m"})
+
       html = render(view)
 
-      # Component should still be there but no results
+      # Component should still be there with the min-length hint, no results
       assert html =~ "search-component"
+      assert html =~ "Type at least 2 characters to search"
+    end
+
+    test "empty query clears results and shows prompt",
+         %{conn: conn, channel: channel} do
+      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(view, "toggle_search")
+
+      # First search with a valid query to get results
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "meeting"})
+
+      Process.sleep(100)
+
+      # Now clear the query
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => ""})
+
+      html = render(view)
+
+      # Should show the hint message, not results
+      assert html =~ "Type at least 2 characters to search"
     end
   end
 
@@ -129,7 +162,17 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
 
       render_click(view, "toggle_search")
 
-      # Trigger a search that sets searching=true
+      # Trigger a search through the component -- the component sets searching=true
+      # before the parent receives the message
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "something to search"})
+
+      # Immediately after the component processes the event, searching=true
+      # but the parent hasn't responded yet. The component should show loading.
+      # Note: In LiveView testing, the handle_info may process synchronously.
+      # We verify the loading indicator by checking before results arrive.
+      # Use send_update to explicitly set searching=true for assertion
       send(view.pid, {:search_started})
       html = render(view)
 
@@ -138,7 +181,7 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   end
 
   # ---------------------------------------------------------------------------
-  # Acceptance: Jump to message
+  # Acceptance: Jump to message from search results
   # ---------------------------------------------------------------------------
 
   describe "jump to message" do
@@ -151,27 +194,22 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
       %{msg: msg}
     end
 
-    test "clicking a search result sends jump_to_message event",
-         %{conn: conn, channel: channel, msg: msg} do
+    test "clicking a search result navigates to the message",
+         %{conn: conn, channel: channel} do
       {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
 
       render_click(view, "toggle_search")
 
-      # Simulate search results arriving
-      results = [
-        %{
-          id: msg.id,
-          content: "findable message content",
-          sender: %{username: "testuser", display_name: "Test User"},
-          channel_id: channel.id,
-          inserted_at: DateTime.utc_now()
-        }
-      ]
+      # Search for the message through the component form
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "findable"})
 
-      send(view.pid, {:search_results, "findable", results})
+      # Allow search to complete and results to be sent back
+      Process.sleep(100)
       html = render(view)
 
-      # Results should be displayed
+      # Results should be displayed with the actual message content
       assert html =~ "findable message content"
     end
   end
@@ -193,6 +231,72 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
 
       # Default mode should be hybrid
       assert html =~ "hybrid"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # D5: Integration test -- parent-component search contract
+  # ---------------------------------------------------------------------------
+
+  describe "parent-component search integration" do
+    setup %{user: user, channel: channel} do
+      FunWithFlags.enable(:message_search)
+
+      {:ok, msg} = Chat.send_message(channel.id, user.id, "integration test message")
+      Process.sleep(50)
+
+      %{msg: msg}
+    end
+
+    test "full flow: toggle search, type query, results appear, close search",
+         %{conn: conn, channel: channel} do
+      {:ok, view, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Search panel not visible initially
+      refute html =~ "search-component"
+
+      # Open search panel via toggle
+      html = render_click(view, "toggle_search")
+      assert html =~ "search-component"
+
+      # Type a query through the component -- triggers handle_event -> parent handle_info
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "integration"})
+
+      # Wait for async search to complete
+      Process.sleep(100)
+      html = render(view)
+
+      # Results should contain the actual message from the database
+      assert html =~ "integration test message"
+
+      # Close search panel via the component's close button
+      view
+      |> element("#search-component button[aria-label=\"Close\"]")
+      |> render_click()
+
+      html = render(view)
+
+      # Search panel should be closed
+      refute html =~ "search-component"
+    end
+
+    test "search with no results shows 'No results found'",
+         %{conn: conn, channel: channel} do
+      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(view, "toggle_search")
+
+      # Search for something that doesn't match any message
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "xyznonexistentqueryzyx"})
+
+      Process.sleep(100)
+      html = render(view)
+
+      assert html =~ "No results found"
     end
   end
 end

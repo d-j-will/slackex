@@ -104,6 +104,32 @@ defmodule Slackex.Embeddings.EmbeddingWorkerTest do
   end
 
   # ---------------------------------------------------------------------------
+  # D4: Error handling -- worker handles EmbeddingClient errors gracefully
+  # ---------------------------------------------------------------------------
+
+  describe "error handling" do
+    test "returns :ok and creates no embeddings when EmbeddingClient returns error" do
+      channel = insert(:channel)
+      sender = insert(:user)
+      msg = insert_channel_message(channel, sender, "Will fail to embed")
+
+      # Swap the embedding client to a failing implementation
+      original_client = Application.get_env(:slackex, :embedding_client)
+      Application.put_env(:slackex, :embedding_client, Slackex.Embeddings.FailingClient)
+
+      try do
+        # The worker should handle the error gracefully without crashing
+        assert :ok = perform_batch([msg.id])
+
+        # No embedding should be created since the client returned an error
+        assert Repo.get(MessageEmbedding, msg.id) == nil
+      after
+        Application.put_env(:slackex, :embedding_client, original_client)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Acceptance: enqueue/1 chunks into batches of 50
   # ---------------------------------------------------------------------------
 

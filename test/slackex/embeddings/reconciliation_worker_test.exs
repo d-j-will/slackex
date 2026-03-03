@@ -96,6 +96,54 @@ defmodule Slackex.Embeddings.ReconciliationWorkerTest do
   end
 
   # ---------------------------------------------------------------------------
+  # D6: Boundary conditions for lookback window (3600 seconds)
+  # ---------------------------------------------------------------------------
+
+  describe "lookback window boundary conditions" do
+    test "message at 3599 seconds ago (inside window) is discovered and embedded" do
+      channel = insert(:channel)
+      sender = insert(:user)
+      msg = insert_channel_message(channel, sender, "Just inside window")
+
+      # Backdate to 3599 seconds ago -- just inside the 3600s lookback
+      just_inside =
+        DateTime.utc_now()
+        |> DateTime.add(-3599, :second)
+        |> DateTime.truncate(:microsecond)
+
+      from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
+      |> Repo.update_all(set: [inserted_at: just_inside])
+
+      assert :ok = perform_reconciliation()
+
+      # Should be embedded -- it's inside the lookback window
+      assert Repo.get(MessageEmbedding, msg.id) != nil,
+             "Expected message at 3599s ago to be embedded (inside 3600s window)"
+    end
+
+    test "message at 3601 seconds ago (outside window) is not discovered" do
+      channel = insert(:channel)
+      sender = insert(:user)
+      msg = insert_channel_message(channel, sender, "Just outside window")
+
+      # Backdate to 3601 seconds ago -- just outside the 3600s lookback
+      just_outside =
+        DateTime.utc_now()
+        |> DateTime.add(-3601, :second)
+        |> DateTime.truncate(:microsecond)
+
+      from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
+      |> Repo.update_all(set: [inserted_at: just_outside])
+
+      assert :ok = perform_reconciliation()
+
+      # Should NOT be embedded -- it's outside the lookback window
+      assert Repo.get(MessageEmbedding, msg.id) == nil,
+             "Expected message at 3601s ago to NOT be embedded (outside 3600s window)"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Unit: batch chunking
   # ---------------------------------------------------------------------------
 
