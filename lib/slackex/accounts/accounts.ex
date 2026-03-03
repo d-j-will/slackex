@@ -4,6 +4,10 @@ defmodule Slackex.Accounts do
   and session/JWT token lifecycle.
   """
 
+  use Boundary,
+    deps: [Slackex.Encrypted],
+    exports: [User, UserToken, Auth, Guardian]
+
   import Ecto.Query
 
   alias Slackex.Accounts.{User, UserToken}

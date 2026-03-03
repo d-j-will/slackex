@@ -17,6 +17,8 @@ defmodule Slackex.Cache do
     2. Write to Redis (best-effort, 100 ms timeout, drop on failure)
   """
 
+  use Boundary, deps: [], exports: []
+
   require Logger
 
   alias Slackex.Cache.Local
@@ -79,6 +81,12 @@ defmodule Slackex.Cache do
     Local.invalidate(target)
     Redis.invalidate(target)
     :ok
+  end
+
+  @doc "Gets read cursor for a user/target from Redis. Returns `{:ok, cursor_id}` or `:miss`."
+  @spec get_read_cursor(integer(), target()) :: {:ok, integer()} | :miss
+  def get_read_cursor(user_id, target) do
+    Redis.get_read_cursor(user_id, target)
   end
 
   @doc "Bulk backfills both ETS and Redis with `messages`."

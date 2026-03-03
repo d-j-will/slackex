@@ -10,8 +10,27 @@ defmodule Slackex.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: Mix.compilers(),
+      compilers: Mix.compilers() ++ [:boundary],
       listeners: [Phoenix.CodeReloader],
+      boundary: [
+        ignore: [
+          # Root application module
+          Slackex,
+          # Bootstrap modules — intentionally outside all contexts
+          Slackex.Application,
+          Slackex.NodeListener,
+          Slackex.Release,
+          # Leaf utility modules — freely depended upon, not bounded
+          Slackex.Repo,
+          Slackex.ReadRepo,
+          Slackex.ReadRepo.LagMonitor,
+          Slackex.Vault,
+          # Mix tasks
+          Mix.Tasks.GitHooks.Install,
+          Mix.Tasks.Slackex.EncryptExisting,
+          Mix.Tasks.Slackex.RotateKey
+        ]
+      ],
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/project.plt"},
         plt_add_apps: [:mix, :ex_unit],
@@ -96,6 +115,7 @@ defmodule Slackex.MixProject do
       {:tidewave, "~> 0.5", only: :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:boundary, "~> 0.10", runtime: false},
       {:ex_machina, "~> 2.8", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test}
     ]

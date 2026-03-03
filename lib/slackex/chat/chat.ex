@@ -3,6 +3,22 @@ defmodule Slackex.Chat do
   The Chat context. Manages channels, messages, DM conversations, and read cursors.
   """
 
+  use Boundary,
+    deps: [Slackex.Accounts, Slackex.Infrastructure, Slackex.Encrypted],
+    exports: [
+      Channel,
+      Message,
+      DMConversation,
+      DMRequest,
+      ReadCursor,
+      Subscription,
+      UserBlock,
+      UserTrustScore,
+      AbuseReport,
+      Permissions,
+      DMRateLimiter
+    ]
+
   import Ecto.Query
 
   alias Ecto.Multi

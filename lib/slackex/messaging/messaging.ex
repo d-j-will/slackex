@@ -9,6 +9,17 @@ defmodule Slackex.Messaging do
   LiveViews, channels, and API controllers.
   """
 
+  use Boundary,
+    deps: [
+      Slackex.Accounts,
+      Slackex.Chat,
+      Slackex.Cache,
+      Slackex.Infrastructure,
+      Slackex.Notifications,
+      Slackex.Pipeline
+    ],
+    exports: [ChannelServer, ChannelSupervisor, Envelope]
+
   alias Slackex.Cache
   alias Slackex.Chat
   alias Slackex.Messaging.ChannelServer

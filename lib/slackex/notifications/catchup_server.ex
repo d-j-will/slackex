@@ -12,7 +12,7 @@ defmodule Slackex.Notifications.CatchupServer do
 
   import Ecto.Query
 
-  alias Slackex.Cache.Redis, as: RedisCache
+  alias Slackex.Cache
   alias Slackex.Chat
   alias Slackex.Chat.{Channel, Message, ReadCursor, Subscription}
   alias Slackex.Repo
@@ -82,7 +82,7 @@ defmodule Slackex.Notifications.CatchupServer do
   end
 
   defp resolve_read_cursor(user_id, channel_id) do
-    case RedisCache.get_read_cursor(user_id, {:channel, channel_id}) do
+    case Cache.get_read_cursor(user_id, {:channel, channel_id}) do
       {:ok, cursor_id} ->
         cursor_id
 
