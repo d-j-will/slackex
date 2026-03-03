@@ -1,0 +1,103 @@
+events:
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-03-03T18:54:22Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-03-03T18:54:47Z'
+- d: 'NOT_APPLICABLE: migration is a single SQL statement; acceptance test covers
+    the only behavior'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 01-01
+  t: '2026-03-03T18:54:52Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-03-03T18:55:47Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-03-03T18:56:31Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-03T18:57:36Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-03T18:58:13Z'
+- d: 'NOT_APPLICABLE: migration is pure infrastructure with no domain logic; acceptance
+    tests via information_schema and pg_indexes provide complete coverage'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 01-02
+  t: '2026-03-03T18:58:18Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-03T19:00:47Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-03T19:01:44Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-03T19:04:24Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-03T19:05:13Z'
+- d: 'NOT_APPLICABLE: Schema is a pure data definition. Acceptance tests already cover
+    changeset validation, field types, primary key config, and roundtrip persistence.
+    Separate unit tests would duplicate acceptance tests with no additional coverage.'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 01-03
+  t: '2026-03-03T19:05:22Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-03T19:07:03Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-03T19:07:52Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-03-03T19:10:02Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-03-03T19:10:54Z'
+- d: 'NOT_APPLICABLE: acceptance tests cover all distinct behaviors through the driving
+    port; no separate pure functions to unit test beneath the query module'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 03-01
+  t: '2026-03-03T19:11:06Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-03-03T19:13:33Z'
+project_id: intelligence-search
+schema_version: '3.0'

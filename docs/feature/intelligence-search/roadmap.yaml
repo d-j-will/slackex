@@ -1,0 +1,299 @@
+roadmap:
+  project_id: intelligence-search
+  created_at: '2026-03-03T18:15:25Z'
+  total_steps: 12
+  phases: 4
+phases:
+- id: '01'
+  name: 'Database Foundation and Schema'
+  steps:
+  - id: 01-01
+    name: 'Enable pgvector Extension'
+    description: >
+      Add deploy-safe migration enabling the pgvector extension on PostgreSQL.
+      Extension must be available before any vector column or index can be created.
+    criteria:
+      - 'Given a fresh database, when mix ecto.migrate runs, then the vector extension is active and SELECT vector_dims(''[1,2,3]''::vector) returns 3'
+      - 'Given an existing database where pgvector is already enabled, when the migration runs, then it completes idempotently without error (IF NOT EXISTS)'
+      - 'Given a successful migrate, when mix ecto.rollback runs for this migration, then it completes without error'
+    estimated_hours: 1
+    dependencies: []
+    files_to_modify:
+      - 'priv/repo/migrations/YYYYMMDDHHMMSS_enable_pgvector.exs'
+  - id: 01-02
+    name: 'Create message_embeddings Table'
+    description: >
+      Migration creating the message_embeddings table with vector(1536) column,
+      HNSW index for cosine similarity, and indexes on channel_id and
+      dm_conversation_id. No FK to partitioned messages table.
+    criteria:
+      - 'Given a migrated database, when querying information_schema, then message_embeddings table exists with columns: message_id (bigint PK), message_inserted_at (timestamptz NOT NULL), channel_id (bigint nullable), dm_conversation_id (bigint nullable), embedding (vector(1536)), content_hash (varchar(64)), inserted_at (timestamptz)'
+      - 'Given the table exists, when inspecting indexes, then an HNSW index exists on the embedding column with m=16 and ef_construction=64 using cosine distance'
+      - 'Given the table exists, when inspecting indexes, then btree indexes exist on channel_id and dm_conversation_id'
+      - 'Given a successful migrate, when mix ecto.rollback runs, then the table and all indexes are dropped cleanly'
+    estimated_hours: 2
+    dependencies:
+      - 01-01
+    files_to_modify:
+      - 'priv/repo/migrations/YYYYMMDDHHMMSS_create_message_embeddings.exs'
+  - id: 01-03
+    name: 'MessageEmbedding Ecto Schema and Postgrex Type Registration'
+    description: >
+      Define the Slackex.Embeddings boundary module and MessageEmbedding Ecto schema.
+      Register Postgrex custom types via Postgrex.Types.define for vector support.
+      Configure Repo to use the custom types module.
+    criteria:
+      - 'Given the Embeddings boundary module exists, when mix compile runs with boundary compiler, then no boundary violation warnings are emitted for Embeddings'
+      - 'Given a MessageEmbedding struct, when inserting a record with a 1536-dimension vector via Repo, then the record persists and can be read back with the correct vector values'
+      - 'Given the Postgrex types module is defined, when the Repo starts, then it uses the custom types and can handle vector columns without runtime errors'
+      - 'Given a MessageEmbedding, when content_hash is set, then it stores a 64-character SHA-256 hex string'
+    estimated_hours: 3
+    dependencies:
+      - 01-02
+    files_to_modify:
+      - 'lib/slackex/embeddings.ex'
+      - 'lib/slackex/embeddings/message_embedding.ex'
+      - 'lib/slackex/postgrex_types.ex'
+      - 'lib/slackex/repo.ex'
+      - 'config/config.exs'
+- id: '02'
+  name: 'Embedding Pipeline'
+  steps:
+  - id: 02-01
+    name: 'EmbeddingClient Behaviour and Implementations'
+    description: >
+      Define EmbeddingClient behaviour with generate/1, generate_batch/1, and
+      dimensions/0 callbacks. Implement OpenAIClient (Req, text-embedding-3-small,
+      batch<=100) and StubClient (deterministic phash2-seeded vectors). Configure
+      test/dev to use StubClient, prod uses OpenAIClient.
+    criteria:
+      - 'Given a list of up to 100 text strings, when calling generate_batch/1 on StubClient, then it returns {:ok, vectors} where each vector has exactly 1536 dimensions'
+      - 'Given the same input text, when calling StubClient.generate/1 twice, then both calls return identical vectors (deterministic via phash2 seeding)'
+      - 'Given a list exceeding 100 texts, when calling generate_batch/1 on OpenAIClient, then it returns {:error, :batch_too_large}'
+      - 'Given test environment config, when Application.get_env is called for :embedding_client, then it returns StubClient'
+      - 'Given a network error from the OpenAI API, when OpenAIClient.generate/1 is called, then it returns {:error, reason} without raising'
+    estimated_hours: 4
+    dependencies:
+      - 01-03
+    files_to_modify:
+      - 'lib/slackex/embeddings/embedding_client.ex'
+      - 'lib/slackex/embeddings/openai_client.ex'
+      - 'lib/slackex/embeddings/stub_client.ex'
+      - 'config/config.exs'
+      - 'config/dev.exs'
+      - 'config/test.exs'
+      - 'config/runtime.exs'
+      - 'test/slackex/embeddings/stub_client_test.exs'
+      - 'test/slackex/embeddings/embedding_client_test.exs'
+  - id: 02-02
+    name: 'EmbeddingWorker Oban Job'
+    description: >
+      Oban worker on :embeddings queue (max_attempts: 3, priority: 3) that
+      fetches messages by ID, generates embeddings via EmbeddingClient, computes
+      SHA-256 content hashes, and upserts into message_embeddings. Provides
+      enqueue/1 (chunks IDs into batches of 50) and enqueue_backfill/1 (unique
+      per channel/DM, 1hr window).
+    criteria:
+      - 'Given a batch of persisted message IDs, when EmbeddingWorker performs the job, then message_embeddings rows are created with correct message_id, embedding vector, and SHA-256 content_hash'
+      - 'Given a message whose content_hash matches an existing embedding, when EmbeddingWorker runs, then the embedding is skipped (not regenerated)'
+      - 'Given a message that has been deleted (deleted_at not null), when EmbeddingWorker runs, then it skips that message without error'
+      - 'Given 120 message IDs passed to enqueue/1, then 3 separate Oban jobs are inserted (batches of 50, 50, 20)'
+      - 'Given enqueue_backfill/1 is called twice for the same channel within 1 hour, then only one job is created (uniqueness constraint)'
+    estimated_hours: 5
+    dependencies:
+      - 02-01
+    files_to_modify:
+      - 'lib/slackex/embeddings/embedding_worker.ex'
+      - 'test/slackex/embeddings/embedding_worker_test.exs'
+  - id: 02-03
+    name: 'PersistenceListener and ReconciliationWorker'
+    description: >
+      PersistenceListener: supervised GenServer subscribing to "pipeline:events"
+      PubSub topic, enqueues EmbeddingWorker on {:messages_persisted, message_ids}.
+      BatchWriter (in Pipeline boundary) broadcasts this event after successful
+      batch inserts. PubSub is OTP infrastructure, not a boundary dependency —
+      Embeddings subscribes independently without importing Pipeline. No circular
+      dependency. The worker looks up channel_id/dm_conversation_id from the
+      message records in the DB, so the event payload is just message IDs.
+      ReconciliationWorker: Oban cron job every 15min with 1-hour lookback,
+      finds unembedded messages via LEFT JOIN, enqueues in batches of 50.
+    criteria:
+      - 'Given PersistenceListener is running, when BatchWriter broadcasts {:messages_persisted, [id1, id2]} on "pipeline:events", then EmbeddingWorker jobs are enqueued for those message IDs'
+      - 'Given PersistenceListener subscribes to PubSub, when mix compile runs with boundary compiler, then no boundary violations are emitted (PubSub is OTP infrastructure, not a boundary dep)'
+      - 'Given PersistenceListener is not running during a broadcast, when ReconciliationWorker runs its 15-minute cron, then it discovers unembedded messages from the last hour and enqueues them'
+      - 'Given all recent messages already have embeddings, when ReconciliationWorker runs, then no new jobs are enqueued'
+      - 'Given PersistenceListener is added to the supervision tree, when the application starts, then it starts after Oban and subscribes to "pipeline:events"'
+    estimated_hours: 4
+    dependencies:
+      - 02-02
+    files_to_modify:
+      - 'lib/slackex/embeddings/persistence_listener.ex'
+      - 'lib/slackex/embeddings/reconciliation_worker.ex'
+      - 'lib/slackex/application.ex'
+      - 'config/config.exs'
+      - 'test/slackex/embeddings/persistence_listener_test.exs'
+      - 'test/slackex/embeddings/reconciliation_worker_test.exs'
+- id: '03'
+  name: 'Search'
+  steps:
+  - id: 03-01
+    name: 'Full-Text Search with Authorization'
+    description: >
+      Implement text_search/3 in Slackex.Search.MessageSearch using PostgreSQL
+      tsvector/tsquery with plainto_tsquery. Authorization enforced via EXISTS
+      subqueries (user in public channel, user subscribed to private channel,
+      user is participant in DM). Add GIN index on to_tsvector for messages.
+      Results ranked by ts_rank, preloads :sender.
+    criteria:
+      - 'Given a user who is a member of #general, when searching for "hello world", then messages in #general containing those terms are returned ranked by relevance with sender preloaded'
+      - 'Given a user who is NOT a member of a private channel, when searching, then no messages from that private channel appear in results'
+      - 'Given a user who is a DM participant, when searching, then matching DM messages from their conversations are included in results'
+      - 'Given no messages match the query, when searching, then an empty list is returned without error'
+      - 'Given the GIN index exists and 100+ test messages are seeded, when EXPLAIN ANALYZE runs on text_search/3 query, then output contains Bitmap Index Scan on the GIN index (no Seq Scan on messages)'
+    estimated_hours: 5
+    dependencies:
+      - 01-02
+    files_to_modify:
+      - 'lib/slackex/search/message_search.ex'
+      - 'priv/repo/migrations/YYYYMMDDHHMMSS_add_fts_gin_index.exs'
+      - 'test/slackex/search/message_search_test.exs'
+  - id: 03-02
+    name: 'Semantic Search with Vector Similarity'
+    description: >
+      Implement semantic_search/3 in MessageSearch using pgvector cosine
+      similarity. Generates query embedding via EmbeddingClient, joins
+      message_embeddings with messages on (message_id, message_inserted_at) =
+      (id, inserted_at) for partition pruning. Same EXISTS-based authorization.
+      Similarity threshold default 0.3.
+    criteria:
+      - 'Given an embedded message in a channel the user belongs to, when performing semantic search with a related query, then the message appears in results with a similarity score above 0.3'
+      - 'Given a message with similarity below 0.3, when performing semantic search, then it is excluded from results'
+      - 'Given a user without access to a private channel, when performing semantic search, then messages from that channel are excluded even if semantically similar'
+      - 'Given the join uses (message_id, message_inserted_at) = (id, inserted_at), when EXPLAIN runs, then partition pruning is active on the messages table'
+      - 'Given a semantic search query, when EmbeddingClient returns an error, then semantic_search/3 returns {:error, reason} gracefully'
+    estimated_hours: 4
+    dependencies:
+      - 01-03
+      - 02-01
+      - 03-01
+    files_to_modify:
+      - 'lib/slackex/search/message_search.ex'
+      - 'test/slackex/search/message_search_test.exs'
+  - id: 03-03
+    name: 'Hybrid Search and Search Context Boundary'
+    description: >
+      Implement hybrid_search/3 using Reciprocal Rank Fusion (RRF, k=60).
+      Runs FTS and semantic search in parallel via Task.async, merges by
+      message ID with combined RRF scores. Define Slackex.Search context
+      boundary with public API search_messages/3 that dispatches to the
+      selected mode (:text, :semantic, :hybrid default).
+    criteria:
+      - 'Given a query matching messages in both FTS and semantic results, when hybrid_search runs, then results are merged by message ID and ranked by combined RRF score'
+      - 'Given a message appearing only in FTS results, when hybrid search merges, then it still appears in final results with its single-source RRF score'
+      - 'Given search_messages/3 is called with mode :text, when dispatching, then only full-text search runs (no embedding generation)'
+      - 'Given search_messages/3 is called with mode :hybrid, when dispatching, then FTS and semantic run concurrently (parallel tasks)'
+      - 'Given the Search boundary declaration, when mix compile runs, then no boundary violations are emitted for deps: [Chat, Cache, Embeddings, Repo]'
+    estimated_hours: 5
+    dependencies:
+      - 03-01
+      - 03-02
+    files_to_modify:
+      - 'lib/slackex/search.ex'
+      - 'lib/slackex/search/message_search.ex'
+      - 'test/slackex/search/message_search_test.exs'
+- id: '04'
+  name: 'UI and RAG Integration'
+  steps:
+  - id: 04-01
+    name: 'Search LiveView Component'
+    description: >
+      LiveView component for search UI in the chat interface. Manages state:
+      query, results, search_mode (:hybrid default), searching flag. Events:
+      search (min 2 chars, debounced 300ms), set_mode, jump_to_message. Uses async
+      pattern: component sends to parent, parent runs search via Search context,
+      send_update returns results. Feature-flagged behind :message_search flag
+      (FunWithFlags). Flag guards both UI rendering (template) and search action
+      (context module). Flag defaults to disabled.
+    criteria:
+      - 'Given a user types 2+ characters in the search input, when the search event fires, then a search is performed and results are displayed'
+      - 'Given a user types fewer than 2 characters, when the search event fires, then no search is performed and results are cleared'
+      - 'Given rapid keystrokes within 300ms, when the user types, then only the final query triggers a search (debounced)'
+      - 'Given search results are displayed, when the user clicks a result, then the chat scrolls to that message (jump_to_message event sent to parent)'
+      - 'Given the :message_search feature flag is disabled, when the user views the chat UI, then the search component is not rendered'
+      - 'Given the :message_search feature flag is disabled, when search_messages/3 is called directly, then it returns {:error, :feature_disabled}'
+      - 'Given a search is in progress, when the component renders, then a loading indicator is shown (searching flag is true)'
+    estimated_hours: 6
+    dependencies:
+      - 03-03
+    files_to_modify:
+      - 'lib/slackex_web/live/chat_live/search_component.ex'
+      - 'lib/slackex_web/live/chat_live/index.ex'
+      - 'test/slackex_web/live/chat_live/search_component_test.exs'
+  - id: 04-02
+    name: 'RAG-Ready Query Interface'
+    description: >
+      Slackex.Embeddings.RAGContext.retrieve/2 runs semantic search for the
+      given query, formats results as "[timestamp] username: content" lines,
+      truncates to max_tokens (default 4000, ~4 chars/token estimate). Returns
+      a plain-text context string suitable for LLM prompt injection.
+    criteria:
+      - 'Given 5 semantically relevant messages exist, when RAGContext.retrieve/2 is called, then it returns a string with lines formatted as "[YYYY-MM-DD HH:MM] username: content"'
+      - 'Given results exceed max_tokens (4000 default, ~4 chars/token), when retrieve/2 formats output, then the string is truncated to fit within the token budget and does not cut mid-line'
+      - 'Given a custom max_tokens option is passed, when retrieve/2 runs, then the token budget respects the override'
+      - 'Given no messages match the query, when retrieve/2 runs, then it returns an empty string'
+    estimated_hours: 3
+    dependencies:
+      - 03-02
+    files_to_modify:
+      - 'lib/slackex/embeddings/rag_context.ex'
+      - 'test/slackex/embeddings/rag_context_test.exs'
+  - id: 04-03
+    name: 'Configuration and Supervisor Wiring'
+    description: >
+      Final wiring: add PersistenceListener to application supervisor after
+      Oban. Add ReconciliationWorker to Oban cron config (*/15 * * * *).
+      Configure embedding_client in config.exs, dev.exs, test.exs, and
+      runtime.exs. Add OPENAI_API_KEY env var to runtime.exs for prod.
+      Verify full pipeline: message persisted -> PubSub -> listener -> worker -> embedding stored.
+    criteria:
+      - 'Given the application starts, when the supervision tree initializes, then PersistenceListener starts after Oban and before the Endpoint'
+      - 'Given Oban cron config, when inspecting the crontab, then ReconciliationWorker is scheduled at */15 * * * *'
+      - 'Given MIX_ENV=test, when config is loaded, then :embedding_client resolves to StubClient'
+      - 'Given MIX_ENV=prod with OPENAI_API_KEY set, when runtime.exs loads, then :embedding_client resolves to OpenAIClient with the API key configured'
+      - 'Given OPENAI_API_KEY is missing in prod, when the application starts, then it raises a clear error message indicating the missing env var'
+    estimated_hours: 3
+    dependencies:
+      - 02-03
+      - 04-01
+      - 04-02
+    files_to_modify:
+      - 'lib/slackex/application.ex'
+      - 'config/config.exs'
+      - 'config/dev.exs'
+      - 'config/test.exs'
+      - 'config/runtime.exs'
+implementation_scope:
+  source_directories:
+    - lib/slackex/embeddings/
+    - lib/slackex/search/
+    - lib/slackex_web/live/chat_live/
+  test_directories:
+    - test/slackex/embeddings/
+    - test/slackex/search/
+    - test/slackex_web/live/chat_live/
+  excluded_patterns:
+    - _build/**
+    - deps/**
+    - .elixir_ls/**
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  revision: 1
+  approved_at: '2026-03-03T20:47:00Z'
+  changes_made:
+    - 'D1: Clarified PubSub boundary compliance in 02-03 description and added boundary criterion'
+    - 'D2: Added 01-03 to 03-02 dependencies'
+    - 'D3: Strengthened GIN index criterion with 100+ message seeding and EXPLAIN output verification'
+    - 'D4: Added feature flag guard criteria for both UI and context module in 04-01'
+    - 'D5: Clarified event payload is just message IDs; worker looks up channel_id/dm_conversation_id from DB'
+    - 'D6: Added 300ms debounce criterion to 04-01'
