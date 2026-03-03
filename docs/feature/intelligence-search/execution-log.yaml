@@ -124,5 +124,32 @@ events:
   s: EXECUTED
   sid: 02-01
   t: '2026-03-03T19:18:54Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-03T19:19:40Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-03-03T19:21:16Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-03-03T19:22:03Z'
+- d: 'NOT_APPLICABLE: acceptance tests cover content_hash, dedup, and filtering through
+    the driving port; pure helpers are trivial wrappers (crypto.hash) not warranting
+    separate unit tests'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 02-02
+  t: '2026-03-03T19:22:12Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-03-03T19:24:27Z'
 project_id: intelligence-search
 schema_version: '3.0'
