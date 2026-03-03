@@ -121,16 +121,7 @@ if config_env() == :prod do
       ]
     ]
 
-  openai_api_key = System.get_env("OPENAI_API_KEY")
-
-  if is_nil(openai_api_key) do
-    IO.puts(
-      "[warning] OPENAI_API_KEY is not set. " <>
-        "Embedding generation will fail until the key is configured."
-    )
-  end
-
-  config :slackex, :openai_api_key, openai_api_key
+  config :slackex, :openai_api_key, System.get_env("OPENAI_API_KEY")
 
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",
