@@ -121,12 +121,14 @@ if config_env() == :prod do
       ]
     ]
 
-  openai_api_key =
-    System.get_env("OPENAI_API_KEY") ||
-      raise """
-      environment variable OPENAI_API_KEY is missing.
-      Required for embedding generation via the OpenAI API.
-      """
+  openai_api_key = System.get_env("OPENAI_API_KEY")
+
+  if is_nil(openai_api_key) do
+    IO.puts(
+      "[warning] OPENAI_API_KEY is not set. " <>
+        "Embedding generation will fail until the key is configured."
+    )
+  end
 
   config :slackex, :openai_api_key, openai_api_key
 

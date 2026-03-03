@@ -43,7 +43,7 @@ defmodule Slackex.Search.MessageSearch do
     * `:channel_id` - scope search to a specific channel
 
   """
-  @spec text_search(integer(), String.t(), keyword()) :: {:ok, [Message.t()]}
+  @spec text_search(integer(), String.t(), keyword()) :: {:ok, [Ecto.Schema.t()]}
   def text_search(user_id, query, opts \\ []) do
     results =
       build_search_query(user_id, query, opts)
@@ -65,7 +65,7 @@ defmodule Slackex.Search.MessageSearch do
 
     # Disable seq scan to verify the GIN index is usable by the planner.
     # This is only called from tests; production queries let the planner decide.
-    Repo.query!("SET LOCAL enable_seqscan = off")
+    _ = Repo.query!("SET LOCAL enable_seqscan = off")
 
     case Repo.query(explain_sql, explain_params) do
       {:ok, %{rows: rows}} ->
@@ -97,7 +97,7 @@ defmodule Slackex.Search.MessageSearch do
 
   """
   @spec semantic_search(integer(), String.t(), keyword()) ::
-          {:ok, [Message.t()]} | {:error, term()}
+          {:ok, [Ecto.Schema.t()]} | {:error, term()}
   def semantic_search(user_id, query, opts \\ []) do
     generate_fn = Keyword.get(opts, :embedding_client, &EmbeddingClient.generate/1)
 
@@ -135,7 +135,7 @@ defmodule Slackex.Search.MessageSearch do
 
   """
   @spec hybrid_search(integer(), String.t(), keyword()) ::
-          {:ok, [Message.t()]} | {:error, term()}
+          {:ok, [Ecto.Schema.t()]} | {:error, term()}
   def hybrid_search(user_id, query, opts \\ []) do
     limit = Keyword.get(opts, :limit, @default_limit)
     offset = Keyword.get(opts, :offset, 0)
@@ -208,7 +208,7 @@ defmodule Slackex.Search.MessageSearch do
         {explain_sql, explain_params} = Repo.to_sql(:all, search_query)
         explain_sql = "EXPLAIN ANALYZE " <> explain_sql
 
-        Repo.query!("SET LOCAL enable_seqscan = off")
+        _ = Repo.query!("SET LOCAL enable_seqscan = off")
 
         case Repo.query(explain_sql, explain_params) do
           {:ok, %{rows: rows}} ->

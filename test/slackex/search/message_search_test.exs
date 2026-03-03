@@ -19,7 +19,7 @@ defmodule Slackex.Search.MessageSearchTest do
       assert {:ok, results} = MessageSearch.text_search(user.id, "hello world")
 
       # Both messages containing "hello" or "world" should appear
-      assert length(results) >= 1
+      assert results != []
 
       # The most relevant result (containing both terms) should be first
       first = hd(results)
@@ -370,7 +370,7 @@ defmodule Slackex.Search.MessageSearchTest do
       assert {:ok, results} =
                MessageSearch.hybrid_search(user.id, "concurrent search test content")
 
-      assert length(results) >= 1
+      assert results != []
 
       # Message should have combined RRF score from both sources
       result = Enum.find(results, &(&1.id == msg.id))

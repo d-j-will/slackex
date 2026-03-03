@@ -22,7 +22,7 @@ defmodule Slackex.SearchTest do
       assert {:ok, results} =
                Search.search_messages(user.id, "text mode dispatch testing", mode: :text)
 
-      assert length(results) >= 1
+      assert results != []
       assert hd(results).content =~ "text mode dispatch"
     end
   end
@@ -42,7 +42,7 @@ defmodule Slackex.SearchTest do
       assert {:ok, results} =
                Search.search_messages(user.id, "semantic mode dispatch testing", mode: :semantic)
 
-      assert length(results) >= 1
+      assert results != []
     end
   end
 
@@ -62,7 +62,7 @@ defmodule Slackex.SearchTest do
       assert {:ok, results} =
                Search.search_messages(user.id, "hybrid default dispatch testing")
 
-      assert length(results) >= 1
+      assert results != []
 
       # Hybrid results have search_score
       first = hd(results)
@@ -80,7 +80,7 @@ defmodule Slackex.SearchTest do
       assert {:ok, results} =
                Search.search_messages(user.id, "explicit hybrid mode testing", mode: :hybrid)
 
-      assert length(results) >= 1
+      assert results != []
       assert is_float(hd(results).search_score)
     end
   end

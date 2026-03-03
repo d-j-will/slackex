@@ -28,7 +28,7 @@ defmodule Slackex.Search do
 
   """
   @spec search_messages(integer(), String.t(), keyword()) ::
-          {:ok, [Slackex.Chat.Message.t()]} | {:error, term()}
+          {:ok, [Ecto.Schema.t()]} | {:error, term()}
   def search_messages(user_id, query, opts \\ []) do
     if FunWithFlags.enabled?(:message_search) do
       {mode, search_opts} = Keyword.pop(opts, :mode, :hybrid)

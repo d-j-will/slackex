@@ -90,9 +90,10 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"message_ids" => message_ids}}) do
-    message_ids
-    |> fetch_embeddable_messages()
-    |> generate_and_persist_embeddings()
+    _ =
+      message_ids
+      |> fetch_embeddable_messages()
+      |> generate_and_persist_embeddings()
 
     :ok
   end
@@ -202,9 +203,10 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
     |> Repo.all()
     |> Enum.chunk_every(@batch_size)
     |> Enum.each(fn batch ->
-      batch
-      |> fetch_embeddable_messages()
-      |> generate_and_persist_embeddings()
+      _ =
+        batch
+        |> fetch_embeddable_messages()
+        |> generate_and_persist_embeddings()
 
       Process.sleep(@backfill_pause_ms)
     end)
