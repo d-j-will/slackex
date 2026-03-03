@@ -20,6 +20,8 @@ defmodule Slackex.Chat.Message do
     belongs_to :channel, Slackex.Chat.Channel
     belongs_to :dm_conversation, Slackex.Chat.DMConversation
     belongs_to :sender, Slackex.Accounts.User
+
+    field :similarity, :float, virtual: true
   end
 
   def changeset(message, attrs) do

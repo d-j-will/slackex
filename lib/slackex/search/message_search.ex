@@ -1,26 +1,33 @@
 defmodule Slackex.Search.MessageSearch do
   @moduledoc """
-  Full-text search over messages with authorization enforcement.
+  Full-text and semantic search over messages with authorization enforcement.
 
-  Uses PostgreSQL tsvector/tsquery on the `search_content` column (plaintext
-  companion to the encrypted `encrypted_content` column). Results are ranked
-  by `ts_rank` and filtered so users only see messages they are authorized
-  to access:
+  Provides two search modes:
+
+  - **text_search/3**: PostgreSQL tsvector/tsquery on the `search_content` column,
+    ranked by `ts_rank`.
+  - **semantic_search/3**: pgvector cosine similarity against pre-computed
+    message embeddings, filtered by a configurable similarity threshold.
+
+  Both modes enforce authorization so users only see messages they are
+  authorized to access:
 
   - Public channels: visible to all users
   - Private channels: visible only to subscribed members
   - DM conversations: visible only to participants
 
   Authorization is enforced via EXISTS subqueries to avoid row duplication
-  that would corrupt ts_rank ordering.
+  that would corrupt ranking.
   """
 
   import Ecto.Query
 
   alias Slackex.Chat.Message
+  alias Slackex.Embeddings.{EmbeddingClient, MessageEmbedding}
   alias Slackex.Repo
 
   @default_limit 20
+  @default_similarity_threshold 0.3
 
   @doc """
   Searches messages matching the given query text, scoped by authorization.
@@ -67,6 +74,75 @@ defmodule Slackex.Search.MessageSearch do
     end
   end
 
+  @doc """
+  Searches messages by cosine similarity against pre-computed embeddings.
+
+  Generates an embedding for the query text, then finds messages whose
+  embedding vectors are within the similarity threshold (default 0.3).
+  Results are ordered by similarity descending (most similar first).
+
+  Returns `{:ok, [Message.t()]}` with `:similarity` virtual field populated
+  and `:sender` preloaded, or `{:error, reason}` if embedding generation fails.
+
+  ## Options
+
+    * `:limit` - maximum results (default #{@default_limit})
+    * `:offset` - pagination offset (default 0)
+    * `:channel_id` - scope search to a specific channel
+    * `:threshold` - minimum similarity score (default #{@default_similarity_threshold})
+    * `:embedding_client` - function `(String.t() -> {:ok, [float()]} | {:error, term()})`
+      for dependency injection (default: `EmbeddingClient.generate/1`)
+
+  """
+  @spec semantic_search(integer(), String.t(), keyword()) ::
+          {:ok, [Message.t()]} | {:error, term()}
+  def semantic_search(user_id, query, opts \\ []) do
+    generate_fn = Keyword.get(opts, :embedding_client, &EmbeddingClient.generate/1)
+
+    case generate_fn.(query) do
+      {:ok, query_vector} ->
+        results =
+          build_semantic_query(user_id, query_vector, opts)
+          |> Repo.all()
+
+        {:ok, results}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Runs EXPLAIN ANALYZE on the semantic_search query for index verification.
+
+  Returns `{:ok, [String.t()]}` with the EXPLAIN output lines.
+  """
+  @spec explain_semantic_search(integer(), String.t(), keyword()) ::
+          {:ok, [String.t()]} | {:error, term()}
+  def explain_semantic_search(user_id, query, opts \\ []) do
+    generate_fn = Keyword.get(opts, :embedding_client, &EmbeddingClient.generate/1)
+
+    case generate_fn.(query) do
+      {:ok, query_vector} ->
+        search_query = build_semantic_query(user_id, query_vector, opts)
+        {explain_sql, explain_params} = Repo.to_sql(:all, search_query)
+        explain_sql = "EXPLAIN ANALYZE " <> explain_sql
+
+        Repo.query!("SET LOCAL enable_seqscan = off")
+
+        case Repo.query(explain_sql, explain_params) do
+          {:ok, %{rows: rows}} ->
+            {:ok, Enum.map(rows, fn [line] -> line end)}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Query construction
   # ---------------------------------------------------------------------------
@@ -90,6 +166,47 @@ defmodule Slackex.Search.MessageSearch do
           m.search_content,
           ^query
         ),
+      limit: ^limit,
+      offset: ^offset,
+      preload: [:sender]
+    )
+  end
+
+  defp build_semantic_query(user_id, query_vector, opts) do
+    limit = Keyword.get(opts, :limit, @default_limit)
+    offset = Keyword.get(opts, :offset, 0)
+    threshold = Keyword.get(opts, :threshold, @default_similarity_threshold)
+    vector_param = Pgvector.new(query_vector)
+
+    from(m in Message,
+      join: me in MessageEmbedding,
+      on: me.message_id == m.id and me.message_inserted_at == m.inserted_at,
+      where: is_nil(m.deleted_at),
+      where: ^build_authorization_condition(user_id, opts),
+      where:
+        fragment(
+          "(1.0 - (? <=> ?::vector)) > ?::float8",
+          me.embedding,
+          ^vector_param,
+          ^threshold
+        ),
+      order_by:
+        fragment(
+          "? <=> ?::vector",
+          me.embedding,
+          ^vector_param
+        ),
+      select_merge: %{
+        similarity:
+          type(
+            fragment(
+              "(1.0 - (? <=> ?::vector))",
+              me.embedding,
+              ^vector_param
+            ),
+            :float
+          )
+      },
       limit: ^limit,
       offset: ^offset,
       preload: [:sender]

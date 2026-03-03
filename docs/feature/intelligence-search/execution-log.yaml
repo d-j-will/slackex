@@ -151,5 +151,31 @@ events:
   s: EXECUTED
   sid: 02-02
   t: '2026-03-03T19:24:27Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-03-03T19:25:16Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-03-03T19:27:21Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-03-03T19:29:01Z'
+- d: 'NOT_APPLICABLE: all 5 behaviors tested through driving port in acceptance tests;
+    authorization already covered by text_search unit tests'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 03-02
+  t: '2026-03-03T19:29:15Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-03-03T19:32:57Z'
 project_id: intelligence-search
 schema_version: '3.0'

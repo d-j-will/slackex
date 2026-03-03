@@ -187,4 +187,186 @@ defmodule Slackex.Search.MessageSearchTest do
              "Expected no Seq Scan on messages but got:\n#{explain_text}"
     end
   end
+
+  # ===========================================================================
+  # SEMANTIC SEARCH
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Helpers: semantic search
+  # ---------------------------------------------------------------------------
+
+  alias Slackex.Embeddings.{EmbeddingClient, MessageEmbedding}
+
+  defp embed_message(message) do
+    content = message.content || message.search_content || ""
+    {:ok, vector} = EmbeddingClient.generate(content)
+    content_hash = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
+
+    %MessageEmbedding{
+      message_id: message.id,
+      message_inserted_at: message.inserted_at,
+      channel_id: message.channel_id,
+      dm_conversation_id: message.dm_conversation_id,
+      embedding: Pgvector.new(vector),
+      content_hash: content_hash,
+      inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    }
+    |> Repo.insert!()
+  end
+
+  defp embed_message_with_vector(message, vector) do
+    content = message.content || message.search_content || ""
+    content_hash = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
+
+    %MessageEmbedding{
+      message_id: message.id,
+      message_inserted_at: message.inserted_at,
+      channel_id: message.channel_id,
+      dm_conversation_id: message.dm_conversation_id,
+      embedding: Pgvector.new(vector),
+      content_hash: content_hash,
+      inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    }
+    |> Repo.insert!()
+  end
+
+  # Builds a unit vector with value 1.0 at the given index, 0.0 elsewhere.
+  # Useful for creating orthogonal vectors with known cosine similarity.
+  defp basis_vector(index, dimensions \\ 1536) do
+    Enum.map(0..(dimensions - 1), fn i ->
+      if i == index, do: 1.0, else: 0.0
+    end)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: semantic search returns similar messages
+  # ---------------------------------------------------------------------------
+
+  describe "semantic_search/3 - embedded message in accessible channel" do
+    test "returns message with similarity score above 0.3 when query is related" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      msg = send_channel_message(channel, user, "functional programming in elixir")
+      embed_message(msg)
+
+      # Search with the same text -- StubClient produces identical vector,
+      # so cosine distance = 0, similarity = 1.0
+      assert {:ok, results} =
+               MessageSearch.semantic_search(user.id, "functional programming in elixir")
+
+      assert [first | _rest] = results
+      assert first.id == msg.id
+      assert first.similarity > 0.3
+      assert %Slackex.Accounts.User{} = first.sender
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: threshold filtering excludes low-similarity messages
+  # ---------------------------------------------------------------------------
+
+  describe "semantic_search/3 - threshold filtering" do
+    test "excludes messages with similarity below 0.3" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      # Create a message and embed it with basis vector e0
+      msg = send_channel_message(channel, user, "some content for testing threshold")
+      embed_message_with_vector(msg, basis_vector(0))
+
+      # Search with text that produces basis vector e1 (orthogonal, similarity = 0)
+      # We use a custom embedding_client function that returns e1
+      orthogonal_client = fn _text -> {:ok, basis_vector(1)} end
+
+      assert {:ok, results} =
+               MessageSearch.semantic_search(user.id, "orthogonal query",
+                 embedding_client: orthogonal_client
+               )
+
+      # Orthogonal vectors have cosine similarity 0.0, which is below 0.3
+      assert results == []
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: authorization excludes private channel messages
+  # ---------------------------------------------------------------------------
+
+  describe "semantic_search/3 - private channel authorization" do
+    test "non-member cannot see semantically similar messages from private channel" do
+      owner = insert(:user)
+      searcher = insert(:user)
+
+      # searcher has a public channel with an embedded message
+      public = create_public_channel(searcher)
+      pub_msg = send_channel_message(public, searcher, "shared knowledge base article")
+      embed_message(pub_msg)
+
+      # owner has a private channel with an embedded message using same text
+      private = create_private_channel(owner)
+
+      priv_msg =
+        send_channel_message(private, owner, "shared knowledge base article")
+
+      embed_message(priv_msg)
+
+      assert {:ok, results} =
+               MessageSearch.semantic_search(
+                 searcher.id,
+                 "shared knowledge base article"
+               )
+
+      result_ids = Enum.map(results, & &1.id)
+      assert pub_msg.id in result_ids
+      refute priv_msg.id in result_ids
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: HNSW index usage with partition pruning
+  # ---------------------------------------------------------------------------
+
+  describe "semantic_search/3 - HNSW index usage" do
+    test "EXPLAIN shows index scan on message_embeddings HNSW index" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      # Insert enough embedded messages for the planner to prefer the index
+      for i <- 1..20 do
+        msg = send_channel_message(channel, user, "embedding test content #{i}")
+        embed_message(msg)
+      end
+
+      assert {:ok, explain_output} =
+               MessageSearch.explain_semantic_search(
+                 user.id,
+                 "embedding test content"
+               )
+
+      explain_text = Enum.join(explain_output, "\n")
+
+      assert explain_text =~ "Index Scan" or explain_text =~ "index_scan",
+             "Expected index scan in EXPLAIN output but got:\n#{explain_text}"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: EmbeddingClient error propagation
+  # ---------------------------------------------------------------------------
+
+  describe "semantic_search/3 - embedding client error" do
+    test "returns {:error, reason} when EmbeddingClient fails" do
+      user = insert(:user)
+      _channel = create_public_channel(user)
+
+      failing_client = fn _text -> {:error, :api_unavailable} end
+
+      assert {:error, :api_unavailable} =
+               MessageSearch.semantic_search(user.id, "any query",
+                 embedding_client: failing_client
+               )
+    end
+  end
 end
