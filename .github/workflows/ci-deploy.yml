@@ -205,14 +205,13 @@ jobs:
             echo "Updating Caddy config..."
             if [ -f /opt/caddy/Caddyfile ]; then
               # Write proxy snippet with active health checks for automatic failover
-              cat > /opt/caddy/slackex-proxy << 'PROXY'
-    reverse_proxy app1:4000 app2:4000 {
-        health_uri /health
-        health_interval 5s
-        health_timeout 3s
-        fail_duration 15s
-    }
-PROXY
+              printf '%s\n' \
+                '    reverse_proxy app1:4000 app2:4000 {' \
+                '        health_uri /health' \
+                '        health_interval 5s' \
+                '        health_timeout 3s' \
+                '        fail_duration 15s' \
+                '    }' > /opt/caddy/slackex-proxy
               # Replace single-line reverse_proxy with import (idempotent)
               if ! grep -q 'import /opt/caddy/slackex-proxy' /opt/caddy/Caddyfile; then
                 sed -i 's|.*reverse_proxy.*app[12]:4000.*|    import /opt/caddy/slackex-proxy|' /opt/caddy/Caddyfile
