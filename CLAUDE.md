@@ -16,9 +16,19 @@ Key directories:
 functional
 @nw-functional-software-crafter
 
+## Shift-Left Principle
+
+**Nothing that can break production build, test, or deployment may reach the CI/CD pipeline.** Every failure class that CI checks for must have a local equivalent that catches it before `git push`. If CI rejects a commit that could have been caught locally, that is a tooling gap to be fixed immediately.
+
+This means:
+- **Every CI check has a local counterpart.** Formatting, tests, dialyzer, YAML syntax, compile warnings — all runnable locally.
+- **Pre-commit hooks are mandatory.** Install with `ln -sf ../../scripts/pre-commit .git/hooks/pre-commit`. The hook runs automatically; skipping it (`--no-verify`) is not acceptable.
+- **When CI catches something the hook missed**, add that check to the hook or local workflow before fixing the code. Fix the tooling gap first, then fix the bug.
+- **When adding a new CI check**, add the local equivalent in the same PR/commit.
+
 ## CI / Pre-Commit
 
-Install the pre-commit hook (one-time): `ln -sf ../../scripts/pre-commit .git/hooks/pre-commit`. The hook validates YAML syntax on `.yml`/`.yaml` files and runs `mix format --check-formatted` + `mix test --max-failures 1` on Elixir files.
+The pre-commit hook (`scripts/pre-commit`) validates YAML syntax on `.yml`/`.yaml` files and runs `mix format --check-formatted` + `mix test --max-failures 1` on Elixir files.
 
 Always run `mix format` before committing Elixir code. CI enforces formatting and will fail on unformatted files.
 
