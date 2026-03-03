@@ -1,0 +1,42 @@
+#!/bin/sh
+# Pre-commit hook: YAML lint + Elixir format check + fast test
+#
+# Install: ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+
+STAGED_YML=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ya?ml$')
+STAGED_EX=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ex|exs)$')
+
+# YAML validation (uses Ruby which ships with macOS)
+if [ -n "$STAGED_YML" ]; then
+  echo "Pre-commit: validating YAML..."
+  for f in $STAGED_YML; do
+    ruby -ryaml -e "YAML.safe_load(File.read('$f'))" 2>&1
+    if [ $? -ne 0 ]; then
+      echo ""
+      echo "YAML validation failed: $f"
+      exit 1
+    fi
+  done
+  echo "Pre-commit: YAML valid."
+fi
+
+# Elixir checks (only if .ex/.exs files staged)
+if [ -n "$STAGED_EX" ]; then
+  echo "Pre-commit: checking formatting..."
+  mix format --check-formatted
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "Formatting check failed. Run 'mix format' and re-stage."
+    exit 1
+  fi
+
+  echo "Pre-commit: running tests (--max-failures 1)..."
+  mix test --max-failures 1
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "Tests failed. Fix failures before committing."
+    exit 1
+  fi
+fi
+
+echo "Pre-commit: all checks passed."

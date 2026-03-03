@@ -18,6 +18,8 @@ functional
 
 ## CI / Pre-Commit
 
+Install the pre-commit hook (one-time): `ln -sf ../../scripts/pre-commit .git/hooks/pre-commit`. The hook validates YAML syntax on `.yml`/`.yaml` files and runs `mix format --check-formatted` + `mix test --max-failures 1` on Elixir files.
+
 Always run `mix format` before committing Elixir code. CI enforces formatting and will fail on unformatted files.
 
 Always run `mix test` before committing. Verify zero failures before staging changes. If CI includes `docker-compose` tests, ensure those configurations are updated too.
