@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/hooks/block-no-verify.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/hooks/check-migration-safety.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/hooks/check-migration-safety.sh"
+          },
+          {
+            "type": "command",
+            "command": "scripts/hooks/check-ci-deploy-patterns.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
