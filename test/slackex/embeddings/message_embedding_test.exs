@@ -1,6 +1,4 @@
 defmodule Slackex.Embeddings.MessageEmbeddingTest do
-  use Slackex.DataCase, async: true
-
   @moduledoc """
   Acceptance tests for the MessageEmbedding Ecto schema.
 
@@ -9,6 +7,8 @@ defmodule Slackex.Embeddings.MessageEmbeddingTest do
   - The Repo handles vector columns via custom Postgrex types
   - content_hash stores a 64-character SHA-256 hex string
   """
+
+  use Slackex.DataCase, async: true
 
   alias Slackex.Embeddings.MessageEmbedding
 

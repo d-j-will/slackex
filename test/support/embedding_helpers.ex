@@ -55,36 +55,31 @@ defmodule Slackex.EmbeddingHelpers do
   EmbeddingClient (StubClient in test).
   """
   def embed_message(message) do
-    content = message.content || message.search_content || ""
+    content = message_content(message)
     {:ok, vector} = EmbeddingClient.generate(content)
-    content_hash = compute_content_hash(content)
-
-    %MessageEmbedding{
-      message_id: message.id,
-      message_inserted_at: message.inserted_at,
-      channel_id: message.channel_id,
-      dm_conversation_id: message.dm_conversation_id,
-      embedding: Pgvector.new(vector),
-      content_hash: content_hash,
-      inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
-    }
-    |> Repo.insert!()
+    insert_embedding(message, vector, content)
   end
 
   @doc """
   Creates a MessageEmbedding with a specific vector (for threshold testing).
   """
   def embed_message_with_vector(message, vector) do
-    content = message.content || message.search_content || ""
-    content_hash = compute_content_hash(content)
+    content = message_content(message)
+    insert_embedding(message, vector, content)
+  end
 
+  defp message_content(message) do
+    message.content || message.search_content || ""
+  end
+
+  defp insert_embedding(message, vector, content) do
     %MessageEmbedding{
       message_id: message.id,
       message_inserted_at: message.inserted_at,
       channel_id: message.channel_id,
       dm_conversation_id: message.dm_conversation_id,
       embedding: Pgvector.new(vector),
-      content_hash: content_hash,
+      content_hash: compute_content_hash(content),
       inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
     }
     |> Repo.insert!()
