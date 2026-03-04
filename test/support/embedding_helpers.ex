@@ -146,7 +146,7 @@ defmodule Slackex.EmbeddingHelpers do
   Builds a unit vector with value 1.0 at the given index, 0.0 elsewhere.
   Useful for creating orthogonal vectors with known cosine similarity.
   """
-  def basis_vector(index, dimensions \\ 384) do
+  def basis_vector(index, dimensions \\ EmbeddingClient.dimensions()) do
     Enum.map(0..(dimensions - 1), fn i ->
       if i == index, do: 1.0, else: 0.0
     end)

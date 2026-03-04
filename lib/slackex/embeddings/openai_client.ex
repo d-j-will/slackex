@@ -13,7 +13,7 @@ defmodule Slackex.Embeddings.OpenAIClient do
 
   @behaviour Slackex.Embeddings.EmbeddingClient
 
-  @dimensions 384
+  @dimensions 1536
   @model "text-embedding-3-small"
   @max_batch_size 100
   @api_url "https://api.openai.com/v1/embeddings"
