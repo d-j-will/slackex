@@ -151,7 +151,10 @@ Public API:
 
 ## Step 9: Update Application Supervisor (Phase 4)
 
-Children added after Oban in the supervisor tree:
+**Conditional child before Oban** (added by `maybe_embedding_serving/1` when `:embedding_client` is `BumblebeeClient`):
+- `Slackex.Embeddings.Supervisor` — dedicated `:one_for_one` supervisor wrapping `EmbeddingServing` with `max_restarts: 3, max_seconds: 60`. Isolates model-loading crash loops from the main `Slackex.Supervisor`, preventing cascading shutdown of Postgres, PubSub, and the Endpoint.
+
+**Children added after Oban:**
 1. `Slackex.Embeddings.PersistenceListener` — **new** (must start after Oban, subscribes to `"pipeline:events"`)
 
 The `ReconciliationWorker` does not need a supervisor entry — it runs as an Oban cron job (configured in Oban's `:plugins` list alongside the existing `CacheWarmer`):
@@ -171,25 +174,26 @@ The `ReconciliationWorker` does not need a supervisor entry — it runs as an Ob
 
 ## Embeddings Boundary
 
-`Slackex.Embeddings` — `deps: [Chat, Repo], exports: [EmbeddingWorker, EmbeddingClient, RAGContext, MessageEmbedding]`
+`Slackex.Embeddings` — `deps: [Chat, Repo], exports: [EmbeddingWorker, EmbeddingClient, EmbeddingServing, Supervisor, RAGContext, MessageEmbedding]`
 
 ## Phase 4 Acceptance Criteria
 
-- [ ] pgvector extension is enabled and message_embeddings table exists with HNSW index
-- [ ] Full-text search returns relevant messages ranked by ts_rank
-- [ ] Semantic search finds messages with similar meaning (not just matching words)
-- [ ] Hybrid search merges FTS and semantic results using Reciprocal Rank Fusion
-- [ ] Search can be scoped to a specific channel or search all channels
-- [ ] Embedding worker generates embeddings asynchronously via Oban
-- [ ] Embedding generation is triggered automatically after successful batch persistence via PersistenceListener
-- [ ] PersistenceListener is supervised and restarts on crash without losing future events
-- [ ] ReconciliationWorker runs every 15 minutes and enqueues jobs for any unembedded messages
-- [ ] Batch embedding supports up to 100 texts per API call
-- [ ] Channel backfill job can generate embeddings for existing message history
-- [ ] Stub embedding client works in test/dev without an API key
-- [ ] Search UI in LiveView shows results with highlighted matches
-- [ ] "Jump to message" navigates to the correct channel and scrolls to the message
-- [ ] RAGContext.retrieve/2 returns formatted context suitable for LLM consumption
-- [ ] Search works across partitioned message tables transparently
-- [ ] All behavioral tests from Phases 1-3 still pass
-- [ ] New behavioral tests cover: FTS search, semantic search, embedding generation
+- [x] pgvector extension is enabled and message_embeddings table exists with HNSW index
+- [x] Full-text search returns relevant messages ranked by ts_rank
+- [x] Semantic search finds messages with similar meaning (not just matching words)
+- [x] Hybrid search merges FTS and semantic results using Reciprocal Rank Fusion
+- [x] Search can be scoped to a specific channel or search all channels
+- [x] Embedding worker generates embeddings asynchronously via Oban
+- [x] Embedding generation is triggered automatically after successful batch persistence via PersistenceListener
+- [x] EmbeddingServing runs under a dedicated `Embeddings.Supervisor` — crash loops are contained without taking down the main application supervisor
+- [x] PersistenceListener is supervised and restarts on crash without losing future events
+- [x] ReconciliationWorker runs every 15 minutes and enqueues jobs for any unembedded messages
+- [x] Batch embedding supports up to 100 texts per API call
+- [x] Channel backfill job can generate embeddings for existing message history
+- [x] Stub embedding client works in test/dev without an API key
+- [x] Search UI in LiveView shows results with highlighted matches
+- [x] "Jump to message" navigates to the correct channel and scrolls to the message
+- [x] RAGContext.retrieve/2 returns formatted context suitable for LLM consumption
+- [x] Search works across partitioned message tables transparently
+- [x] All behavioral tests from Phases 1-3 still pass
+- [x] New behavioral tests cover: FTS search, semantic search, embedding generation
