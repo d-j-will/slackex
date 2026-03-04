@@ -73,6 +73,22 @@ defmodule Slackex.Embeddings.EmbeddingServing do
 
     Logger.info("EmbeddingServing loading model #{repo}")
 
+    case load_and_start_serving(repo, cache) do
+      :ok ->
+        Logger.info("EmbeddingServing ready (model: #{repo})")
+        {:noreply, %{status: :ready, model_repo: repo}}
+
+      {:error, reason} ->
+        Logger.error("EmbeddingServing failed to load model: #{inspect(reason)}")
+        {:noreply, %{status: :failed, error: reason}}
+    end
+  end
+
+  # -------------------------------------------------------------------
+  # Private
+  # -------------------------------------------------------------------
+
+  defp load_and_start_serving(repo, cache) do
     hf_spec = build_hf_spec(repo, cache)
 
     {:ok, model_info} = Bumblebee.load_model(hf_spec)
@@ -94,14 +110,12 @@ defmodule Slackex.Embeddings.EmbeddingServing do
         batch_timeout: 50
       )
 
-    Logger.info("EmbeddingServing ready (model: #{repo})")
-
-    {:noreply, %{status: :ready, model_repo: repo}}
+    :ok
+  rescue
+    e -> {:error, Exception.message(e)}
+  catch
+    :exit, reason -> {:error, reason}
   end
-
-  # -------------------------------------------------------------------
-  # Private
-  # -------------------------------------------------------------------
 
   defp build_hf_spec(repo, nil), do: {:hf, repo}
   defp build_hf_spec(repo, cache_dir), do: {:hf, repo, cache_dir: cache_dir}

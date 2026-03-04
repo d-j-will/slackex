@@ -20,8 +20,9 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# Use BumblebeeClient for on-device embeddings in production
-config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
+# Use StubClient until the model is pre-downloaded on the server.
+# Switch to BumblebeeClient after pre-caching the model in the Docker volume.
+config :slackex, :embedding_client, Slackex.Embeddings.StubClient
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
