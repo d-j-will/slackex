@@ -144,7 +144,7 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
               @search_mode != mode && "btn-ghost"
             ]}
           >
-            {mode}
+            {mode_label(mode)}
           </button>
         </div>
       </div>
@@ -204,6 +204,10 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
   end
 
   defp searchable_query?(query), do: String.length(query) >= @min_query_length
+
+  defp mode_label(:hybrid), do: "Best match"
+  defp mode_label(:text), do: "Exact words"
+  defp mode_label(:semantic), do: "Meaning"
 
   defp sanitize_headline(nil), do: nil
   defp sanitize_headline(""), do: nil

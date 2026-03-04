@@ -109,5 +109,5 @@ config :slackex, :flags_admin_auth,
   username: "admin",
   password: "devpassword"
 
-# Use deterministic stub for embeddings in development
-config :slackex, :embedding_client, Slackex.Embeddings.StubClient
+# Use Bumblebee for real ML embeddings in development (all-MiniLM-L6-v2, 384-dim)
+config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient

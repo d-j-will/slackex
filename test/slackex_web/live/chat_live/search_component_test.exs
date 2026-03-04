@@ -224,13 +224,16 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
       :ok
     end
 
-    test "defaults to hybrid search mode", %{conn: conn, channel: channel} do
+    test "defaults to hybrid search mode with user-friendly label", %{
+      conn: conn,
+      channel: channel
+    } do
       {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
 
       html = render_click(view, "toggle_search")
 
-      # Default mode should be hybrid
-      assert html =~ "hybrid"
+      # Default mode should be hybrid, displayed as "Best match"
+      assert html =~ "Best match"
     end
   end
 
