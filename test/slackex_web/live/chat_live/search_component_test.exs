@@ -301,6 +301,34 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Acceptance: scroll_to_message JS hook and CSS highlight-flash
+  # ---------------------------------------------------------------------------
+
+  describe "scroll_to_message JS hook and CSS" do
+    @js_hook_path Path.expand("../../../../assets/js/hooks/message_list.js", __DIR__)
+    @css_path Path.expand("../../../../assets/css/app.css", __DIR__)
+
+    test "MessageList hook registers handleEvent for scroll_to_message" do
+      js_content = File.read!(@js_hook_path)
+
+      assert js_content =~ "handleEvent"
+      assert js_content =~ "scroll_to_message"
+      assert js_content =~ "scrollIntoView"
+      assert js_content =~ "requestAnimationFrame"
+      assert js_content =~ "highlight-flash"
+    end
+
+    test "CSS defines highlight-flash keyframes and class" do
+      css_content = File.read!(@css_path)
+
+      assert css_content =~ "@keyframes highlight-flash"
+      assert css_content =~ ".highlight-flash"
+      assert css_content =~ "animation:"
+      assert css_content =~ "--color-warning"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # D5: Integration test -- parent-component search contract
   # ---------------------------------------------------------------------------
 

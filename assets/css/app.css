@@ -110,4 +110,14 @@ mark {
   border-radius: 2px;
 }
 
+/* Scroll-to-message highlight flash */
+@keyframes highlight-flash {
+  0% { background-color: var(--color-warning); }
+  100% { background-color: transparent; }
+}
+
+.highlight-flash {
+  animation: highlight-flash 2s ease-out;
+}
+
 /* This file is for your main application CSS */
