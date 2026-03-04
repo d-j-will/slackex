@@ -21,6 +21,7 @@ defmodule Slackex.Chat.Message do
     belongs_to :dm_conversation, Slackex.Chat.DMConversation
     belongs_to :sender, Slackex.Accounts.User
 
+    field :headline, :string, virtual: true
     field :similarity, :float, virtual: true
     field :search_score, :float, virtual: true
   end

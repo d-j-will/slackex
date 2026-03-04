@@ -246,6 +246,17 @@ defmodule Slackex.Search.MessageSearch do
           m.search_content,
           ^query
         ),
+      select_merge: %{
+        headline:
+          type(
+            fragment(
+              "ts_headline('english', coalesce(?, ''), plainto_tsquery('english', ?), 'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15')",
+              m.search_content,
+              ^query
+            ),
+            :string
+          )
+      },
       limit: ^limit,
       offset: ^offset,
       preload: [:sender]
