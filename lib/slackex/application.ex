@@ -44,14 +44,14 @@ defmodule Slackex.Application do
   end
 
   @doc """
-  Conditionally includes EmbeddingServing in the children list when the
-  configured embedding client is BumblebeeClient.
+  Conditionally includes the Embeddings.Supervisor in the children list when
+  the configured embedding client is BumblebeeClient.
   """
   @spec maybe_embedding_serving([Supervisor.child_spec()]) :: [Supervisor.child_spec()]
   def maybe_embedding_serving(children) do
     case Application.get_env(:slackex, :embedding_client) do
       Slackex.Embeddings.BumblebeeClient ->
-        children ++ [Slackex.Embeddings.EmbeddingServing]
+        children ++ [Slackex.Embeddings.Supervisor]
 
       _other ->
         children

@@ -10,6 +10,7 @@ defmodule Slackex.Embeddings do
       MessageEmbedding,
       EmbeddingClient,
       EmbeddingServing,
+      Supervisor,
       BumblebeeClient,
       StubClient,
       OpenAIClient,

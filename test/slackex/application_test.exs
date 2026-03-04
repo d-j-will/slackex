@@ -13,7 +13,7 @@ defmodule Slackex.ApplicationTest do
     test "includes EmbeddingServing when client is BumblebeeClient" do
       Application.put_env(:slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient)
 
-      assert App.maybe_embedding_serving([]) == [Slackex.Embeddings.EmbeddingServing]
+      assert App.maybe_embedding_serving([]) == [Slackex.Embeddings.Supervisor]
     end
 
     test "returns empty list when client is StubClient" do
@@ -34,7 +34,7 @@ defmodule Slackex.ApplicationTest do
       existing = [:some_child, :another_child]
 
       assert App.maybe_embedding_serving(existing) ==
-               [:some_child, :another_child, Slackex.Embeddings.EmbeddingServing]
+               [:some_child, :another_child, Slackex.Embeddings.Supervisor]
     end
   end
 end
