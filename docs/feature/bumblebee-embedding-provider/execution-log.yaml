@@ -150,5 +150,56 @@ events:
   s: EXECUTED
   sid: 02-03
   t: '2026-03-04T01:56:49Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-03-04T01:57:42Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-03-04T01:58:38Z'
+- d: 'NOT_APPLICABLE: config-only step, no testable acceptance behavior'
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 03-01
+  t: '2026-03-04T01:58:43Z'
+- d: 'NOT_APPLICABLE: config-only step, verification is existing tests pass unchanged'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 03-01
+  t: '2026-03-04T01:58:44Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-03-04T02:00:25Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-03-04T02:01:18Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-03-04T02:02:26Z'
+- d: "NOT_APPLICABLE: this step IS the integration test \u2014 no higher-level acceptance\
+    \ test exists"
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 03-02
+  t: '2026-03-04T02:02:31Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-03-04T02:03:10Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-03-04T02:03:46Z'
 project_id: bumblebee-embedding-provider
 schema_version: '3.0'
