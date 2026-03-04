@@ -395,6 +395,79 @@ defmodule Slackex.Chat do
     repo.all(query)
   end
 
+  @doc """
+  Lists messages in a window centered around `message_id`.
+
+  Returns up to `half_page` messages before the target, the target itself,
+  and up to `half_page` messages after it, all ordered by id ASC with
+  `:sender` preloaded. Soft-deleted messages are excluded.
+
+  Returns an empty list when the target message does not exist or is deleted.
+
+  ## Parameters
+
+    * `target` - `{:channel, channel_id}` or `{:dm, dm_conversation_id}`
+    * `message_id` - the Snowflake ID to center the window on
+    * `opts` - keyword list with `:limit` (total window size, default 50)
+
+  ## Examples
+
+      Chat.list_messages_around({:channel, 123}, target_id, limit: 51)
+      Chat.list_messages_around({:dm, 456}, target_id)
+
+  """
+  def list_messages_around(target, message_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    half_page = div(limit, 2)
+
+    scope_filter = scope_filter(target)
+
+    target_query =
+      from m in Message,
+        where: ^scope_filter,
+        where: m.id == ^message_id,
+        where: is_nil(m.deleted_at)
+
+    # If the target itself doesn't exist or is deleted, return early
+    case Repo.one(target_query) do
+      nil ->
+        []
+
+      _target_msg ->
+        before_query =
+          from m in Message,
+            where: ^scope_filter,
+            where: m.id < ^message_id,
+            where: is_nil(m.deleted_at),
+            order_by: [desc: m.id],
+            limit: ^half_page
+
+        after_query =
+          from m in Message,
+            where: ^scope_filter,
+            where: m.id > ^message_id,
+            where: is_nil(m.deleted_at),
+            order_by: [asc: m.id],
+            limit: ^half_page
+
+        combined =
+          from(b in subquery(before_query))
+          |> union_all(^from(t in subquery(target_query)))
+          |> union_all(^from(a in subquery(after_query)))
+
+        from(m in subquery(combined), order_by: [asc: m.id], preload: [:sender])
+        |> Repo.all()
+    end
+  end
+
+  defp scope_filter({:channel, channel_id}) do
+    dynamic([m], m.channel_id == ^channel_id)
+  end
+
+  defp scope_filter({:dm, dm_conversation_id}) do
+    dynamic([m], m.dm_conversation_id == ^dm_conversation_id)
+  end
+
   # ---------------------------------------------------------------------------
   # DM operations
   # ---------------------------------------------------------------------------
