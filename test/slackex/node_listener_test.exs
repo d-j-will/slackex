@@ -19,7 +19,15 @@ defmodule Slackex.NodeListenerTest do
   describe "handle_info/2" do
     setup do
       {:ok, pid} = GenServer.start_link(NodeListener, [])
-      on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
+
+      on_exit(fn ->
+        try do
+          GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
       %{pid: pid}
     end
 
