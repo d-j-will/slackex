@@ -10,7 +10,7 @@ defmodule Slackex.Embeddings.StubClient do
 
   @behaviour Slackex.Embeddings.EmbeddingClient
 
-  @dimensions 1536
+  @dimensions 384
 
   @impl true
   @spec generate(String.t()) :: {:ok, [float()]}

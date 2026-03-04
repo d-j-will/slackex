@@ -10,5 +10,5 @@ defmodule Slackex.Embeddings.FailingClient do
   def generate_batch(_texts), do: {:error, :api_error}
 
   @impl true
-  def dimensions, do: 1536
+  def dimensions, do: 384
 end

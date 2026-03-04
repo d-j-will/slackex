@@ -11,8 +11,8 @@ defmodule Slackex.Embeddings.OpenAIClientTest do
   end
 
   describe "dimensions/0" do
-    test "returns 1536 for text-embedding-3-small" do
-      assert OpenAIClient.dimensions() == 1536
+    test "returns 384 for the configured model" do
+      assert OpenAIClient.dimensions() == 384
     end
   end
 end

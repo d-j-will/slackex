@@ -3,10 +3,10 @@ defmodule Slackex.Embeddings.StubClientTest do
 
   alias Slackex.Embeddings.StubClient
 
-  @dimensions 1536
+  @dimensions 384
 
   describe "generate/1" do
-    test "returns {:ok, vector} with exactly 1536 dimensions" do
+    test "returns {:ok, vector} with exactly 384 dimensions" do
       assert {:ok, vector} = StubClient.generate("hello world")
       assert length(vector) == @dimensions
       assert Enum.all?(vector, &is_float/1)
@@ -38,7 +38,7 @@ defmodule Slackex.Embeddings.StubClientTest do
   end
 
   describe "generate_batch/1" do
-    test "returns {:ok, vectors} where each vector has 1536 dimensions" do
+    test "returns {:ok, vectors} where each vector has 384 dimensions" do
       texts = ["alpha", "beta", "gamma"]
       assert {:ok, vectors} = StubClient.generate_batch(texts)
       assert length(vectors) == 3
@@ -66,7 +66,7 @@ defmodule Slackex.Embeddings.StubClientTest do
   end
 
   describe "dimensions/0" do
-    test "returns 1536" do
+    test "returns 384" do
       assert StubClient.dimensions() == @dimensions
     end
   end

@@ -5,18 +5,18 @@ defmodule Slackex.Embeddings.MessageEmbeddingTest do
   Acceptance tests for the MessageEmbedding Ecto schema.
 
   Verifies:
-  - A 1536-dimension vector can be inserted and read back with correct values
+  - A 384-dimension vector can be inserted and read back with correct values
   - The Repo handles vector columns via custom Postgrex types
   - content_hash stores a 64-character SHA-256 hex string
   """
 
   alias Slackex.Embeddings.MessageEmbedding
 
-  @vector_dimensions 1536
+  @vector_dimensions 384
 
   describe "roundtrip persistence of MessageEmbedding" do
-    test "inserts and reads back a 1536-dimension embedding vector with correct values" do
-      # Generate a deterministic 1536-dim vector
+    test "inserts and reads back a 384-dimension embedding vector with correct values" do
+      # Generate a deterministic 384-dim vector
       vector = for i <- 1..@vector_dimensions, do: :math.sin(i / 100.0)
 
       now = DateTime.utc_now() |> DateTime.truncate(:microsecond)

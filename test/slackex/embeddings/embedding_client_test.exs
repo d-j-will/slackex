@@ -13,7 +13,7 @@ defmodule Slackex.Embeddings.EmbeddingClientTest do
   describe "delegation" do
     test "generate/1 delegates to configured client" do
       assert {:ok, vector} = EmbeddingClient.generate("test delegation")
-      assert length(vector) == 1536
+      assert length(vector) == 384
       assert is_list(vector)
     end
 
@@ -23,7 +23,7 @@ defmodule Slackex.Embeddings.EmbeddingClientTest do
     end
 
     test "dimensions/0 delegates to configured client" do
-      assert EmbeddingClient.dimensions() == 1536
+      assert EmbeddingClient.dimensions() == 384
     end
   end
 end
