@@ -214,8 +214,7 @@ jobs:
               --entrypoint sh app1 -c 'chown -R appuser:appuser /app/models' < /dev/null 2>&1 \
               || echo "chown failed (non-fatal)"
             docker compose -f docker-compose.prod.yml run --rm --no-TTY app1 bin/slackex eval '
-              Application.ensure_all_started(:inets)
-              Application.ensure_all_started(:ssl)
+              Application.ensure_all_started(:bumblebee)
               cache = System.get_env("BUMBLEBEE_CACHE_DIR", "/app/models")
               repo = {:hf, "sentence-transformers/all-MiniLM-L6-v2", cache_dir: cache}
               IO.puts("Caching model to #{cache}...")
