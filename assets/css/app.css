@@ -102,4 +102,12 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* Search result match highlighting */
+mark {
+  background-color: var(--color-warning);
+  color: var(--color-warning-content);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
 /* This file is for your main application CSS */

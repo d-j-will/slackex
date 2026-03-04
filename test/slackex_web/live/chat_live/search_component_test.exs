@@ -235,6 +235,72 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Acceptance: Headline sanitization and rendering
+  # ---------------------------------------------------------------------------
+
+  describe "headline rendering" do
+    setup %{user: user, channel: channel} do
+      FunWithFlags.enable(:message_search)
+
+      {:ok, _msg} = Chat.send_message(channel.id, user.id, "headline rendering test")
+      Process.sleep(50)
+
+      :ok
+    end
+
+    test "search results render <mark> tags from headline as HTML, not escaped",
+         %{conn: conn, channel: channel} do
+      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(view, "toggle_search")
+
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "headline rendering"})
+
+      Process.sleep(100)
+      html = render(view)
+
+      # ts_headline wraps matches in <mark> tags -- they should render as real HTML
+      assert html =~ "<mark>"
+      assert html =~ "</mark>"
+      # The match text should be present
+      assert html =~ "headline"
+    end
+
+    test "sanitize_headline strips dangerous tags but preserves <mark>",
+         %{conn: conn, channel: channel} do
+      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(view, "toggle_search")
+
+      # Inject a result with a malicious headline via send_update
+      malicious_headline =
+        "<script>alert('xss')</script>some <mark>highlighted</mark> text"
+
+      fake_result = %{
+        id: 1,
+        content: "fallback content",
+        headline: malicious_headline,
+        sender: %{username: "testuser"},
+        channel_id: channel.id,
+        dm_conversation_id: nil,
+        inserted_at: ~N[2026-01-01 12:00:00]
+      }
+
+      send(view.pid, {:search_results, "test", [fake_result]})
+      Process.sleep(50)
+      html = render(view)
+
+      # <mark> tags should be rendered as actual HTML
+      assert html =~ "<mark>highlighted</mark>"
+      # <script> tags must be escaped, not rendered as HTML
+      refute html =~ "<script>"
+      assert html =~ "&lt;script&gt;"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # D5: Integration test -- parent-component search contract
   # ---------------------------------------------------------------------------
 

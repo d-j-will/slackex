@@ -174,9 +174,15 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
                       {format_result_time(result)}
                     </time>
                   </div>
-                  <p class="text-sm text-base-content/80 truncate mt-0.5">
-                    {Map.get(result, :content, "")}
-                  </p>
+                  <%= if headline = sanitize_headline(Map.get(result, :headline)) do %>
+                    <p class="text-sm text-base-content/80 mt-0.5">
+                      {headline}
+                    </p>
+                  <% else %>
+                    <p class="text-sm text-base-content/80 truncate mt-0.5">
+                      {Map.get(result, :content, "")}
+                    </p>
+                  <% end %>
                 </button>
               </li>
             </ul>
@@ -198,6 +204,18 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
   end
 
   defp searchable_query?(query), do: String.length(query) >= @min_query_length
+
+  defp sanitize_headline(nil), do: nil
+  defp sanitize_headline(""), do: nil
+
+  defp sanitize_headline(headline) do
+    headline
+    |> html_escape()
+    |> safe_to_string()
+    |> String.replace("&lt;mark&gt;", "<mark>")
+    |> String.replace("&lt;/mark&gt;", "</mark>")
+    |> raw()
+  end
 
   defp sender_name(%{sender: %{username: username}}), do: username
   defp sender_name(%{sender: %{"username" => username}}), do: username
