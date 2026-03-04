@@ -48,6 +48,9 @@ echo ""
 # and the bumblebee_models volume is mounted at /app/models.
 docker compose -f "${COMPOSE_FILE}" exec -T "${APP_CONTAINER}" \
   bin/slackex eval "
+    Application.ensure_all_started(:inets)
+    Application.ensure_all_started(:ssl)
+
     repo = {:hf, \"${MODEL_REPO}\", cache_dir: \"${CACHE_DIR}\"}
 
     IO.puts(\"Loading model...\")
