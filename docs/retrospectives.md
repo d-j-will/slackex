@@ -11,7 +11,7 @@ Production incidents and lessons learned. Each entry links to the full RCA.
 **Key lesson:** Code paths only active in prod config have zero CI coverage. This is the second outage caused by test/prod config divergence. GenServers depending on external resources must handle failure gracefully — crash-on-failure pattern matching under supervision creates crash-loops.
 
 **Open actions:**
-- [ ] Pre-cache Bumblebee model before switching to BumblebeeClient
+- [x] Pre-cache Bumblebee model before switching to BumblebeeClient (v0.5.32 CI provisioning, v0.5.33 activated)
 - [ ] Add integration test with prod-like supervision tree startup
 - [ ] Move EmbeddingServing under dedicated supervisor
 
