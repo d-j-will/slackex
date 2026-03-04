@@ -39,7 +39,7 @@ defmodule Slackex.Embeddings.EmbeddingServing do
   end
 
   @doc "Runs a batched embedding request against the loaded model."
-  @spec run(Nx.Serving.input()) :: term()
+  @spec run(String.t() | [String.t()]) :: map() | [map()]
   def run(input) do
     Nx.Serving.batched_run(__MODULE__, input)
   end
