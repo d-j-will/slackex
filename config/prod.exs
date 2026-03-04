@@ -20,5 +20,8 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
+# Use BumblebeeClient for on-device embeddings in production
+config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
