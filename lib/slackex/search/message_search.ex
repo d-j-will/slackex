@@ -104,7 +104,7 @@ defmodule Slackex.Search.MessageSearch do
     case generate_fn.(query) do
       {:ok, query_vector} ->
         results =
-          build_semantic_query(user_id, query_vector, opts)
+          build_semantic_query(user_id, query_vector, Keyword.put(opts, :query_text, query))
           |> Repo.all()
 
         {:ok, results}
@@ -267,6 +267,7 @@ defmodule Slackex.Search.MessageSearch do
     limit = Keyword.get(opts, :limit, @default_limit)
     offset = Keyword.get(opts, :offset, 0)
     threshold = Keyword.get(opts, :threshold, @default_similarity_threshold)
+    query_text = Keyword.get(opts, :query_text, "")
     vector_param = Pgvector.new(query_vector)
 
     from(m in Message,
@@ -296,6 +297,15 @@ defmodule Slackex.Search.MessageSearch do
               ^vector_param
             ),
             :float
+          ),
+        headline:
+          type(
+            fragment(
+              "ts_headline('english', coalesce(?, ''), plainto_tsquery('english', ?), 'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15, HighlightAll=true')",
+              m.search_content,
+              ^query_text
+            ),
+            :string
           )
       },
       limit: ^limit,

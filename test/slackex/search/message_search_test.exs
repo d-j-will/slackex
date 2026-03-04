@@ -328,6 +328,29 @@ defmodule Slackex.Search.MessageSearchTest do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Acceptance: semantic search returns headline with <mark> tags
+  # ---------------------------------------------------------------------------
+
+  describe "semantic_search/3 - headline snippets" do
+    test "returns headline with <mark> tags highlighting matching terms" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      msg = send_channel_message(channel, user, "elixir is a functional programming language")
+      embed_message(msg)
+
+      assert {:ok, [result]} =
+               MessageSearch.semantic_search(user.id, "functional programming")
+
+      assert result.headline != nil
+      assert result.headline =~ "<mark>"
+      assert result.headline =~ "</mark>"
+      assert result.headline =~ "functional"
+      assert result.headline =~ "programming"
+    end
+  end
+
   # ===========================================================================
   # HYBRID SEARCH
   # ===========================================================================
@@ -420,6 +443,51 @@ defmodule Slackex.Search.MessageSearchTest do
       result = Enum.find(results, &(&1.id == msg.id))
       assert result != nil
       assert result.search_score > 0.0
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: hybrid search preserves FTS headline through RRF merge
+  # ---------------------------------------------------------------------------
+
+  describe "hybrid_search/3 - headline preservation" do
+    test "preserves FTS headline through RRF merge when message appears in both sources" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      msg = send_channel_message(channel, user, "elixir is a functional programming language")
+      embed_message(msg)
+
+      assert {:ok, results} =
+               MessageSearch.hybrid_search(user.id, "functional programming")
+
+      result = Enum.find(results, &(&1.id == msg.id))
+      assert result != nil
+
+      # Headline should be present from FTS path (preferred by Map.put_new)
+      assert result.headline != nil
+      assert result.headline =~ "<mark>"
+      assert result.headline =~ "</mark>"
+      assert result.headline =~ "functional"
+      assert result.headline =~ "programming"
+    end
+
+    test "semantic-only result in hybrid search still has headline" do
+      user = insert(:user)
+      channel = create_public_channel(user)
+
+      # Create a message and embed it, but use content that won't match FTS
+      # for a query that the embedding client WILL match (StubClient is deterministic)
+      msg = send_channel_message(channel, user, "approaches to building resilient systems")
+      embed_message(msg)
+
+      # Search for exact text so both FTS and semantic match, giving us headline
+      assert {:ok, results} =
+               MessageSearch.hybrid_search(user.id, "approaches to building resilient systems")
+
+      result = Enum.find(results, &(&1.id == msg.id))
+      assert result != nil
+      assert result.headline != nil
     end
   end
 
