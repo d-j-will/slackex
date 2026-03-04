@@ -71,6 +71,9 @@ WORKDIR /app
 # Copy the release from the build stage
 COPY --from=build --chown=appuser:appuser /app/_build/prod/rel/slackex ./
 
+# Create models directory for Bumblebee cache (volume mount point)
+RUN mkdir -p /app/models && chown appuser:appuser /app/models
+
 USER appuser
 
 ENV PHX_SERVER=true
