@@ -2,6 +2,9 @@ import Config
 
 config :slackex, env: :test
 
+# Use BinaryBackend in tests — no EXLA compilation needed, keeps CI fast
+config :nx, default_backend: Nx.BinaryBackend
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

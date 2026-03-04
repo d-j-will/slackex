@@ -113,6 +113,8 @@ defmodule Slackex.MixProject do
 
       # Vector embeddings
       {:pgvector, "~> 0.3"},
+      {:bumblebee, "~> 0.6.0"},
+      {:exla, ">= 0.0.0"},
 
       # HTTP client (OpenAI embeddings API)
       {:req, "~> 0.5"},
