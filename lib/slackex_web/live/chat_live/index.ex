@@ -91,25 +91,39 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_params(%{"dm_id" => dm_id}, _uri, socket) do
+  def handle_params(%{"dm_id" => dm_id} = params, _uri, socket) do
     user = socket.assigns.current_user
     dm = Chat.get_dm_conversation!(dm_id)
 
     if user.id in [dm.user_a_id, dm.user_b_id] do
-      {:noreply, enter_dm(socket, dm)}
+      target_message_id = parse_target_param(params)
+
+      socket =
+        socket
+        |> enter_dm(dm, target_message_id)
+        |> maybe_push_scroll_event(target_message_id)
+
+      {:noreply, socket}
     else
       {:noreply, socket |> put_flash(:error, "Not found.") |> redirect(to: ~p"/chat")}
     end
   end
 
   @impl true
-  def handle_params(%{"slug" => slug}, _uri, socket) do
+  def handle_params(%{"slug" => slug} = params, _uri, socket) do
     user = socket.assigns.current_user
     channel = Chat.get_channel_by_slug!(slug)
 
     case authorize_channel(user.id, channel) do
       {:ok, can_send, role} ->
-        {:noreply, enter_channel(socket, channel, can_send, role)}
+        target_message_id = parse_target_param(params)
+
+        socket =
+          socket
+          |> enter_channel(channel, can_send, role, target_message_id)
+          |> maybe_push_scroll_event(target_message_id)
+
+        {:noreply, socket}
 
       {:error, :unauthorized} ->
         {:noreply,
@@ -755,26 +769,26 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
-  def handle_info({:jump_to_message, _message_id, channel_id, nil}, socket)
+  def handle_info({:jump_to_message, message_id, channel_id, nil}, socket)
       when is_integer(channel_id) do
     channel = Chat.get_channel!(channel_id)
 
     {:noreply,
      socket
      |> assign(:search_open, false)
-     |> push_patch(to: ~p"/chat/#{channel.slug}")}
+     |> push_patch(to: ~p"/chat/#{channel.slug}?target=#{message_id}")}
   end
 
   @impl true
-  def handle_info({:jump_to_message, _message_id, nil, dm_id}, socket) when is_integer(dm_id) do
+  def handle_info({:jump_to_message, message_id, nil, dm_id}, socket) when is_integer(dm_id) do
     {:noreply,
      socket
      |> assign(:search_open, false)
-     |> push_patch(to: ~p"/chat/dm/#{dm_id}")}
+     |> push_patch(to: ~p"/chat/dm/#{dm_id}?target=#{message_id}")}
   end
 
   @impl true
-  def handle_info({:jump_to_message, _message_id, channel_id, nil}, socket)
+  def handle_info({:jump_to_message, message_id, channel_id, nil}, socket)
       when is_binary(channel_id) do
     case Integer.parse(channel_id) do
       {id, ""} ->
@@ -783,7 +797,7 @@ defmodule SlackexWeb.ChatLive.Index do
         {:noreply,
          socket
          |> assign(:search_open, false)
-         |> push_patch(to: ~p"/chat/#{channel.slug}")}
+         |> push_patch(to: ~p"/chat/#{channel.slug}?target=#{message_id}")}
 
       _ ->
         {:noreply, socket}
@@ -791,13 +805,13 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
-  def handle_info({:jump_to_message, _message_id, nil, dm_id}, socket) when is_binary(dm_id) do
+  def handle_info({:jump_to_message, message_id, nil, dm_id}, socket) when is_binary(dm_id) do
     case Integer.parse(dm_id) do
       {id, ""} ->
         {:noreply,
          socket
          |> assign(:search_open, false)
-         |> push_patch(to: ~p"/chat/dm/#{id}")}
+         |> push_patch(to: ~p"/chat/dm/#{id}?target=#{message_id}")}
 
       _ ->
         {:noreply, socket}
@@ -915,7 +929,7 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:active_dm, nil)
   end
 
-  defp enter_channel(socket, channel, can_send, user_role, target_message_id \\ nil) do
+  defp enter_channel(socket, channel, can_send, user_role, target_message_id) do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
@@ -934,7 +948,7 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:sidebar_open, true)
   end
 
-  defp enter_dm(socket, dm, target_message_id \\ nil) do
+  defp enter_dm(socket, dm, target_message_id) do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
@@ -972,6 +986,21 @@ defmodule SlackexWeb.ChatLive.Index do
   defp fetch_messages_for_entry(target, target_message_id) do
     {:ok, messages} = HistoryLoader.around(target, target_message_id, limit: @message_page_size)
     messages
+  end
+
+  defp parse_target_param(%{"target" => target}) when is_binary(target) do
+    case Integer.parse(target) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
+  defp parse_target_param(_params), do: nil
+
+  defp maybe_push_scroll_event(socket, nil), do: socket
+
+  defp maybe_push_scroll_event(socket, target_message_id) do
+    push_event(socket, "scroll_to_message", %{id: "messages-#{target_message_id}"})
   end
 
   defp oldest_message_id([first | _]), do: first.id

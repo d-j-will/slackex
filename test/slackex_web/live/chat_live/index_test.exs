@@ -463,6 +463,127 @@ defmodule SlackexWeb.ChatLive.IndexTest do
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Acceptance: Jump-to-message with target query param (02-03)
+  # ---------------------------------------------------------------------------
+
+  describe "handle_params with target query param" do
+    import Phoenix.LiveViewTest
+
+    setup %{user: user} do
+      bob = insert(:user, username: "bob_jump")
+      {:ok, channel} = Chat.create_channel(user.id, %{name: "jump-test"})
+      Chat.join_channel(bob.id, channel.id)
+
+      # Create several messages; we will target one in the middle
+      {:ok, _msg1} = Chat.send_message(channel.id, bob.id, "first message in jump test")
+      {:ok, msg2} = Chat.send_message(channel.id, bob.id, "target message for jump")
+      {:ok, _msg3} = Chat.send_message(channel.id, bob.id, "third message in jump test")
+
+      # Create a DM with messages
+      {:ok, dm} = Chat.find_or_create_dm(user.id, bob.id)
+      {:ok, _dm_msg1} = Chat.send_dm(dm.id, bob.id, "dm first message")
+      {:ok, dm_msg2} = Chat.send_dm(dm.id, bob.id, "dm target message")
+      {:ok, _dm_msg3} = Chat.send_dm(dm.id, bob.id, "dm third message")
+
+      %{bob: bob, channel: channel, dm: dm, msg2: msg2, dm_msg2: dm_msg2}
+    end
+
+    test "channel with target param pushes scroll_to_message event", %{
+      conn: conn,
+      channel: channel,
+      msg2: msg2
+    } do
+      {:ok, view, html} = live(conn, ~p"/chat/#{channel.slug}?target=#{msg2.id}")
+
+      # Messages around target should be loaded
+      assert html =~ "target message for jump"
+
+      # Server should push scroll_to_message event with the target DOM id
+      assert_push_event(view, "scroll_to_message", %{id: "messages-" <> _})
+    end
+
+    test "dm with target param pushes scroll_to_message event", %{
+      conn: conn,
+      dm: dm,
+      dm_msg2: dm_msg2
+    } do
+      {:ok, view, html} = live(conn, ~p"/chat/dm/#{dm.id}?target=#{dm_msg2.id}")
+
+      assert html =~ "dm target message"
+      assert_push_event(view, "scroll_to_message", %{id: "messages-" <> _})
+    end
+
+    test "jump_to_message from channel includes target in URL", %{
+      conn: conn,
+      channel: channel,
+      msg2: msg2
+    } do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      # Simulate what SearchComponent does: send jump_to_message to parent
+      send(view.pid, {:jump_to_message, msg2.id, channel.id, nil})
+
+      # After the patch, the scroll event should be pushed
+      render(view)
+      assert_push_event(view, "scroll_to_message", %{id: "messages-" <> _})
+    end
+
+    test "jump_to_message from dm includes target in URL", %{
+      conn: conn,
+      dm: dm,
+      dm_msg2: dm_msg2
+    } do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      send(view.pid, {:jump_to_message, dm_msg2.id, nil, dm.id})
+
+      render(view)
+      assert_push_event(view, "scroll_to_message", %{id: "messages-" <> _})
+    end
+
+    test "jump_to_message with string channel_id includes target", %{
+      conn: conn,
+      channel: channel,
+      msg2: msg2
+    } do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      # phx-value attributes come as strings
+      send(view.pid, {:jump_to_message, msg2.id, "#{channel.id}", nil})
+
+      render(view)
+      assert_push_event(view, "scroll_to_message", %{id: "messages-" <> _})
+    end
+
+    test "jump_to_message with string dm_id includes target", %{
+      conn: conn,
+      dm: dm,
+      dm_msg2: dm_msg2
+    } do
+      {:ok, view, _html} = live(conn, ~p"/chat")
+
+      send(view.pid, {:jump_to_message, dm_msg2.id, nil, "#{dm.id}"})
+
+      render(view)
+      assert_push_event(view, "scroll_to_message", %{id: "messages-" <> _})
+    end
+
+    test "handle_params without target does not push scroll event", %{
+      conn: conn,
+      channel: channel
+    } do
+      {:ok, view, html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Messages load normally
+      assert html =~ "first message in jump test"
+      assert html =~ "third message in jump test"
+
+      # No scroll event should be pushed
+      refute_push_event(view, "scroll_to_message", %{})
+    end
+  end
+
   describe "terminate" do
     test "marks user offline when view terminates", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, ~p"/chat")
