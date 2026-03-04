@@ -1,10 +1,12 @@
+const SCROLL_THRESHOLD = 100;
+
 const MessageList = {
   mounted() {
     this.scrollToBottom();
     this.pending = false;
 
     this.el.addEventListener("scroll", () => {
-      if (this.el.scrollTop < 100 && !this.pending) {
+      if (this.el.scrollTop < SCROLL_THRESHOLD && !this.pending) {
         this.pending = true;
         this.pushEvent("load_more", {});
       }
@@ -41,10 +43,9 @@ const MessageList = {
   },
 
   isAtBottom() {
-    const threshold = 100;
     return (
       this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight <
-      threshold
+      SCROLL_THRESHOLD
     );
   },
 };

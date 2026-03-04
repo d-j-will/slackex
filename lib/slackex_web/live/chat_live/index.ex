@@ -769,58 +769,25 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
-  def handle_info({:jump_to_message, message_id, channel_id, nil}, socket)
-      when is_integer(channel_id) do
-    channel = Chat.get_channel!(channel_id)
-
-    {:noreply,
-     socket
-     |> assign(:search_open, false)
-     |> push_patch(to: ~p"/chat/#{channel.slug}?target=#{message_id}")}
-  end
-
-  @impl true
-  def handle_info({:jump_to_message, message_id, nil, dm_id}, socket) when is_integer(dm_id) do
-    {:noreply,
-     socket
-     |> assign(:search_open, false)
-     |> push_patch(to: ~p"/chat/dm/#{dm_id}?target=#{message_id}")}
-  end
-
-  @impl true
-  def handle_info({:jump_to_message, message_id, channel_id, nil}, socket)
-      when is_binary(channel_id) do
-    case Integer.parse(channel_id) do
-      {id, ""} ->
-        channel = Chat.get_channel!(id)
+  def handle_info({:jump_to_message, message_id, channel_id, dm_id}, socket) do
+    case {to_integer(channel_id), to_integer(dm_id)} do
+      {cid, _} when is_integer(cid) ->
+        channel = Chat.get_channel!(cid)
 
         {:noreply,
          socket
          |> assign(:search_open, false)
          |> push_patch(to: ~p"/chat/#{channel.slug}?target=#{message_id}")}
 
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info({:jump_to_message, message_id, nil, dm_id}, socket) when is_binary(dm_id) do
-    case Integer.parse(dm_id) do
-      {id, ""} ->
+      {_, did} when is_integer(did) ->
         {:noreply,
          socket
          |> assign(:search_open, false)
-         |> push_patch(to: ~p"/chat/dm/#{id}?target=#{message_id}")}
+         |> push_patch(to: ~p"/chat/dm/#{did}?target=#{message_id}")}
 
       _ ->
         {:noreply, socket}
     end
-  end
-
-  @impl true
-  def handle_info({:jump_to_message, _message_id, _channel_id, _dm_id}, socket) do
-    {:noreply, socket}
   end
 
   @impl true
@@ -996,6 +963,17 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   defp parse_target_param(_params), do: nil
+
+  defp to_integer(value) when is_integer(value), do: value
+
+  defp to_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
+  defp to_integer(_), do: nil
 
   defp maybe_push_scroll_event(socket, nil), do: socket
 

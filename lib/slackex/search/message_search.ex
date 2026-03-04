@@ -30,6 +30,7 @@ defmodule Slackex.Search.MessageSearch do
   @default_similarity_threshold 0.3
   @rrf_k 60
   @hybrid_task_timeout 5_000
+  @headline_options "StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15"
 
   @doc """
   Searches messages matching the given query text, scoped by authorization.
@@ -250,9 +251,10 @@ defmodule Slackex.Search.MessageSearch do
         headline:
           type(
             fragment(
-              "ts_headline('english', coalesce(?, ''), plainto_tsquery('english', ?), 'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15')",
+              "ts_headline('english', coalesce(?, ''), plainto_tsquery('english', ?), ?)",
               m.search_content,
-              ^query
+              ^query,
+              ^@headline_options
             ),
             :string
           )
@@ -301,9 +303,10 @@ defmodule Slackex.Search.MessageSearch do
         headline:
           type(
             fragment(
-              "ts_headline('english', coalesce(?, ''), plainto_tsquery('english', ?), 'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15, HighlightAll=true')",
+              "ts_headline('english', coalesce(?, ''), plainto_tsquery('english', ?), ?)",
               m.search_content,
-              ^query_text
+              ^query_text,
+              ^(@headline_options <> ", HighlightAll=true")
             ),
             :string
           )
