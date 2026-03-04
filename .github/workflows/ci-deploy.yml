@@ -205,6 +205,21 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build --remove-orphans app1 app2 2>&1
             echo "Containers started."
 
+            # Pre-cache Bumblebee model in the shared Docker volume (best-effort).
+            # Downloads on first deploy, no-op when already cached. This ensures
+            # EmbeddingServing can load the model without network access on restart.
+            echo "=== Bumblebee Model Provisioning ==="
+            docker compose -f docker-compose.prod.yml run --rm --no-TTY app1 bin/slackex eval '
+              cache = System.get_env("BUMBLEBEE_CACHE_DIR", "/app/models")
+              repo = {:hf, "sentence-transformers/all-MiniLM-L6-v2", cache_dir: cache}
+              IO.puts("Caching model to #{cache}...")
+              {:ok, _} = Bumblebee.load_model(repo)
+              {:ok, _} = Bumblebee.load_tokenizer(repo)
+              IO.puts("Model cached.")
+            ' < /dev/null 2>&1 \
+              && echo "Provisioning complete." \
+              || echo "Model provisioning failed (non-fatal), continuing deploy..."
+
             # Restart Caddy to pick up the new config (rendered and SCPed above).
             # Full restart (not reload) clears stale DNS/connection state after container recreation.
             echo "Restarting Caddy..."
