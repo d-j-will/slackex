@@ -128,19 +128,14 @@ defmodule Slackex.Search.MessageSearchTest do
       assert result.headline =~ "programming"
     end
 
-    test "headline is nil when search_content is nil" do
+    test "ts_headline produces a non-nil headline via coalesce when search_content is populated" do
       user = insert(:user)
       channel = create_public_channel(user)
 
-      # Insert a message where search_content is nil but still matches
-      # via direct DB manipulation (simulates edge case)
+      # Insert via factory (bypasses the messaging pipeline that populates
+      # search_content), then manually set search_content so FTS matches.
       msg = insert(:message, channel: channel, sender: user, content: "findable keyword match")
 
-      # Force search_content to a value so FTS matches, then nil it
-      # Actually, if search_content is nil the FTS won't match at all.
-      # So headline being nil is the coalesce('') case producing empty headline.
-      # Test: a message with search_content = '' (empty, not nil) still returns
-      # a headline (empty string from ts_headline, not nil)
       import Ecto.Query
 
       {1, _} =
