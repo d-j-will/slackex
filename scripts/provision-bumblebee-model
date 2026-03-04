@@ -33,6 +33,12 @@ if ! docker compose -f "${COMPOSE_FILE}" ps --status running "${APP_CONTAINER}" 
   exit 1
 fi
 
+echo "Fixing volume ownership..."
+docker compose -f "${COMPOSE_FILE}" exec -T --user root "${APP_CONTAINER}" \
+  chown -R appuser:appuser "${CACHE_DIR}" < /dev/null 2>&1 \
+  || echo "chown failed (may already be correct)"
+
+echo ""
 echo "Downloading model and tokenizer into ${CACHE_DIR}..."
 echo "(This may take several minutes on first run)"
 echo ""
