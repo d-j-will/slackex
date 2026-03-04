@@ -67,6 +67,11 @@ defmodule Slackex.Embeddings.EmbeddingServing do
   end
 
   @impl true
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  @impl true
   def handle_continue(:load_model, _state) do
     repo = model_repo()
     cache = cache_dir()
