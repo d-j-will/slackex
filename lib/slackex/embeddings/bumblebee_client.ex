@@ -6,8 +6,10 @@ defmodule Slackex.Embeddings.BumblebeeClient do
   process which runs `Nx.Serving.batched_run/2` against a loaded
   sentence-transformer model. Returns 384-dimensional vectors.
 
-  When the EmbeddingServing process is not running (e.g. model not loaded),
-  all calls return `{:error, {:serving_not_running, reason}}`.
+  When the EmbeddingServing process is unavailable, calls return one of:
+
+    - `{:error, {:serving_not_running, reason}}` — process not started or crashed
+    - `{:error, {:serving_error, message}}` — process raised during inference
   """
 
   @behaviour Slackex.Embeddings.EmbeddingClient
