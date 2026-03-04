@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Provision the Bumblebee model into the Docker volume so EmbeddingServing
+# can load it without downloading at boot time.
+#
+# Usage:
+#   scripts/provision-bumblebee-model              # uses default model
+#   scripts/provision-bumblebee-model custom/model  # uses specified model
+#
+# Prerequisites:
+#   - Docker Compose services running (at least one app container)
+#   - bumblebee_models volume exists (created by docker-compose.prod.yml)
+#
+# After running this script, switch prod config to BumblebeeClient:
+#   config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
+
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+APP_CONTAINER="${APP_CONTAINER:-app1}"
+MODEL_REPO="${1:-sentence-transformers/all-MiniLM-L6-v2}"
+CACHE_DIR="/app/models"
+
+echo "=== Bumblebee Model Provisioning ==="
+echo "Model:     ${MODEL_REPO}"
+echo "Container: ${APP_CONTAINER}"
+echo "Cache dir: ${CACHE_DIR}"
+echo ""
+
+# Verify container is running
+if ! docker compose -f "${COMPOSE_FILE}" ps --status running "${APP_CONTAINER}" 2>/dev/null | grep -q "${APP_CONTAINER}"; then
+  echo "ERROR: ${APP_CONTAINER} is not running."
+  echo "Start services first: docker compose -f ${COMPOSE_FILE} up -d"
+  exit 1
+fi
+
+echo "Downloading model and tokenizer into ${CACHE_DIR}..."
+echo "(This may take several minutes on first run)"
+echo ""
+
+# Download model and tokenizer via Elixir eval inside the container.
+# The BUMBLEBEE_CACHE_DIR env var is already set in docker-compose.prod.yml,
+# and the bumblebee_models volume is mounted at /app/models.
+docker compose -f "${COMPOSE_FILE}" exec -T "${APP_CONTAINER}" \
+  bin/slackex eval "
+    repo = {:hf, \"${MODEL_REPO}\", cache_dir: \"${CACHE_DIR}\"}
+
+    IO.puts(\"Loading model...\")
+    {:ok, _} = Bumblebee.load_model(repo)
+    IO.puts(\"Model cached.\")
+
+    IO.puts(\"Loading tokenizer...\")
+    {:ok, _} = Bumblebee.load_tokenizer(repo)
+    IO.puts(\"Tokenizer cached.\")
+
+    IO.puts(\"Done. Model files are in #{inspect(\"${CACHE_DIR}\")}.\")
+  " < /dev/null 2>&1
+
+echo ""
+echo "=== Provisioning Complete ==="
+echo ""
+echo "Next steps:"
+echo "  1. Update config/prod.exs:"
+echo "     config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient"
+echo "  2. Commit, tag, and deploy"
+echo "  3. Verify: docker compose -f ${COMPOSE_FILE} logs ${APP_CONTAINER} | grep EmbeddingServing"
