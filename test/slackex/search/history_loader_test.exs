@@ -151,4 +151,53 @@ defmodule Slackex.Search.HistoryLoaderTest do
       assert Enum.map(messages, & &1.id) == [msg1.id, msg2.id]
     end
   end
+
+  describe "around/3 (channel)" do
+    test "returns messages centered on the target message" do
+      user = insert(:user)
+      {:ok, channel} = Chat.create_channel(user.id, %{name: "hist-around-ch"})
+      {:ok, msg1} = Chat.send_message(channel.id, user.id, "One")
+      {:ok, msg2} = Chat.send_message(channel.id, user.id, "Two")
+      {:ok, msg3} = Chat.send_message(channel.id, user.id, "Three")
+      {:ok, msg4} = Chat.send_message(channel.id, user.id, "Four")
+      {:ok, msg5} = Chat.send_message(channel.id, user.id, "Five")
+
+      target = {:channel, channel.id}
+
+      assert {:ok, messages} = HistoryLoader.around(target, msg3.id)
+      ids = Enum.map(messages, & &1.id)
+
+      assert msg3.id in ids
+      assert ids == Enum.sort(ids)
+      assert length(ids) == 5
+      assert ids == [msg1.id, msg2.id, msg3.id, msg4.id, msg5.id]
+    end
+
+    test "returns empty list when target message does not exist" do
+      user = insert(:user)
+      {:ok, channel} = Chat.create_channel(user.id, %{name: "hist-around-empty"})
+
+      assert {:ok, []} = HistoryLoader.around({:channel, channel.id}, 999_999_999)
+    end
+  end
+
+  describe "around/3 (dm)" do
+    test "returns DM messages centered on the target message" do
+      alice = insert(:user)
+      bob = insert(:user)
+      {:ok, dm} = Chat.find_or_create_dm(alice.id, bob.id)
+      {:ok, msg1} = Chat.send_dm(dm.id, alice.id, "Hey")
+      {:ok, msg2} = Chat.send_dm(dm.id, bob.id, "Hi")
+      {:ok, msg3} = Chat.send_dm(dm.id, alice.id, "What's up")
+
+      target = {:dm, dm.id}
+
+      assert {:ok, messages} = HistoryLoader.around(target, msg2.id)
+      ids = Enum.map(messages, & &1.id)
+
+      assert msg2.id in ids
+      assert ids == Enum.sort(ids)
+      assert ids == [msg1.id, msg2.id, msg3.id]
+    end
+  end
 end

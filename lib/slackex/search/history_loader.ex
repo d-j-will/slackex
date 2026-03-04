@@ -33,6 +33,19 @@ defmodule Slackex.Search.HistoryLoader do
   end
 
   @doc """
+  Returns messages centered on the given message ID, always from the database.
+
+  Bypasses the cache entirely — used for scroll-to-message (e.g. search result
+  navigation). Returns results in chronological order (oldest first).
+  Target is `{:channel, id}` or `{:dm, id}`.
+  """
+  @spec around(Cache.target(), integer(), keyword()) :: {:ok, list()}
+  def around(target, message_id, opts \\ []) do
+    messages = Chat.list_messages_around(target, message_id, opts)
+    {:ok, messages}
+  end
+
+  @doc """
   Returns messages before the given Snowflake ID, always from the database.
 
   Older messages are not worth caching. Returns results in chronological order

@@ -9,6 +9,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
   alias Slackex.Search
+  alias Slackex.Search.HistoryLoader
   alias SlackexWeb.ChatLive.BrowseChannelsModal
   alias SlackexWeb.ChatLive.CreateChannelModal
   alias SlackexWeb.ChatLive.NewDmModal
@@ -914,13 +915,13 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:active_dm, nil)
   end
 
-  defp enter_channel(socket, channel, can_send, user_role) do
+  defp enter_channel(socket, channel, can_send, user_role, target_message_id \\ nil) do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
     _ = if connected?(socket), do: Messaging.subscribe_channel(channel.id)
 
-    messages = fetch_initial_messages(&Chat.list_messages/2, channel.id)
+    messages = fetch_messages_for_entry({:channel, channel.id}, target_message_id)
     Chat.mark_as_read(user.id, channel.id)
 
     socket
@@ -933,14 +934,14 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:sidebar_open, true)
   end
 
-  defp enter_dm(socket, dm) do
+  defp enter_dm(socket, dm, target_message_id \\ nil) do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
     _ = if connected?(socket), do: Messaging.subscribe_dm(dm.id)
 
     other_user = dm_other_user(dm, user.id)
-    messages = fetch_initial_messages(&Chat.list_dm_messages/2, dm.id)
+    messages = fetch_messages_for_entry({:dm, dm.id}, target_message_id)
     Chat.mark_dm_as_read(user.id, dm.id)
 
     socket
@@ -956,6 +957,21 @@ defmodule SlackexWeb.ChatLive.Index do
     conversation_id
     |> list_fn.(limit: @message_page_size)
     |> Enum.reverse()
+  end
+
+  defp fetch_messages_for_entry(target, nil) do
+    {list_fn, conversation_id} =
+      case target do
+        {:channel, id} -> {&Chat.list_messages/2, id}
+        {:dm, id} -> {&Chat.list_dm_messages/2, id}
+      end
+
+    fetch_initial_messages(list_fn, conversation_id)
+  end
+
+  defp fetch_messages_for_entry(target, target_message_id) do
+    {:ok, messages} = HistoryLoader.around(target, target_message_id, limit: @message_page_size)
+    messages
   end
 
   defp oldest_message_id([first | _]), do: first.id
