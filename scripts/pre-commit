@@ -10,7 +10,7 @@ STAGED_EX=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ex|exs
 if [ -n "$STAGED_YML" ]; then
   echo "Pre-commit: validating YAML..."
   for f in $STAGED_YML; do
-    ruby -ryaml -e "YAML.safe_load(File.read('$f'))" 2>&1
+    ruby -ryaml -e "YAML.safe_load(File.read('$f'), permitted_classes: [], permitted_symbols: [], aliases: true)" 2>&1
     if [ $? -ne 0 ]; then
       echo ""
       echo "YAML validation failed: $f"

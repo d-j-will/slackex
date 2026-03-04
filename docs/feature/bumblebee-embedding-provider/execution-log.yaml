@@ -1,0 +1,104 @@
+events:
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-03-04T01:27:29Z'
+- d: 'NOT_APPLICABLE: config-only step with no testable logic'
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 01-01
+  t: '2026-03-04T01:27:31Z'
+- d: 'NOT_APPLICABLE: config-only step with no testable logic'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 01-01
+  t: '2026-03-04T01:27:32Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-03-04T01:29:11Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-03-04T01:30:05Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-04T01:30:53Z'
+- d: 'NOT_APPLICABLE: migration step verified via mix ecto.migrate/rollback'
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 01-02
+  t: '2026-03-04T01:30:54Z'
+- d: 'NOT_APPLICABLE: migration step verified via mix ecto.migrate/rollback'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 01-02
+  t: '2026-03-04T01:30:54Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-04T01:31:40Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-04T01:34:17Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-03-04T01:34:18Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-04T01:37:44Z'
+- d: 'NOT_APPLICABLE: config alignment step with no new acceptance-level behavior'
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 01-03
+  t: '2026-03-04T01:37:49Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-04T01:38:08Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-04T01:38:51Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-03
+  t: '2026-03-04T01:39:38Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-04T01:41:12Z'
+- d: 'NOT_APPLICABLE: EmbeddingServing requires model download for acceptance testing;
+    model-dependent tests tagged :bumblebee and excluded from CI'
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 02-01
+  t: '2026-03-04T01:41:18Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-04T01:41:57Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-03-04T01:44:23Z'
+project_id: bumblebee-embedding-provider
+schema_version: '3.0'

@@ -1,0 +1,177 @@
+roadmap:
+  project_id: bumblebee-embedding-provider
+  created_at: '2026-03-04T01:18:23Z'
+  total_steps: 8
+  phases: 3
+
+phases:
+- id: '01'
+  name: 'Foundation — dependencies, dimension migration, stub alignment'
+  steps:
+  - id: 01-01
+    name: 'Add Bumblebee and EXLA dependencies'
+    description: >
+      Add {:bumblebee, "~> 0.6.0"} and {:exla, ">= 0.0.0"} to mix.exs deps.
+      Configure default Nx backend to EXLA.Backend in config/config.exs.
+      Set Nx.BinaryBackend in test.exs to keep CI fast (no EXLA compilation).
+    files_to_modify:
+      - mix.exs
+      - config/config.exs
+      - config/test.exs
+    criteria:
+      - 'mix deps.get succeeds without conflicts'
+      - 'config :nx, default_backend: EXLA.Backend in config.exs'
+      - 'config :nx, default_backend: Nx.BinaryBackend in test.exs'
+      - 'mix compile completes without warnings'
+
+  - id: 01-02
+    name: 'Migrate message_embeddings from vector(1536) to vector(384)'
+    description: >
+      New migration: DROP existing HNSW index, ALTER embedding column from
+      vector(1536) to vector(384), recreate HNSW index on vector(384).
+      Precondition: feature flag :message_search is OFF and table is empty
+      (verified via SELECT COUNT(*) FROM message_embeddings before deploy).
+      No TRUNCATE needed — table has zero rows in production.
+    files_to_modify:
+      - priv/repo/migrations/<timestamp>_resize_embeddings_to_384.exs
+    criteria:
+      - 'mix ecto.migrate succeeds on fresh and existing databases'
+      - 'embedding column accepts 384-dim vectors only'
+      - 'HNSW index exists on new column'
+      - 'mix ecto.rollback restores vector(1536) and index'
+
+  - id: 01-03
+    name: 'Align StubClient, FailingClient, and test helpers to 384 dims'
+    description: >
+      Update @dimensions in StubClient and FailingClient to 384. OpenAIClient
+      stays at 1536 (text-embedding-3-small returns 1536 natively — it is an
+      inactive provider kept for future use). Update basis_vector default in
+      EmbeddingHelpers to use EmbeddingClient.dimensions() dynamically.
+      Update hardcoded 1536 values in test files.
+    files_to_modify:
+      - lib/slackex/embeddings/stub_client.ex
+      - test/support/failing_client.ex
+      - test/support/embedding_helpers.ex
+      - test/slackex/embeddings/stub_client_test.exs
+      - test/slackex/embeddings/embedding_client_test.exs
+      - test/slackex/embeddings/message_embedding_test.exs
+      - test/slackex/embeddings/embedding_worker_test.exs
+    criteria:
+      - 'StubClient.dimensions() returns 384'
+      - 'basis_vector/1 defaults via EmbeddingClient.dimensions()'
+      - 'All existing embedding tests pass with zero failures'
+      - 'OpenAIClient.dimensions() remains 1536 (unchanged)'
+
+- id: '02'
+  name: 'Core implementation — EmbeddingServing and BumblebeeClient'
+  steps:
+  - id: 02-01
+    name: 'Create EmbeddingServing module with model caching'
+    description: >
+      Nx.Serving-based GenServer (simple per-node, not Horde — inference is
+      local-only). Loads sentence-transformers/all-MiniLM-L6-v2 with
+      output_attribute: :hidden_state, output_pool: :mean_pooling,
+      embedding_processor: :l2_norm. Compile opts: batch_size 64,
+      sequence_length 512. Model repo configurable via Application config.
+      BUMBLEBEE_CACHE_DIR env var controls cache location. Add Docker
+      named volume for model cache persistence across container restarts.
+    files_to_modify:
+      - lib/slackex/embeddings/embedding_serving.ex
+      - docker-compose.prod.yml
+    criteria:
+      - 'Module starts as named process and loads model on init'
+      - 'Nx.Serving.batched_run returns 384-dim L2-normalized vectors'
+      - 'Identical input produces identical output (deterministic)'
+      - 'docker-compose.prod.yml has bumblebee_models volume'
+
+  - id: 02-02
+    name: 'Create BumblebeeClient with unit tests'
+    description: >
+      Implements EmbeddingClient behaviour. Delegates generate/1 and
+      generate_batch/1 to EmbeddingServing via Nx.Serving.batched_run.
+      Returns 384 from dimensions/0. Handles serving-not-started errors.
+      Unit tests mock the serving process to verify behaviour contract
+      without requiring model download — runs in normal mix test.
+    files_to_modify:
+      - lib/slackex/embeddings/bumblebee_client.ex
+      - test/slackex/embeddings/bumblebee_client_test.exs
+    criteria:
+      - 'BumblebeeClient implements all three EmbeddingClient callbacks'
+      - 'generate/1 returns {:ok, vector} with 384 floats'
+      - 'generate_batch/1 returns {:ok, vectors} preserving input order'
+      - 'Returns {:error, reason} when EmbeddingServing is not running'
+
+  - id: 02-03
+    name: 'Add to supervision tree and update boundary exports'
+    description: >
+      Conditionally start EmbeddingServing (simple GenServer, not Horde)
+      in application.ex when configured client is BumblebeeClient. Each
+      cluster node loads the model independently — no shared state needed.
+      Place BEFORE Oban and PersistenceListener in child list. Add
+      BumblebeeClient and EmbeddingServing to Embeddings boundary exports.
+    files_to_modify:
+      - lib/slackex/application.ex
+      - lib/slackex/embeddings/embeddings.ex
+    criteria:
+      - 'EmbeddingServing starts when client is BumblebeeClient'
+      - 'EmbeddingServing does NOT start when client is StubClient'
+      - 'Supervision order: EmbeddingServing before Oban'
+      - 'mix compile --warnings-as-errors passes (boundary clean)'
+
+- id: '03'
+  name: 'Configuration switch and integration testing'
+  steps:
+  - id: 03-01
+    name: 'Set BumblebeeClient as prod default, keep StubClient in dev'
+    description: >
+      Set BumblebeeClient as default in config/prod.exs only. Keep StubClient
+      in config.exs as global default (dev and test use StubClient for fast
+      iteration). Developers opt in to BumblebeeClient via MIX_ENV=prod.
+      This avoids forcing EXLA compilation on every developer machine.
+    files_to_modify:
+      - config/prod.exs
+      - config/config.exs
+    criteria:
+      - 'config.exs keeps StubClient as global default'
+      - 'prod.exs overrides to BumblebeeClient'
+      - 'test.exs still uses StubClient'
+      - 'All existing tests pass unchanged'
+
+  - id: 03-02
+    name: 'BumblebeeClient integration test'
+    description: >
+      Integration test tagged @moduletag :bumblebee (excluded from default
+      mix test and CI). Verifies real model inference: 384-dim output, L2 norm,
+      cosine similarity between semantically similar texts exceeds threshold.
+      Run on demand via: mix test --include bumblebee
+    files_to_modify:
+      - test/slackex/embeddings/bumblebee_client_integration_test.exs
+      - test/test_helper.exs
+    criteria:
+      - 'Test produces 384-dimensional vectors from real inference'
+      - 'Output vectors are L2-normalized (magnitude near 1.0)'
+      - 'Similar inputs have higher cosine similarity than dissimilar'
+      - 'Excluded from mix test by default via ExUnit.configure'
+
+implementation_scope:
+  source_directories:
+    - lib/slackex/embeddings/
+    - config/
+  test_directories:
+    - test/slackex/embeddings/
+    - test/support/
+  excluded_patterns:
+    - _build/**
+    - deps/**
+    - priv/static/**
+
+validation:
+  status: approved
+  reviewer: nw-software-crafter-reviewer
+  approved_at: '2026-03-04T01:45:00Z'
+  notes: >
+    Iteration 3: All blocking defects from iterations 1-2 resolved.
+    D1 migration safety (precondition documented), D2 model caching
+    (BUMBLEBEE_CACHE_DIR + Docker volume), D3 dev friction (StubClient
+    default), D4 unit tests (mocked in 02-02), SPEC-D3 OpenAI kept at
+    1536 (inactive provider). Approved for execution.

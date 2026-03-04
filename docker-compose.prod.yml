@@ -18,6 +18,9 @@ x-app: &app-defaults
     GUARDIAN_SECRET_KEY: "${GUARDIAN_SECRET_KEY}"
     FLAGS_ADMIN_USER: "${FLAGS_ADMIN_USER:-admin}"
     FLAGS_ADMIN_PASSWORD: "${FLAGS_ADMIN_PASSWORD}"
+    BUMBLEBEE_CACHE_DIR: "/app/models"
+  volumes:
+    - bumblebee_models:/app/models
   expose:
     - "4000"
   networks:
@@ -82,6 +85,7 @@ services:
 volumes:
   pgdata:
   redisdata:
+  bumblebee_models:
 
 networks:
   proxy:
