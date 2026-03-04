@@ -88,23 +88,26 @@ defmodule Slackex.Release do
     messages
     |> Enum.chunk_every(@batch_size)
     |> Enum.reduce(0, fn batch, acc ->
-      texts = Enum.map(batch, & &1.search_content)
-
-      case EmbeddingClient.generate_batch(texts) do
-        {:ok, vectors} ->
-          batch
-          |> Enum.zip(vectors)
-          |> Enum.each(fn {msg, vector} -> upsert_embedding(repo, msg, vector) end)
-
-          count = length(batch)
-          Logger.info("[BackfillEmbeddings]   embedded #{count} messages (#{acc + count} total)")
-          acc + count
-
-        {:error, reason} ->
-          Logger.error("[BackfillEmbeddings]   batch failed: #{inspect(reason)}")
-          acc
-      end
+      acc + embed_batch(repo, batch, acc)
     end)
+  end
+
+  defp embed_batch(repo, batch, acc) do
+    texts = Enum.map(batch, & &1.search_content)
+
+    case EmbeddingClient.generate_batch(texts) do
+      {:ok, vectors} ->
+        Enum.zip(batch, vectors)
+        |> Enum.each(fn {msg, vector} -> upsert_embedding(repo, msg, vector) end)
+
+        count = length(batch)
+        Logger.info("[BackfillEmbeddings]   embedded #{count} messages (#{acc + count} total)")
+        count
+
+      {:error, reason} ->
+        Logger.error("[BackfillEmbeddings]   batch failed: #{inspect(reason)}")
+        0
+    end
   end
 
   defp upsert_embedding(repo, message, vector) do

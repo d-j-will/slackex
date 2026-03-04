@@ -31,7 +31,7 @@ if [ -n "$STAGED_EX" ]; then
   fi
 
   echo "Pre-commit: running Credo..."
-  mix credo --strict 2>&1 | tail -5
+  mix credo
   if [ $? -ne 0 ]; then
     echo ""
     echo "Credo check failed. Fix issues before committing."
