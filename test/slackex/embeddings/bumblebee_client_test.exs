@@ -50,7 +50,7 @@ defmodule Slackex.Embeddings.BumblebeeClientTest do
       {:ok, pid} =
         Nx.Serving.start_link(
           serving: serving,
-          name: Slackex.Embeddings.EmbeddingServing,
+          name: :"Elixir.Slackex.Embeddings.EmbeddingServing.Nx",
           batch_timeout: 50
         )
 
@@ -85,19 +85,24 @@ defmodule Slackex.Embeddings.BumblebeeClientTest do
   # -------------------------------------------------------------------
 
   defp stop_serving do
-    case Process.whereis(Slackex.Embeddings.EmbeddingServing) do
-      nil ->
-        :ok
+    for name <- [
+          :"Elixir.Slackex.Embeddings.EmbeddingServing.Nx",
+          Slackex.Embeddings.EmbeddingServing
+        ] do
+      case Process.whereis(name) do
+        nil ->
+          :ok
 
-      pid ->
-        Process.exit(pid, :kill)
-        ref = Process.monitor(pid)
+        pid ->
+          Process.exit(pid, :kill)
+          ref = Process.monitor(pid)
 
-        receive do
-          {:DOWN, ^ref, :process, ^pid, _} -> :ok
-        after
-          5_000 -> :ok
-        end
+          receive do
+            {:DOWN, ^ref, :process, ^pid, _} -> :ok
+          after
+            5_000 -> :ok
+          end
+      end
     end
   end
 end

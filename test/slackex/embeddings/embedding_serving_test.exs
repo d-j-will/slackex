@@ -73,7 +73,9 @@ defmodule Slackex.Embeddings.EmbeddingServingTest do
     @tag :bumblebee
     test "batched_run returns 384-dim L2-normalized vectors" do
       input = "hello world"
-      %{embedding: tensor} = Nx.Serving.batched_run(EmbeddingServing, input)
+
+      %{embedding: tensor} =
+        Nx.Serving.batched_run(:"Elixir.Slackex.Embeddings.EmbeddingServing.Nx", input)
 
       vector = Nx.to_flat_list(tensor)
       assert length(vector) == 384
@@ -90,8 +92,12 @@ defmodule Slackex.Embeddings.EmbeddingServingTest do
     @tag :bumblebee
     test "identical input produces identical output (deterministic)" do
       input = "deterministic embedding test"
-      %{embedding: tensor_a} = Nx.Serving.batched_run(EmbeddingServing, input)
-      %{embedding: tensor_b} = Nx.Serving.batched_run(EmbeddingServing, input)
+
+      %{embedding: tensor_a} =
+        Nx.Serving.batched_run(:"Elixir.Slackex.Embeddings.EmbeddingServing.Nx", input)
+
+      %{embedding: tensor_b} =
+        Nx.Serving.batched_run(:"Elixir.Slackex.Embeddings.EmbeddingServing.Nx", input)
 
       assert Nx.to_flat_list(tensor_a) == Nx.to_flat_list(tensor_b)
     end

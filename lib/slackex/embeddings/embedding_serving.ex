@@ -27,6 +27,7 @@ defmodule Slackex.Embeddings.EmbeddingServing do
   require Logger
 
   @default_model_repo "sentence-transformers/all-MiniLM-L6-v2"
+  @serving_name :"#{__MODULE__}.Nx"
 
   # -------------------------------------------------------------------
   # Public API
@@ -41,7 +42,7 @@ defmodule Slackex.Embeddings.EmbeddingServing do
   @doc "Runs a batched embedding request against the loaded model."
   @spec run(String.t() | [String.t()]) :: map() | [map()]
   def run(input) do
-    Nx.Serving.batched_run(__MODULE__, input)
+    Nx.Serving.batched_run(@serving_name, input)
   end
 
   @doc "Returns the configured model repository identifier."
@@ -62,6 +63,11 @@ defmodule Slackex.Embeddings.EmbeddingServing do
 
   @impl true
   def init(_opts) do
+    {:ok, %{status: :loading}, {:continue, :load_model}}
+  end
+
+  @impl true
+  def handle_continue(:load_model, _state) do
     repo = model_repo()
     cache = cache_dir()
 
@@ -84,13 +90,13 @@ defmodule Slackex.Embeddings.EmbeddingServing do
     {:ok, _pid} =
       Nx.Serving.start_link(
         serving: serving,
-        name: __MODULE__,
+        name: @serving_name,
         batch_timeout: 50
       )
 
     Logger.info("EmbeddingServing ready (model: #{repo})")
 
-    {:ok, %{model_repo: repo}}
+    {:noreply, %{status: :ready, model_repo: repo}}
   end
 
   # -------------------------------------------------------------------
