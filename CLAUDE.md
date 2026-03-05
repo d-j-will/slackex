@@ -296,6 +296,21 @@ Every deploy is triggered by a version tag. Before tagging, verify the full prod
 
 Run `scripts/pre-deploy` to execute steps 1-7 automatically. If any step fails, do not tag.
 
+### Infrastructure resilience
+
+The Docker host runs as a Proxmox VM. The VM must be configured to self-heal:
+
+- **Enable HA (High Availability)** in Proxmox for the Docker host VM — auto-restarts the VM if it crashes or becomes unresponsive. Without this, an OOM-killed VM stays dead until manually restarted.
+- **Set a fixed memory allocation** on the VM (no ballooning) — ensures the OOM killer fires inside the VM and kills processes, rather than the hypervisor starving the VM silently.
+- **Container restart policy** (`restart: unless-stopped`) only works when Docker is running. It cannot recover from a dead VM/OS. Infrastructure-level restart (Proxmox HA) is the only safety net for OS-level crashes.
+- **Monitor the VM from outside** — Proxmox, UptimeRobot, or a simple cron on another host that pings the Docker host. If it's down, alert immediately.
+
+Defense in depth for uptime:
+1. **Container level**: `restart: unless-stopped` handles process crashes
+2. **Application level**: `restart: :temporary` on non-essential supervisors prevents cascade
+3. **VM level**: Proxmox HA auto-restarts crashed VMs
+4. **Monitoring level**: External health check alerts on downtime
+
 ### General
 - **Deploys only trigger on version tags** (`refs/tags/v*`). Pushing to `master` runs CI quality checks only. Remember to tag after merging if you want a deploy.
 - **Always check the latest tag before creating a new one** — run `git tag --sort=-creatordate | head -5` and increment from the highest existing version. Tags that are numerically lower than the latest will not trigger a deploy.
