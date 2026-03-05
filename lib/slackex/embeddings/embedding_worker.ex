@@ -224,9 +224,12 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
     |> Repo.all()
     |> Enum.chunk_every(@batch_size)
     |> Enum.each(fn batch ->
-      batch
-      |> fetch_embeddable_messages()
-      |> generate_and_persist_embeddings()
+      # Best-effort: errors are logged inside generate_and_persist_embeddings,
+      # but we continue with remaining batches rather than aborting the backfill.
+      _ =
+        batch
+        |> fetch_embeddable_messages()
+        |> generate_and_persist_embeddings()
 
       Process.sleep(@backfill_pause_ms)
     end)
