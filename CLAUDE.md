@@ -7,7 +7,7 @@ Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL 
 Key directories:
 - `lib/slackex/` — domain contexts (Chat, Messaging, Accounts)
 - `lib/slackex_web/` — LiveView, components, router
-- `test/` — ExUnit tests (currently 850 tests)
+- `test/` — ExUnit tests (currently 1002 tests)
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
@@ -15,6 +15,34 @@ Key directories:
 
 functional
 @nw-functional-software-crafter
+
+## Production Resilience
+
+**The application must keep serving traffic regardless of what fails.** This is the overriding design constraint. Continuous deployment requires that every layer — local checks, CI, and production runtime — independently prevents and tolerates failures. No single layer is sufficient; all must hold.
+
+### Defense in depth
+
+| Layer | Purpose | Catches |
+|-------|---------|---------|
+| **Pre-commit** (local) | Fast feedback before code leaves the machine | Format, lint, test, type errors |
+| **CI pipeline** | Environment-specific validation | Docker build, release boot, integration tests, dialyzer |
+| **Production runtime** | Tolerate what slipped through | Supervision isolation, error propagation, health checks, graceful degradation |
+
+Each layer must assume the others can fail. CI passing does not mean production is safe. Tests passing does not mean runtime behavior under load is correct.
+
+### Design questions (mandatory before shipping new subsystems)
+
+Before adding any new supervised process, background worker, or external dependency to the application:
+
+1. **What happens when this fails?** Does the app keep serving traffic, or does it cascade?
+2. **Is this essential or non-essential?** Essential (DB, PubSub, Endpoint) gets `restart: :permanent`. Non-essential (embeddings, analytics, sync) gets `restart: :temporary`.
+3. **How are errors surfaced?** Silent failures (swallowed errors, `_ = result; :ok`) are worse than loud crashes. Every failure must be visible in logs and metrics.
+4. **What is the blast radius?** A crash in one subsystem must not propagate to unrelated subsystems. Use dedicated supervisors with appropriate restart budgets.
+5. **How does the system recover?** Degraded functionality should self-heal on next deploy or process restart, without manual intervention.
+
+### Incident precedent
+
+v0.5.36: EmbeddingWorker swallowed errors, Embeddings.Supervisor had no cascade protection. User activity triggered Oban jobs that crashed the ML serving, exhausted supervisor restarts, and took down the entire application. All CI gates had passed.
 
 ## Shift-Left Principle
 
@@ -76,6 +104,65 @@ end
 ```
 
 This applies to any `Repo.insert` with `on_conflict: :nothing`. The race window exists even with a prior `get_by` check — in READ COMMITTED isolation, concurrent transactions can both see nil and both attempt the insert.
+
+## OTP Supervision Resilience
+
+Implements the Production Resilience principle (above) for OTP/Elixir specifics. Hook-enforced via `hookify.oban-worker-error-swallow`.
+
+### Oban worker error handling
+
+**Never discard errors in Oban `perform/1`.** The return value of `perform/1` tells Oban whether to retry. Returning `:ok` on failure means silent data loss with no retries and no visibility.
+
+Dangerous pattern (NEVER do this):
+```elixir
+def perform(%Oban.Job{args: args}) do
+  _ = do_work(args)  # discards {:error, reason}
+  :ok                # Oban thinks it succeeded
+end
+```
+
+Correct pattern:
+```elixir
+def perform(%Oban.Job{args: args}) do
+  do_work(args)  # returns :ok | {:error, reason} | {:snooze, seconds}
+end
+```
+
+### Non-essential supervisor isolation
+
+**Non-essential supervisors must use `restart: :temporary`** in the main supervision tree. This prevents cascading crashes — if the subsystem exhausts its restart budget, it stays dead and the app keeps running.
+
+```elixir
+# In application.ex children list:
+Supervisor.child_spec(MyApp.OptionalSubsystem.Supervisor, restart: :temporary)
+```
+
+This applies to: embedding/ML serving, search indexing, analytics, background sync — anything where degraded functionality is acceptable. It does NOT apply to: database, PubSub, endpoint, cache — core infrastructure that the app cannot function without.
+
+### Dependency availability checks
+
+**Workers must verify their backing service is alive before attempting work.** If the service is down, return `{:snooze, seconds}` to reschedule without counting as a failed attempt.
+
+```elixir
+defp ensure_serving_available do
+  case Process.whereis(MyApp.RequiredProcess) do
+    nil -> {:snooze, 30}
+    _pid -> :ok
+  end
+end
+
+def perform(%Oban.Job{} = job) do
+  with :ok <- ensure_serving_available() do
+    do_work(job)
+  end
+end
+```
+
+This prevents workers from hammering a crashed process, accelerating the supervisor restart loop, and exhausting the restart budget faster.
+
+### Supervisor restart budgets
+
+**Non-essential subsystems should use generous restart budgets** (e.g., `max_restarts: 5, max_seconds: 300`). Tight budgets (3/60s) are easily exhausted by transient failures like ML model compilation spikes or network blips, turning a recoverable problem into permanent subsystem death.
 
 ## UI Component Conventions
 
