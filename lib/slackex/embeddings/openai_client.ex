@@ -43,6 +43,8 @@ defmodule Slackex.Embeddings.OpenAIClient do
   end
 
   def generate_batch(texts) do
+    start_time = System.monotonic_time()
+
     body = %{
       model: config(:model, @default_model),
       input: texts
@@ -63,6 +65,7 @@ defmodule Slackex.Embeddings.OpenAIClient do
           |> Enum.sort_by(& &1["index"])
           |> Enum.map(& &1["embedding"])
 
+        emit_telemetry(start_time, response_body, length(texts))
         {:ok, vectors}
 
       {:ok, %Req.Response{status: status, body: response_body}} ->
@@ -83,6 +86,21 @@ defmodule Slackex.Embeddings.OpenAIClient do
       config when is_map(config) -> Map.get(config, key, default)
       config when is_list(config) -> Keyword.get(config, key, default)
     end
+  end
+
+  defp emit_telemetry(start_time, response_body, batch_size) do
+    duration = System.monotonic_time() - start_time
+    usage = Map.get(response_body, "usage", %{})
+
+    :telemetry.execute(
+      [:slackex, :ai, :embedding],
+      %{duration: duration},
+      %{
+        model: config(:model, @default_model),
+        tokens: Map.get(usage, "total_tokens", 0),
+        batch_size: batch_size
+      }
+    )
   end
 
   defp api_key do

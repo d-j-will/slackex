@@ -10,6 +10,14 @@ defmodule Slackex.Embeddings.OpenAIClientTest do
     end
   end
 
+  describe "telemetry" do
+    test "source includes embedding telemetry emission" do
+      source = File.read!("lib/slackex/embeddings/openai_client.ex")
+      assert source =~ ":telemetry.execute"
+      assert source =~ "[:slackex, :ai, :embedding]"
+    end
+  end
+
   describe "dimensions/0" do
     test "returns default 1536 when no embedding_api config" do
       prev = Application.get_env(:slackex, :embedding_api)
