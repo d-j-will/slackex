@@ -20,10 +20,10 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# BumblebeeClient on CPU only — GPU is off-limits (flaky GPU on mini-PC).
-# EXLA_TARGET=host is set in docker-compose.prod.yml to force CPU backend.
-# Container mem_limit caps memory to prevent OOM cascading to the host.
-config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
+# BumblebeeClient DISABLED until Docker image is rebuilt with EXLA_TARGET=host.
+# EXLA_TARGET is compile-time — setting it at runtime in docker-compose has no effect.
+# The current image has GPU-capable EXLA which crashes the mini-PC's flaky GPU.
+config :slackex, :embedding_client, Slackex.Embeddings.StubClient
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
