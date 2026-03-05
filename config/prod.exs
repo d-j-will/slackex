@@ -20,10 +20,9 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# BumblebeeClient DISABLED until Docker image is rebuilt with EXLA_TARGET=host.
-# EXLA_TARGET is compile-time — setting it at runtime in docker-compose has no effect.
-# The current image has GPU-capable EXLA which crashes the mini-PC's flaky GPU.
-config :slackex, :embedding_client, Slackex.Embeddings.StubClient
+# BumblebeeClient with CPU-only EXLA (EXLA_TARGET=host set in Dockerfile at compile time).
+# GPU is off-limits on the production mini-PC — see CLAUDE.md Hardware constraints.
+config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

@@ -201,7 +201,9 @@ jobs:
           "
 
           # Authenticate Docker on the server to pull from private GHCR
-          echo "${{ secrets.GITHUB_TOKEN }}" | ssh root@${{ secrets.DEPLOY_HOST }} docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # Only re-auth if the host can't already pull (preserves long-lived PAT)
+          ssh root@${{ secrets.DEPLOY_HOST }} "docker pull ghcr.io/davewil/slackex:latest --quiet 2>/dev/null" || \
+            echo "${{ secrets.GITHUB_TOKEN }}" | ssh root@${{ secrets.DEPLOY_HOST }} docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           ssh -o StrictHostKeyChecking=accept-new root@${{ secrets.DEPLOY_HOST }} << 'EOF'
             set -e
