@@ -74,3 +74,6 @@ config :slackex, :flags_admin_auth,
 
 # Use deterministic stub for embeddings in tests
 config :slackex, :embedding_client, Slackex.Embeddings.StubClient
+
+# Use deterministic stub for LLM in tests
+config :slackex, :llm_client, Slackex.AI.StubLLMClient
