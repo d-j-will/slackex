@@ -13,9 +13,10 @@ defmodule Slackex.Embeddings.BumblebeeClientIntegrationTest do
   @moduletag :bumblebee
 
   alias Slackex.Embeddings.BumblebeeClient
+  alias Slackex.Embeddings.EmbeddingServing
 
   setup_all do
-    {:ok, _pid} = Slackex.Embeddings.EmbeddingServing.start_link([])
+    {:ok, _pid} = EmbeddingServing.start_link([])
     :ok
   end
 

@@ -1,8 +1,10 @@
 defmodule Slackex.Embeddings.EmbeddingWorkerTest do
   use Slackex.DataCase, async: false
 
-  alias Slackex.Embeddings.{EmbeddingWorker, MessageEmbedding}
+  alias Slackex.Chat.Message
+  alias Slackex.Embeddings.BumblebeeClient
   alias Slackex.Embeddings.EmbeddingClient
+  alias Slackex.Embeddings.{EmbeddingWorker, MessageEmbedding}
 
   # ---------------------------------------------------------------------------
   # Helpers
@@ -93,7 +95,7 @@ defmodule Slackex.Embeddings.EmbeddingWorkerTest do
 
       # Soft-delete the message
       msg
-      |> Slackex.Chat.Message.delete_changeset()
+      |> Message.delete_changeset()
       |> Repo.update!()
 
       assert :ok = perform_batch([msg.id])
@@ -128,7 +130,7 @@ defmodule Slackex.Embeddings.EmbeddingWorkerTest do
 
     test "snoozes when BumblebeeClient configured but EmbeddingServing not running" do
       original_client = Application.get_env(:slackex, :embedding_client)
-      Application.put_env(:slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient)
+      Application.put_env(:slackex, :embedding_client, BumblebeeClient)
 
       try do
         # EmbeddingServing is not started in the test env, so Process.whereis returns nil

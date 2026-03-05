@@ -1,7 +1,8 @@
 defmodule Slackex.Embeddings.ReconciliationWorkerTest do
   use Slackex.DataCase, async: false
 
-  alias Slackex.Embeddings.{ReconciliationWorker, MessageEmbedding}
+  alias Slackex.Embeddings.EmbeddingClient
+  alias Slackex.Embeddings.{MessageEmbedding, ReconciliationWorker}
 
   # ---------------------------------------------------------------------------
   # Helpers
@@ -10,7 +11,7 @@ defmodule Slackex.Embeddings.ReconciliationWorkerTest do
   defp insert_embedding_for(message) do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
     hash = compute_content_hash(message.search_content)
-    vector = List.duplicate(0.1, Slackex.Embeddings.EmbeddingClient.dimensions())
+    vector = List.duplicate(0.1, EmbeddingClient.dimensions())
 
     %MessageEmbedding{}
     |> MessageEmbedding.changeset(%{

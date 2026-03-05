@@ -8,7 +8,12 @@ defmodule Slackex.Embeddings.ConfigurationWiringTest do
 
   use Slackex.DataCase, async: false
 
+  alias Slackex.Embeddings.EmbeddingClient
+  alias Slackex.Embeddings.EmbeddingWorker
   alias Slackex.Embeddings.{MessageEmbedding, PersistenceListener}
+  alias Slackex.Embeddings.OpenAIClient
+  alias Slackex.Embeddings.ReconciliationWorker
+  alias Slackex.Embeddings.StubClient
 
   # ---------------------------------------------------------------------------
   # Acceptance: Supervisor ordering
@@ -69,18 +74,18 @@ defmodule Slackex.Embeddings.ConfigurationWiringTest do
       assert oban_config[:testing] == :inline
 
       # Verify the worker module is compiled and uses the :embeddings queue
-      assert Slackex.Embeddings.ReconciliationWorker.__opts__()[:queue] == :embeddings
+      assert ReconciliationWorker.__opts__()[:queue] == :embeddings
 
       # Verify the embeddings queue is configured
       # In test mode queues may be stripped, but we can verify the worker
       # is properly configured at module level
-      assert function_exported?(Slackex.Embeddings.ReconciliationWorker, :perform, 1)
+      assert function_exported?(ReconciliationWorker, :perform, 1)
     end
 
     test "embeddings queue is configured in Oban base config" do
       # Verify the module-level queue assignment for both workers
-      assert Slackex.Embeddings.ReconciliationWorker.__opts__()[:queue] == :embeddings
-      assert Slackex.Embeddings.EmbeddingWorker.__opts__()[:queue] == :embeddings
+      assert ReconciliationWorker.__opts__()[:queue] == :embeddings
+      assert EmbeddingWorker.__opts__()[:queue] == :embeddings
     end
   end
 
@@ -91,25 +96,25 @@ defmodule Slackex.Embeddings.ConfigurationWiringTest do
   describe "embedding_client configuration" do
     test "in test environment, :embedding_client resolves to StubClient" do
       client = Application.get_env(:slackex, :embedding_client)
-      assert client == Slackex.Embeddings.StubClient
+      assert client == StubClient
     end
 
     test "StubClient implements the EmbeddingClient behaviour" do
       behaviours =
-        Slackex.Embeddings.StubClient.module_info(:attributes)
+        StubClient.module_info(:attributes)
         |> Keyword.get_values(:behaviour)
         |> List.flatten()
 
-      assert Slackex.Embeddings.EmbeddingClient in behaviours
+      assert EmbeddingClient in behaviours
     end
 
     test "OpenAIClient implements the EmbeddingClient behaviour" do
       behaviours =
-        Slackex.Embeddings.OpenAIClient.module_info(:attributes)
+        OpenAIClient.module_info(:attributes)
         |> Keyword.get_values(:behaviour)
         |> List.flatten()
 
-      assert Slackex.Embeddings.EmbeddingClient in behaviours
+      assert EmbeddingClient in behaviours
     end
   end
 
@@ -185,7 +190,7 @@ defmodule Slackex.Embeddings.ConfigurationWiringTest do
 
       # Verify the embedding vector has correct dimensions
       vector_length = embedding.embedding |> Pgvector.to_list() |> length()
-      assert vector_length == Slackex.Embeddings.EmbeddingClient.dimensions()
+      assert vector_length == EmbeddingClient.dimensions()
     end
 
     test "multiple messages in a single broadcast all get embeddings" do

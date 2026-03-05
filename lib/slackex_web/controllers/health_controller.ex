@@ -1,6 +1,8 @@
 defmodule SlackexWeb.HealthController do
   use SlackexWeb, :controller
 
+  alias Slackex.Cache
+
   def index(conn, _params) do
     health = %{
       status: "ok",
@@ -43,6 +45,6 @@ defmodule SlackexWeb.HealthController do
   end
 
   defp check_redis do
-    Slackex.Cache.Redis.ping()
+    Cache.Redis.ping()
   end
 end
