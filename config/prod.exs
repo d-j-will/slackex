@@ -20,8 +20,8 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# Use StubClient until prod infrastructure supports Bumblebee (EXLA, model cache, RAM)
-config :slackex, :embedding_client, Slackex.Embeddings.StubClient
+# Bumblebee model is pre-cached in the Docker volume by the CI deploy pipeline.
+config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
