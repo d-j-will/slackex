@@ -7,7 +7,7 @@ defmodule Slackex.Application do
 
   @impl true
   def start(_type, _args) do
-    Slackex.AI.Telemetry.attach_handlers()
+    _ = Slackex.AI.Telemetry.attach_handlers()
 
     children =
       [
