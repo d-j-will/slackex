@@ -9,10 +9,10 @@ defmodule Slackex.Embeddings.SupervisorTest do
       assert flags.strategy == :one_for_one
     end
 
-    test "limits restarts to 3 per 60 seconds" do
+    test "limits restarts to 5 per 300 seconds" do
       assert {:ok, {flags, _children}} = EmbeddingSupervisor.init([])
-      assert flags.intensity == 3
-      assert flags.period == 60
+      assert flags.intensity == 5
+      assert flags.period == 300
     end
 
     test "supervises EmbeddingServing as sole child" do
@@ -109,13 +109,15 @@ defmodule Slackex.Embeddings.SupervisorTest do
       refute Slackex.Embeddings.EmbeddingServing in children
     end
 
-    test "maybe_embedding_serving/1 returns Supervisor for BumblebeeClient" do
+    test "maybe_embedding_serving/1 returns Supervisor with temporary restart for BumblebeeClient" do
       original = Application.get_env(:slackex, :embedding_client)
       Application.put_env(:slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient)
 
       on_exit(fn -> Application.put_env(:slackex, :embedding_client, original) end)
 
-      assert Slackex.Application.maybe_embedding_serving([]) == [Slackex.Embeddings.Supervisor]
+      assert [spec] = Slackex.Application.maybe_embedding_serving([])
+      assert spec.id == Slackex.Embeddings.Supervisor
+      assert spec.restart == :temporary
     end
   end
 end

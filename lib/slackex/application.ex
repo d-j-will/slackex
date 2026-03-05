@@ -46,12 +46,18 @@ defmodule Slackex.Application do
   @doc """
   Conditionally includes the Embeddings.Supervisor in the children list when
   the configured embedding client is BumblebeeClient.
+
+  The supervisor is started with `restart: :temporary` so that if it exhausts
+  its own restart budget and dies, the main application supervisor does NOT
+  attempt to restart it — the app keeps serving traffic with embeddings
+  degraded rather than cascading a full shutdown.
   """
   @spec maybe_embedding_serving([Supervisor.child_spec()]) :: [Supervisor.child_spec()]
   def maybe_embedding_serving(children) do
     case Application.get_env(:slackex, :embedding_client) do
       Slackex.Embeddings.BumblebeeClient ->
-        children ++ [Slackex.Embeddings.Supervisor]
+        spec = Supervisor.child_spec(Slackex.Embeddings.Supervisor, restart: :temporary)
+        children ++ [spec]
 
       _other ->
         children

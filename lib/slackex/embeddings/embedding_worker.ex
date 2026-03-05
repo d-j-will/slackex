@@ -90,22 +90,44 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"message_ids" => message_ids}}) do
-    _ =
+    with :ok <- ensure_serving_available() do
       message_ids
       |> fetch_embeddable_messages()
       |> generate_and_persist_embeddings()
-
-    :ok
+    end
   end
 
   def perform(%Oban.Job{args: %{"channel_id" => channel_id, "backfill" => true}}) do
-    backfill_conversation({:channel_id, channel_id})
-    :ok
+    with :ok <- ensure_serving_available() do
+      backfill_conversation({:channel_id, channel_id})
+    end
   end
 
   def perform(%Oban.Job{args: %{"dm_conversation_id" => dm_id, "backfill" => true}}) do
-    backfill_conversation({:dm_conversation_id, dm_id})
-    :ok
+    with :ok <- ensure_serving_available() do
+      backfill_conversation({:dm_conversation_id, dm_id})
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Serving availability check
+  # ---------------------------------------------------------------------------
+
+  defp ensure_serving_available do
+    case Application.get_env(:slackex, :embedding_client) do
+      Slackex.Embeddings.BumblebeeClient ->
+        case Process.whereis(Slackex.Embeddings.EmbeddingServing) do
+          nil ->
+            Logger.warning("[EmbeddingWorker] EmbeddingServing not running, snoozing 30s")
+            {:snooze, 30}
+
+          _pid ->
+            :ok
+        end
+
+      _other ->
+        :ok
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -134,14 +156,13 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
 
     case EmbeddingClient.generate_batch(texts) do
       {:ok, vectors} ->
-        messages
-        |> Enum.zip(vectors)
-        |> Enum.each(fn {message, vector} ->
-          upsert_embedding(message, vector)
-        end)
+        Enum.zip(messages, vectors)
+        |> Enum.each(fn {message, vector} -> upsert_embedding(message, vector) end)
+
+        :ok
 
       {:error, reason} ->
-        Logger.error("EmbeddingWorker: batch generation failed: #{inspect(reason)}")
+        Logger.error("[EmbeddingWorker] batch generation failed: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -203,13 +224,14 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
     |> Repo.all()
     |> Enum.chunk_every(@batch_size)
     |> Enum.each(fn batch ->
-      _ =
-        batch
-        |> fetch_embeddable_messages()
-        |> generate_and_persist_embeddings()
+      batch
+      |> fetch_embeddable_messages()
+      |> generate_and_persist_embeddings()
 
       Process.sleep(@backfill_pause_ms)
     end)
+
+    :ok
   end
 
   # ---------------------------------------------------------------------------

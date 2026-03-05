@@ -10,10 +10,12 @@ defmodule Slackex.ApplicationTest do
       :ok
     end
 
-    test "includes EmbeddingServing when client is BumblebeeClient" do
+    test "includes Embeddings.Supervisor with temporary restart when client is BumblebeeClient" do
       Application.put_env(:slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient)
 
-      assert App.maybe_embedding_serving([]) == [Slackex.Embeddings.Supervisor]
+      assert [spec] = App.maybe_embedding_serving([])
+      assert spec.id == Slackex.Embeddings.Supervisor
+      assert spec.restart == :temporary
     end
 
     test "returns empty list when client is StubClient" do
@@ -28,13 +30,16 @@ defmodule Slackex.ApplicationTest do
       assert App.maybe_embedding_serving([]) == []
     end
 
-    test "appends EmbeddingServing to existing children" do
+    test "appends Embeddings.Supervisor to existing children" do
       Application.put_env(:slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient)
 
       existing = [:some_child, :another_child]
+      result = App.maybe_embedding_serving(existing)
 
-      assert App.maybe_embedding_serving(existing) ==
-               [:some_child, :another_child, Slackex.Embeddings.Supervisor]
+      assert length(result) == 3
+      spec = List.last(result)
+      assert spec.id == Slackex.Embeddings.Supervisor
+      assert spec.restart == :temporary
     end
   end
 end
