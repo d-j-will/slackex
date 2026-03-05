@@ -173,6 +173,33 @@ jobs:
               echo 'FLAGS_ADMIN_PASSWORD=${FLAGS_ADMIN_PASSWORD}' >> /root/slackex/.env
           "
 
+          # Ensure DNS works (Tailscale DNS breaks after VM reboots — install persistent fix)
+          # Write the systemd unit file locally, scp it, then enable remotely
+          cat > /tmp/fix-dns.service << 'UNIT'
+          [Unit]
+          Description=Ensure working DNS (disable Tailscale DNS, set Google DNS)
+          After=network.target tailscaled.service
+          Wants=tailscaled.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/sh -c 'tailscale set --accept-dns=false; printf "nameserver 8.8.8.8\nnameserver 8.8.4.4\n" > /etc/resolv.conf'
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          sed -i 's/^          //' /tmp/fix-dns.service
+          ssh root@${{ secrets.DEPLOY_HOST }} "test -f /etc/systemd/system/fix-dns.service" || {
+            scp /tmp/fix-dns.service root@${{ secrets.DEPLOY_HOST }}:/etc/systemd/system/fix-dns.service
+            ssh root@${{ secrets.DEPLOY_HOST }} "systemctl enable fix-dns.service && echo 'DNS fix service installed'"
+          }
+          # Fix DNS now if broken
+          ssh root@${{ secrets.DEPLOY_HOST }} "
+            tailscale set --accept-dns=false 2>/dev/null || true
+            nslookup ghcr.io > /dev/null 2>&1 || { printf 'nameserver 8.8.8.8\nnameserver 8.8.4.4\n' > /etc/resolv.conf; echo 'DNS fixed'; }
+          "
+
           # Authenticate Docker on the server to pull from private GHCR
           echo "${{ secrets.GITHUB_TOKEN }}" | ssh root@${{ secrets.DEPLOY_HOST }} docker login ghcr.io -u ${{ github.actor }} --password-stdin
 

@@ -6,6 +6,7 @@ x-app: &app-defaults
       condition: service_healthy
     redis:
       condition: service_healthy
+  mem_limit: 2g
   environment: &app-env
     DATABASE_URL: "ecto://postgres:${POSTGRES_PASSWORD}@postgres/slackex_prod"
     REDIS_URL: "redis://redis:6379"
@@ -19,6 +20,7 @@ x-app: &app-defaults
     FLAGS_ADMIN_USER: "${FLAGS_ADMIN_USER:-admin}"
     FLAGS_ADMIN_PASSWORD: "${FLAGS_ADMIN_PASSWORD}"
     BUMBLEBEE_CACHE_DIR: "/app/models"
+    EXLA_TARGET: "host"
   volumes:
     - bumblebee_models:/app/models
   expose:

@@ -296,6 +296,26 @@ Every deploy is triggered by a version tag. Before tagging, verify the full prod
 
 Run `scripts/pre-deploy` to execute steps 1-7 automatically. If any step fails, do not tag.
 
+### Hardware constraints
+
+**The production server is a mini-PC with a flaky GPU. GPU is OFF-LIMITS.**
+
+- **Never enable GPU-accelerated workloads** (EXLA, CUDA, OpenCL) in production config
+- **EXLA defaults to GPU when available** — if EXLA must run, force CPU-only: `EXLA_TARGET=host`
+- **Any library that auto-detects GPU** must be configured to skip it
+- Violating this constraint crashes the physical server, not just the app or VM
+
+This is a non-negotiable hardware limitation. Three server crashes in one incident confirmed it.
+
+### Tailscale DNS
+
+The Docker host uses Tailscale for networking. **Tailscale's DNS resolver (`100.100.100.100`) fails after VM reboots**, blocking Docker pulls and all outbound DNS. This has caused extended recovery delays across multiple incidents.
+
+- **`tailscale set --accept-dns=false`** disables Tailscale DNS management but doesn't persist reliably
+- **`/etc/systemd/system/fix-dns.service`** runs on boot to disable Tailscale DNS and set Google DNS (8.8.8.8)
+- **CI deploy pipeline** includes a DNS check before `docker compose pull` as belt-and-suspenders
+- If DNS is broken on the host: `tailscale set --accept-dns=false && echo "nameserver 8.8.8.8" > /etc/resolv.conf`
+
 ### Infrastructure resilience
 
 The Docker host runs as a Proxmox VM. The VM must be configured to self-heal:

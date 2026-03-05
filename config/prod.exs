@@ -20,10 +20,10 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# BumblebeeClient disabled — Docker host OOMs under EXLA memory pressure.
-# Re-enable only after: container mem_limit set, host RAM confirmed sufficient,
-# and Proxmox HA configured for auto-restart.
-config :slackex, :embedding_client, Slackex.Embeddings.StubClient
+# BumblebeeClient on CPU only — GPU is off-limits (flaky GPU on mini-PC).
+# EXLA_TARGET=host is set in docker-compose.prod.yml to force CPU backend.
+# Container mem_limit caps memory to prevent OOM cascading to the host.
+config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
