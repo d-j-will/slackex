@@ -15,6 +15,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias SlackexWeb.ChatLive.NewDmModal
   alias SlackexWeb.ChatLive.SearchComponent
   alias SlackexWeb.ChatLive.SidebarComponent
+  alias SlackexWeb.ChatLive.SlashCommand
   alias SlackexWeb.ChatLive.SummaryModal
 
   import SlackexWeb.ChatComponents
@@ -174,18 +175,32 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_event("send_message", %{"message" => %{"content" => content}}, socket) do
     user = socket.assigns.current_user
 
-    cond do
-      socket.assigns.active_dm != nil ->
-        send_message_to_dm(socket.assigns.active_dm, user, content, socket)
+    case SlashCommand.parse(content) do
+      {:summarize, range} when socket.assigns.summarization_enabled ->
+        send(self(), {:start_summary, range})
 
-      socket.assigns.active_channel != nil and socket.assigns.can_send ->
-        send_message_to_channel(socket.assigns.active_channel, user, content, socket)
+        {:noreply,
+         socket
+         |> assign(:show_summary_modal, true)
+         |> assign(:message_form, to_form(%{"content" => ""}, as: :message))}
 
-      socket.assigns.active_channel != nil ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
+      {:unknown_command, cmd} ->
+        {:noreply, put_flash(socket, :error, "Unknown command: /#{cmd}")}
 
-      true ->
-        {:noreply, socket}
+      _ ->
+        cond do
+          socket.assigns.active_dm != nil ->
+            send_message_to_dm(socket.assigns.active_dm, user, content, socket)
+
+          socket.assigns.active_channel != nil and socket.assigns.can_send ->
+            send_message_to_channel(socket.assigns.active_channel, user, content, socket)
+
+          socket.assigns.active_channel != nil ->
+            {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
+
+          true ->
+            {:noreply, socket}
+        end
     end
   end
 
