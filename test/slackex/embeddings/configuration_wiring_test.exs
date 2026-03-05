@@ -117,17 +117,25 @@ defmodule Slackex.Embeddings.ConfigurationWiringTest do
   # Acceptance: OPENAI_API_KEY validation in prod runtime.exs
   # ---------------------------------------------------------------------------
 
-  describe "OPENAI_API_KEY prod validation" do
-    test "runtime.exs contains a raise for missing OPENAI_API_KEY in prod" do
-      # We cannot execute runtime.exs in prod mode from a test, but we can
-      # verify the file content contains the expected validation pattern.
+  describe "embedding API prod configuration" do
+    test "runtime.exs references EMBEDDING_API_KEY for embedding provider config" do
+      runtime_content = File.read!("config/runtime.exs")
+
+      assert runtime_content =~ "EMBEDDING_API_KEY",
+             "runtime.exs must reference EMBEDDING_API_KEY"
+
+      assert runtime_content =~ "EMBEDDING_API_URL",
+             "runtime.exs must reference EMBEDDING_API_URL"
+
+      assert runtime_content =~ ":embedding_api",
+             "runtime.exs must configure :embedding_api"
+    end
+
+    test "runtime.exs still references legacy OPENAI_API_KEY" do
       runtime_content = File.read!("config/runtime.exs")
 
       assert runtime_content =~ "OPENAI_API_KEY",
-             "runtime.exs must reference OPENAI_API_KEY"
-
-      assert runtime_content =~ ~r/OPENAI_API_KEY.*\|\|.*raise/s,
-             "runtime.exs must raise when OPENAI_API_KEY is missing in prod"
+             "runtime.exs must still reference OPENAI_API_KEY for backward compatibility"
     end
   end
 

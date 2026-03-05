@@ -121,7 +121,23 @@ if config_env() == :prod do
       ]
     ]
 
+  # Legacy OpenAI key (kept for backward compatibility)
   config :slackex, :openai_api_key, System.get_env("OPENAI_API_KEY")
+
+  # Embedding API config — defaults to DeepInfra with all-MiniLM-L6-v2 (384-dim).
+  # Override with EMBEDDING_API_URL / EMBEDDING_MODEL / EMBEDDING_DIMENSIONS for other providers.
+  if embedding_api_key = System.get_env("EMBEDDING_API_KEY") do
+    config :slackex, :embedding_api, %{
+      api_url:
+        System.get_env(
+          "EMBEDDING_API_URL",
+          "https://api.deepinfra.com/v1/openai/embeddings"
+        ),
+      model: System.get_env("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+      dimensions: String.to_integer(System.get_env("EMBEDDING_DIMENSIONS", "384")),
+      api_key: embedding_api_key
+    }
+  end
 
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",

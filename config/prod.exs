@@ -20,10 +20,10 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# StubClient — BumblebeeClient disabled until memory usage is resolved.
-# CPU-only EXLA (EXLA_TARGET=host) works but model loading OOMs the 20GB Docker VM
-# when both containers load simultaneously. See docs/rca/2026-03-05-*.md
-config :slackex, :embedding_client, Slackex.Embeddings.StubClient
+# Use OpenAIClient pointed at DeepInfra for production embeddings.
+# Same model (all-MiniLM-L6-v2, 384-dim) as BumblebeeClient but via API —
+# eliminates EXLA/memory/LXC issues. See docs/research/embedding-provider-evaluation.md
+config :slackex, :embedding_client, Slackex.Embeddings.OpenAIClient
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

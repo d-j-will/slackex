@@ -1,22 +1,30 @@
 defmodule Slackex.Embeddings.OpenAIClient do
   @moduledoc """
-  OpenAI embedding client using the text-embedding-3-small model.
+  OpenAI-compatible embedding client.
 
-  Sends requests to the OpenAI embeddings API via Req. Enforces a maximum
-  batch size of 100 texts per API call. Response vectors are sorted by the
-  `index` field to preserve input ordering.
+  Sends requests to any OpenAI-compatible embeddings API (OpenAI, DeepInfra,
+  OpenRouter, HuggingFace Inference, etc.) via Req. Enforces a maximum batch
+  size of 100 texts per API call. Response vectors are sorted by the `index`
+  field to preserve input ordering.
 
   ## Configuration
 
-      config :slackex, :openai_api_key, "sk-..."
+      config :slackex, :embedding_api,
+        api_url: "https://api.deepinfra.com/v1/openai/embeddings",
+        model: "sentence-transformers/all-MiniLM-L6-v2",
+        dimensions: 384,
+        api_key: "your-api-key"
+
+  Falls back to legacy config (`openai_api_key`, OpenAI defaults) when
+  `:embedding_api` is not set.
   """
 
   @behaviour Slackex.Embeddings.EmbeddingClient
 
-  @dimensions 1536
-  @model "text-embedding-3-small"
+  @default_api_url "https://api.openai.com/v1/embeddings"
+  @default_model "text-embedding-3-small"
+  @default_dimensions 1536
   @max_batch_size 100
-  @api_url "https://api.openai.com/v1/embeddings"
   @receive_timeout_ms 30_000
 
   @impl true
@@ -35,17 +43,15 @@ defmodule Slackex.Embeddings.OpenAIClient do
   end
 
   def generate_batch(texts) do
-    api_key = Application.get_env(:slackex, :openai_api_key)
-
     body = %{
-      model: @model,
+      model: config(:model, @default_model),
       input: texts
     }
 
-    case Req.post(@api_url,
+    case Req.post(config(:api_url, @default_api_url),
            json: body,
            headers: [
-             {"authorization", "Bearer #{api_key}"},
+             {"authorization", "Bearer #{api_key()}"},
              {"content-type", "application/json"}
            ],
            receive_timeout: @receive_timeout_ms
@@ -69,5 +75,21 @@ defmodule Slackex.Embeddings.OpenAIClient do
 
   @impl true
   @spec dimensions() :: pos_integer()
-  def dimensions, do: @dimensions
+  def dimensions, do: config(:dimensions, @default_dimensions)
+
+  defp config(key, default) do
+    case Application.get_env(:slackex, :embedding_api) do
+      nil -> default
+      config when is_map(config) -> Map.get(config, key, default)
+      config when is_list(config) -> Keyword.get(config, key, default)
+    end
+  end
+
+  defp api_key do
+    case Application.get_env(:slackex, :embedding_api) do
+      nil -> Application.get_env(:slackex, :openai_api_key)
+      config when is_map(config) -> Map.get(config, :api_key)
+      config when is_list(config) -> Keyword.get(config, :api_key)
+    end
+  end
 end

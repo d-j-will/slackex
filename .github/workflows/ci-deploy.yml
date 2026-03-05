@@ -149,6 +149,7 @@ jobs:
           FLAGS_ADMIN_USER: ${{ secrets.FLAGS_ADMIN_USER }}
           FLAGS_ADMIN_PASSWORD: ${{ secrets.FLAGS_ADMIN_PASSWORD }}
           CADDY_CF_TOKEN: ${{ secrets.CADDY_CF_TOKEN }}
+          EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
@@ -163,7 +164,7 @@ jobs:
           sed "s|\${CADDY_CF_TOKEN}|${CADDY_CF_TOKEN}|g" Caddyfile > /tmp/Caddyfile.rendered
           scp /tmp/Caddyfile.rendered root@${{ secrets.DEPLOY_HOST }}:/opt/caddy/Caddyfile
 
-          # Ensure FLAGS_ADMIN credentials are in the server .env
+          # Ensure FLAGS_ADMIN credentials and EMBEDDING_API_KEY are in the server .env
           ssh root@${{ secrets.DEPLOY_HOST }} "
             grep -q '^FLAGS_ADMIN_USER=' /root/slackex/.env 2>/dev/null && \
               sed -i 's/^FLAGS_ADMIN_USER=.*/FLAGS_ADMIN_USER=${FLAGS_ADMIN_USER}/' /root/slackex/.env || \
@@ -171,6 +172,9 @@ jobs:
             grep -q '^FLAGS_ADMIN_PASSWORD=' /root/slackex/.env 2>/dev/null && \
               sed -i 's|^FLAGS_ADMIN_PASSWORD=.*|FLAGS_ADMIN_PASSWORD=${FLAGS_ADMIN_PASSWORD}|' /root/slackex/.env || \
               echo 'FLAGS_ADMIN_PASSWORD=${FLAGS_ADMIN_PASSWORD}' >> /root/slackex/.env
+            grep -q '^EMBEDDING_API_KEY=' /root/slackex/.env 2>/dev/null && \
+              sed -i 's|^EMBEDDING_API_KEY=.*|EMBEDDING_API_KEY=${EMBEDDING_API_KEY}|' /root/slackex/.env || \
+              echo 'EMBEDDING_API_KEY=${EMBEDDING_API_KEY}' >> /root/slackex/.env
           "
 
           # Ensure DNS works (Tailscale DNS breaks after VM reboots — install persistent fix)
