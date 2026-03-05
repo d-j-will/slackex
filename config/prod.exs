@@ -20,8 +20,10 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
-# Bumblebee model is pre-cached in the Docker volume by the CI deploy pipeline.
-config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
+# BumblebeeClient disabled — Docker host OOMs under EXLA memory pressure.
+# Re-enable only after: container mem_limit set, host RAM confirmed sufficient,
+# and Proxmox HA configured for auto-restart.
+config :slackex, :embedding_client, Slackex.Embeddings.StubClient
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
