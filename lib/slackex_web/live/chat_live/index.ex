@@ -15,6 +15,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias SlackexWeb.ChatLive.NewDmModal
   alias SlackexWeb.ChatLive.SearchComponent
   alias SlackexWeb.ChatLive.SidebarComponent
+  alias SlackexWeb.ChatLive.SummaryModal
 
   import SlackexWeb.ChatComponents
 
@@ -83,6 +84,12 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:node_name, short_node_name())
      |> assign(:search_open, false)
      |> assign(:search_enabled, FunWithFlags.enabled?(:message_search))
+     |> assign(:summarization_enabled, FunWithFlags.enabled?(:channel_summarization))
+     |> assign(:show_summary_modal, false)
+     |> assign(:summary_text, "")
+     |> assign(:summary_state, :idle)
+     |> assign(:summary_error, nil)
+     |> assign(:active_summary_task, nil)
      |> stream(:messages, [])}
   end
 
@@ -232,6 +239,16 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event("toggle_search", _params, socket) do
     {:noreply, assign(socket, :search_open, !socket.assigns.search_open)}
+  end
+
+  def handle_event("open_summary_modal", _params, socket) do
+    {:noreply, assign(socket, show_summary_modal: true, summary_state: :idle, summary_text: "")}
+  end
+
+  def handle_event("close_summary_modal", _params, socket) do
+    socket = cancel_summary_task(socket)
+
+    {:noreply, assign(socket, show_summary_modal: false, summary_state: :idle, summary_text: "")}
   end
 
   def handle_event("join_channel", _params, socket) do
@@ -622,6 +639,66 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_info(:online_heartbeat, socket) do
     OnlineTracker.refresh(socket.assigns.current_user.id)
     _ = Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
+    {:noreply, socket}
+  end
+
+  # -- Summary streaming --
+
+  @impl true
+  def handle_info(:close_summary_modal, socket) do
+    socket = cancel_summary_task(socket)
+
+    {:noreply, assign(socket, show_summary_modal: false, summary_state: :idle, summary_text: "")}
+  end
+
+  @impl true
+  def handle_info({:start_summary, range}, socket) do
+    channel = socket.assigns.active_channel
+    user = socket.assigns.current_user
+    socket = cancel_summary_task(socket)
+
+    since = time_range_to_datetime(range)
+    live_view_pid = self()
+
+    task =
+      Task.async(fn ->
+        stream_summary(channel.id, since, user.id, live_view_pid)
+      end)
+
+    {:noreply,
+     assign(socket,
+       active_summary_task: task,
+       summary_state: :loading,
+       summary_text: "",
+       show_summary_modal: true
+     )}
+  end
+
+  @impl true
+  def handle_info({:summary_token, chunk}, socket) do
+    new_text = socket.assigns.summary_text <> chunk
+    {:noreply, assign(socket, summary_text: new_text)}
+  end
+
+  @impl true
+  def handle_info(:summary_complete, socket) do
+    {:noreply, assign(socket, summary_state: :complete, active_summary_task: nil)}
+  end
+
+  @impl true
+  def handle_info({:summary_error, reason}, socket) do
+    {:noreply,
+     assign(socket, summary_state: :error, summary_error: reason, active_summary_task: nil)}
+  end
+
+  @impl true
+  def handle_info({ref, _result}, socket) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket) do
     {:noreply, socket}
   end
 
@@ -1181,6 +1258,37 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   # ---------------------------------------------------------------------------
+  # Summary helpers
+  # ---------------------------------------------------------------------------
+
+  defp stream_summary(channel_id, since, user_id, live_view_pid) do
+    case Slackex.AI.Summarizer.summarize_channel(channel_id, since, user_id) do
+      {:ok, stream} ->
+        Enum.each(stream, fn chunk -> send(live_view_pid, {:summary_token, chunk}) end)
+        send(live_view_pid, :summary_complete)
+
+      {:error, reason} ->
+        send(live_view_pid, {:summary_error, reason})
+    end
+  end
+
+  defp cancel_summary_task(socket) do
+    case socket.assigns[:active_summary_task] do
+      %Task{pid: pid} ->
+        Process.exit(pid, :kill)
+        assign(socket, active_summary_task: nil)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp time_range_to_datetime("24h"), do: DateTime.add(DateTime.utc_now(), -1, :day)
+  defp time_range_to_datetime("7d"), do: DateTime.add(DateTime.utc_now(), -7, :day)
+  defp time_range_to_datetime("30d"), do: DateTime.add(DateTime.utc_now(), -30, :day)
+  defp time_range_to_datetime(_), do: DateTime.add(DateTime.utc_now(), -1, :day)
+
+  # ---------------------------------------------------------------------------
   # Template
   # ---------------------------------------------------------------------------
 
@@ -1227,6 +1335,24 @@ defmodule SlackexWeb.ChatLive.Index do
             subtitle={@active_channel.description}
           >
             <:actions>
+              <%= if @summarization_enabled do %>
+                <button
+                  data-role="summarize-button"
+                  phx-click="open_summary_modal"
+                  class="btn btn-ghost btn-xs gap-1"
+                  aria-label="Summarize channel"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"
+                    />
+                  </svg>
+                  <span class="hidden sm:inline">Summarize</span>
+                </button>
+              <% end %>
               <%= if @search_enabled do %>
                 <button
                   phx-click="toggle_search"
@@ -1380,6 +1506,15 @@ defmodule SlackexWeb.ChatLive.Index do
       show={@show_edit_profile}
       form={@edit_profile_form}
       current_user={@current_user}
+    />
+
+    <.live_component
+      :if={@show_summary_modal}
+      module={SummaryModal}
+      id="summary-modal"
+      summary_text={@summary_text}
+      summary_state={@summary_state}
+      summary_error={@summary_error}
     />
     """
   end
