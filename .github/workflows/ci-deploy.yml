@@ -150,6 +150,7 @@ jobs:
           FLAGS_ADMIN_PASSWORD: ${{ secrets.FLAGS_ADMIN_PASSWORD }}
           CADDY_CF_TOKEN: ${{ secrets.CADDY_CF_TOKEN }}
           EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
@@ -175,6 +176,9 @@ jobs:
             grep -q '^EMBEDDING_API_KEY=' /root/slackex/.env 2>/dev/null && \
               sed -i 's|^EMBEDDING_API_KEY=.*|EMBEDDING_API_KEY=${EMBEDDING_API_KEY}|' /root/slackex/.env || \
               echo 'EMBEDDING_API_KEY=${EMBEDDING_API_KEY}' >> /root/slackex/.env
+            grep -q '^LLM_API_KEY=' /root/slackex/.env 2>/dev/null && \
+              sed -i 's|^LLM_API_KEY=.*|LLM_API_KEY=${LLM_API_KEY}|' /root/slackex/.env || \
+              echo 'LLM_API_KEY=${LLM_API_KEY}' >> /root/slackex/.env
           "
 
           # Ensure DNS works (Tailscale DNS breaks after VM reboots — install persistent fix)

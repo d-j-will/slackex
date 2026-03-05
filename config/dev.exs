@@ -111,3 +111,6 @@ config :slackex, :flags_admin_auth,
 
 # Use Bumblebee for real ML embeddings in development (all-MiniLM-L6-v2, 384-dim)
 config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
+
+# Use real LLM API in development (same as prod)
+config :slackex, :llm_client, Slackex.AI.OpenAICompatibleClient

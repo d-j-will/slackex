@@ -25,5 +25,8 @@ config :logger, level: :info
 # eliminates EXLA/memory/LXC issues. See docs/research/embedding-provider-evaluation.md
 config :slackex, :embedding_client, Slackex.Embeddings.OpenAIClient
 
+# Use real LLM API in production (DeepInfra with Gemma-3-4b-it by default)
+config :slackex, :llm_client, Slackex.AI.OpenAICompatibleClient
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

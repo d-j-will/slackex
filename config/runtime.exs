@@ -139,6 +139,18 @@ if config_env() == :prod do
     }
   end
 
+  # LLM API config — defaults to DeepInfra with Gemma-3-4b-it.
+  # Override with LLM_API_URL / LLM_MODEL / LLM_MAX_TOKENS for other providers.
+  if llm_api_key = System.get_env("LLM_API_KEY") do
+    config :slackex, :llm_api, %{
+      api_url: System.get_env("LLM_API_URL", "https://api.deepinfra.com/v1/openai"),
+      model: System.get_env("LLM_MODEL", "google/gemma-3-4b-it"),
+      api_key: llm_api_key,
+      max_tokens: String.to_integer(System.get_env("LLM_MAX_TOKENS", "1024")),
+      temperature: 0.3
+    }
+  end
+
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",
     password:
