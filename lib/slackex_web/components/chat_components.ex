@@ -8,6 +8,7 @@ defmodule SlackexWeb.ChatComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
+  alias Slackex.Links.URLExtractor
 
   use Phoenix.VerifiedRoutes,
     endpoint: SlackexWeb.Endpoint,
@@ -165,7 +166,7 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(
         :rendered_content,
         if assigns.link_previews_enabled do
-          Slackex.Links.URLExtractor.linkify(Map.get(message, :content, ""))
+          URLExtractor.linkify(Map.get(message, :content, ""))
         else
           Map.get(message, :content, "")
         end
