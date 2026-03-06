@@ -7,7 +7,7 @@ Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL 
 Key directories:
 - `lib/slackex/` — domain contexts (Chat, Messaging, Accounts)
 - `lib/slackex_web/` — LiveView, components, router
-- `test/` — ExUnit tests (currently 1002 tests)
+- `test/` — ExUnit tests (currently 1129 tests)
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
@@ -71,6 +71,15 @@ The following are **enforced by hooks or guided by skills** — use them instead
 - **GPU is OFF-LIMITS** on the production server. Never enable EXLA/CUDA/OpenCL in prod config.
 - Full deployment details: `docs/runbooks/deployment.md`
 - Model deployment: `docs/runbooks/model-deployment.md`
+
+## Required Reading
+
+Read the relevant doc **before** working in these areas:
+
+- **Infrastructure, deployment, CI/CD, Docker, migrations**: `docs/engineering-principles.md` — expand/contract migrations, feature flag lifecycle, test isolation, deploy-safety rules, SSH heredoc gotchas
+- **Deployment runbook**: `docs/runbooks/deployment.md`
+- **UI/UX decisions**: `docs/design/` — component system, design system, information architecture
+- **Incident history**: `docs/rca/` — root cause analyses for past production incidents
 
 ## General Workflow
 
