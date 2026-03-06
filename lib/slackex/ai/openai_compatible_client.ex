@@ -63,9 +63,9 @@ defmodule Slackex.AI.OpenAICompatibleClient do
           fn -> start_stream(body, api_key) end,
           &next_chunk/1,
           fn
-            {:done, _ref} -> :ok
+            {:done, resp} -> Req.cancel_async_response(resp)
+            {:streaming, resp} -> Req.cancel_async_response(resp)
             {:error, _} -> :ok
-            ref when is_reference(ref) -> :ok
             _ -> :ok
           end
         )
@@ -105,15 +105,8 @@ defmodule Slackex.AI.OpenAICompatibleClient do
            into: :self
          ) do
       {:ok, %Req.Response{status: 200} = resp} ->
-        Logger.info(
-          "LLM stream connected (200), body is_struct=#{is_struct(resp.body)}, is_ref=#{is_reference(resp.body)}"
-        )
-
-        case resp.body do
-          %Req.Response.Async{ref: ref} -> ref
-          ref when is_reference(ref) -> ref
-          other -> {:error, {:unexpected_body, other}}
-        end
+        Logger.info("LLM stream connected (200)")
+        {:streaming, resp}
 
       {:ok, %Req.Response{status: status, body: resp_body}} ->
         Logger.error("LLM API error: status=#{status} body=#{inspect(resp_body)}")
@@ -127,26 +120,18 @@ defmodule Slackex.AI.OpenAICompatibleClient do
 
   defp next_chunk({:error, _reason} = err), do: {:halt, err}
 
-  defp next_chunk(ref) when is_reference(ref) do
+  defp next_chunk({:streaming, resp} = state) do
     require Logger
 
     receive do
-      {^ref, {:data, data}} ->
-        chunks = parse_sse_data(data)
+      message ->
+        case Req.parse_message(resp, message) do
+          {:ok, parts} ->
+            handle_stream_parts(parts, state, resp)
 
-        Logger.debug(
-          "LLM stream data: #{inspect(String.slice(data, 0, 200))}, parsed #{length(chunks)} chunks"
-        )
-
-        if :done in chunks do
-          {Enum.filter(chunks, &is_binary/1), {:done, ref}}
-        else
-          {chunks, ref}
+          :unknown ->
+            {[], state}
         end
-
-      {^ref, :done} ->
-        Logger.debug("LLM stream done signal received")
-        {:halt, {:done, ref}}
     after
       @receive_timeout_ms ->
         Logger.warning("LLM stream timed out after #{@receive_timeout_ms}ms")
@@ -154,8 +139,35 @@ defmodule Slackex.AI.OpenAICompatibleClient do
     end
   end
 
-  defp next_chunk({:done, _ref} = done), do: {:halt, done}
+  defp next_chunk({:done, _resp} = done), do: {:halt, done}
   defp next_chunk(other), do: {:halt, {:error, {:unexpected_state, other}}}
+
+  defp handle_stream_parts(parts, state, resp) do
+    require Logger
+
+    data_chunks =
+      parts
+      |> Enum.flat_map(fn
+        {:data, data} -> parse_sse_data(data)
+        _ -> []
+      end)
+
+    has_done = :done in data_chunks or :done in parts
+
+    cond do
+      Enum.any?(parts, &match?({:error, _}, &1)) ->
+        {_tag, reason} = Enum.find(parts, &match?({:error, _}, &1))
+        Logger.error("LLM stream error: #{inspect(reason)}")
+        {:halt, {:error, {:stream_error, reason}}}
+
+      has_done ->
+        Logger.debug("LLM stream done signal received")
+        {Enum.filter(data_chunks, &is_binary/1), {:done, resp}}
+
+      true ->
+        {data_chunks, state}
+    end
+  end
 
   defp parse_sse_data(data) do
     data
