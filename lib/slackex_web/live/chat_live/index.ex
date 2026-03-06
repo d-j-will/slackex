@@ -1506,12 +1506,6 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
-  defp add_user_to_reaction(%{user_ids: user_ids} = reaction, user_id) do
-    if user_id in user_ids,
-      do: reaction,
-      else: %{reaction | count: reaction.count + 1, user_ids: [user_id | user_ids]}
-  end
-
   defp apply_reaction_update(reactions, %{action: :removed, emoji: emoji, user_id: user_id}) do
     reactions
     |> Enum.map(fn r ->
@@ -1522,6 +1516,12 @@ defmodule SlackexWeb.ChatLive.Index do
       end
     end)
     |> Enum.reject(&(&1.count <= 0))
+  end
+
+  defp add_user_to_reaction(%{user_ids: user_ids} = reaction, user_id) do
+    if user_id in user_ids,
+      do: reaction,
+      else: %{reaction | count: reaction.count + 1, user_ids: [user_id | user_ids]}
   end
 
   defp apply_edit_to_stream(%{id: id, content: content, edited_at: edited_at}) do
