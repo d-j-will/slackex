@@ -1,0 +1,25 @@
+# Blocked domains for link preview safety
+# Sources: Steven Black's unified hosts, manual additions
+# Format: one domain per line, # for comments
+#
+# Adult content
+pornhub.com
+xvideos.com
+xhamster.com
+redtube.com
+youporn.com
+spankbang.com
+xnxx.com
+livejasmin.com
+chaturbate.com
+stripchat.com
+# Gambling
+casino-online.com
+bet365-promo.com
+onlinecasino.com
+# Spam / tracking
+freebitcoins.xyz
+trackingclick.biz
+clickbait-news.com
+# Known malware distribution
+malware-download.net
