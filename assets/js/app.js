@@ -26,13 +26,14 @@ import MessageList from "./hooks/message_list"
 import Compose from "./hooks/compose"
 import EditMessage from "./hooks/edit_message"
 import EmojiPicker from "./hooks/emoji_picker"
+import QuickSwitcher from "./hooks/quick_switcher"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {MessageList, Compose, EditMessage, EmojiPicker},
+  hooks: {MessageList, Compose, EditMessage, EmojiPicker, QuickSwitcher},
 })
 
 // Show progress bar on live navigation and form submits

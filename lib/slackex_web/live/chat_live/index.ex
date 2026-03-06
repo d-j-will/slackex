@@ -15,6 +15,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias SlackexWeb.ChatLive.CreateChannelModal
   alias SlackexWeb.ChatLive.InviteLinkModal
   alias SlackexWeb.ChatLive.NewDmModal
+  alias SlackexWeb.ChatLive.QuickSwitcherModal
   alias SlackexWeb.ChatLive.PinnedMessagesModal
   alias SlackexWeb.ChatLive.SearchComponent
   alias SlackexWeb.ChatLive.SidebarComponent
@@ -89,6 +90,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:thread_parent, nil)
      |> assign(:member_count, 0)
      |> assign(:pin_count, 0)
+     |> assign(:show_quick_switcher, false)
      |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
      |> assign(:node_name, short_node_name())
      |> assign(:search_open, false)
@@ -664,6 +666,10 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  def handle_event("toggle_quick_switcher", _params, socket) do
+    {:noreply, assign(socket, :show_quick_switcher, !socket.assigns.show_quick_switcher)}
+  end
+
   def handle_event("pin_message", %{"message-id" => msg_id}, socket) do
     message_id = safe_to_integer(msg_id)
     channel = socket.assigns.active_channel
@@ -777,6 +783,11 @@ defmodule SlackexWeb.ChatLive.Index do
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_info(:close_quick_switcher, socket) do
+    {:noreply, assign(socket, :show_quick_switcher, false)}
   end
 
   @impl true
@@ -1539,7 +1550,7 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex h-full">
+    <div class="flex h-full" id="chat-container" phx-hook="QuickSwitcher">
       <%!-- Mobile backdrop --%>
       <div
         :if={@sidebar_open}
@@ -1824,6 +1835,15 @@ defmodule SlackexWeb.ChatLive.Index do
       summary_text={@summary_text}
       summary_state={@summary_state}
       summary_error={@summary_error}
+    />
+
+    <.live_component
+      :if={@show_quick_switcher}
+      module={QuickSwitcherModal}
+      id="quick-switcher"
+      channels={@channels}
+      dm_conversations={@dm_conversations}
+      current_user={@current_user}
     />
     """
   end
