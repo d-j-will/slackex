@@ -1,9 +1,9 @@
-# RCA: Embedding Failure Cascade Crashes Application, VM & Physical Server (v0.5.36 – v0.5.42)
+# RCA: Embedding Failure Cascade Crashes Application, VM & Physical Server (v0.5.36 – v0.5.43)
 
 **Date:** 2026-03-05
 **Severity:** P0 — full production outage, application unrecoverable, physical server crashed multiple times
 **Duration:** ~8+ hours across multiple outage windows
-**Trigger:** v0.5.36 deployed; Oban embedding jobs fired; EmbeddingServing crash-looped; supervisor exhausted restart budget; cascade killed the entire application; EXLA GPU access crashed the physical Proxmox server
+**Trigger:** v0.5.36 deployed; Oban embedding jobs fired; EmbeddingServing crash-looped; supervisor exhausted restart budget; cascade killed the entire application; EXLA GPU access crashed the physical Proxmox server; CPU-only EXLA still crashed the LXC host due to memory overcommit
 **Related incidents:** [2026-03-04 crash-loop](2026-03-04-bumblebee-serving-crash-loop.md), [2026-03-03 clustering](2026-03-03-clustering-deploy-failure.md)
 
 ## Impact
@@ -12,7 +12,7 @@
 - Docker host VM unresponsive — required Proxmox power cycle (multiple times)
 - **Physical Proxmox server crashed multiple times** — EXLA GPU access brought down the hypervisor, requiring physical power cycles
 - Recovery blocked by cascading infrastructure failures (DNS, GHCR auth, GPU crash)
-- **Seven version tags** (v0.5.36 through v0.5.42) required to fully resolve
+- **Eight version tags** (v0.5.36 through v0.5.43) required to fully resolve
 - **Third production incident in 72 hours**, all from the same embedding subsystem
 - **Total downtime: 8+ hours across multiple outage windows**
 - User had to physically walk to the server to power-cycle the Proxmox host — twice
@@ -65,6 +65,24 @@
 | ~06:00 | v0.5.42 tagged: `ENV EXLA_TARGET=host` in Dockerfile build stage, BumblebeeClient re-enabled |
 | ~06:30 | v0.5.42 CI completes successfully — image compiled with CPU-only EXLA NIF |
 | ~07:00 | Docker host restarted, v0.5.42 deployed, site stable with CPU-only semantic search |
+| | **— Phase 3: CPU-only EXLA still crashes LXC (v0.5.42 – v0.5.43) —** |
+| ~07:00 | v0.5.42 CI completes: smoke test passes, model cached (289MB peak, 2s), cluster formed (2 nodes) |
+| ~07:00+ | CI disconnects. First real inference triggers EXLA JIT compilation (untested by provisioning step) |
+| ~07:10–08:00 | Docker host LXC crashes and reboots **6 times** in ~4 hours (Proxmox `journalctl --list-boots`) |
+| | Boot durations as short as 5 minutes — crash-reboot-crash cycle |
+| | Proxmox host survives all crashes — GPU fix (EXLA_TARGET=host) confirmed working |
+| ~08:00 | User reports: "still fucked" — site intermittently unreachable |
+| ~08:15 | User reports: "It's still taking down docker_host" |
+| ~08:30 | v0.5.43 tagged: reverts to StubClient in `config/prod.exs`, BumblebeeClient disabled |
+| ~08:45 | v0.5.43 deployed via CI — site stabilizes, search degraded (stub embeddings) |
+| ~09:00+ | LXC stable, no further crashes. Proxmox host shows 14GB available memory |
+| | **— Phase 4: Post-incident investigation —** |
+| next day | RCA investigation from Proxmox host (tono): |
+| | - `dmesg` inside LXC: "Operation not permitted" (unprivileged LXC, no kernel access) |
+| | - `journalctl -k` inside LXC: "No entries" (LXC shares host kernel) |
+| | - Proxmox `dmesg`: NO OOM kills, NO errors — ring buffer cleared by 6 reboots |
+| | - LXC config: `memory: 20480` (20GB) on host with ~20GB total RAM — zero headroom |
+| | - `mem_limit: 2g` in docker-compose.prod.yml — likely unenforced in unprivileged LXC |
 
 ## Root Causes
 
@@ -122,7 +140,21 @@ This misunderstanding caused three additional server crashes:
 
 The fix (v0.5.42) was to set `ENV EXLA_TARGET=host` in the Dockerfile **before** `mix deps.compile`, ensuring the NIF is built without GPU support.
 
-### Senary: No resource limits on containers
+### Senary: LXC memory overcommit — zero headroom for EXLA memory spikes
+
+The Docker host is an **unprivileged LXC container** (CT 100) on Proxmox, allocated `memory: 20480` (20GB). The Proxmox host itself has ~20GB total RAM. With pihole (CT 101) allocated 1GB, there is **zero headroom** for memory spikes.
+
+Key findings from the post-incident Proxmox investigation:
+- `journalctl --list-boots` shows **8 boots** total, with **6 reboots during the incident window** (Mar 5, 01:20–03:21 UTC)
+- Boot durations as short as **5 minutes** — crash-reboot-crash cycle
+- `dmesg` on Proxmox host shows **no OOM kills** — but the ring buffer was cleared by each of the 6 reboots, destroying all evidence
+- Docker `mem_limit: 2g` in docker-compose.prod.yml is **likely unenforced** — unprivileged LXC containers may not support Docker's cgroup nesting for memory limits
+- The CI model provisioning step only calls `Bumblebee.load_model/1` and `Bumblebee.load_tokenizer/1` (289MB peak) — it does **not** run inference. EXLA JIT compilation on first real inference likely spikes significantly higher
+- Two app containers loading EXLA simultaneously doubles the memory impact
+
+The model runs fine on the user's Mac Mini (with less total RAM) because macOS has better memory management and no LXC/cgroup overhead. The issue is specific to the LXC + Docker + EXLA combination on a memory-constrained host.
+
+### Septenary: No resource limits on containers
 
 `docker-compose.prod.yml` had no `mem_limit` or `deploy.resources.limits`. Even in CPU-only mode, the EXLA memory spike during the crash-loop was unbounded, allowing it to consume all VM memory.
 
@@ -178,7 +210,7 @@ Three separate infrastructure failures compounded the recovery time:
 
 Each incident generated action items. The action items from incident 2 would have prevented incident 3 if they had been completed.
 
-## Fixes Applied (v0.5.37 – v0.5.42)
+## Fixes Applied (v0.5.37 – v0.5.43)
 
 ### Layer 1: Error propagation (v0.5.37)
 
@@ -250,7 +282,18 @@ ENV EXLA_TARGET=host
 
 This is the definitive fix. The EXLA NIF is now compiled without GPU support. The NIF binary cannot probe or access the GPU regardless of runtime configuration. BumblebeeClient re-enabled in `config/prod.exs`.
 
-### Layer 9: Infrastructure hardening (v0.5.40 – v0.5.42)
+### Layer 9: StubClient revert (v0.5.43)
+
+After v0.5.42 (CPU-only EXLA) continued crashing the Docker host LXC, BumblebeeClient was disabled again:
+
+```elixir
+# config/prod.exs — BumblebeeClient disabled until memory/infra resolved
+config :slackex, :embedding_client, Slackex.Embeddings.StubClient
+```
+
+This is the current production state. Semantic search returns stub (zero-vector) results. The site is stable.
+
+### Layer 10: Infrastructure hardening (v0.5.40 – v0.5.42)
 
 - **Tailscale DNS fix**: CI deploy auto-provisions a `fix-dns.service` systemd unit on the Docker host that runs on boot, disabling Tailscale DNS and setting Google DNS (8.8.8.8)
 - **GHCR auth preservation**: CI deploy now checks if existing Docker auth works before re-authenticating — prevents overwriting long-lived PAT with short-lived `ghs_` token
@@ -264,7 +307,9 @@ This is the definitive fix. The EXLA NIF is now compiled without GPU support. Th
 - **Root cause identified quickly** — once the VM was back, the code fix took ~20 minutes
 - **Infrastructure hardened** — DNS fix automated, GHCR auth preserved, memory limits added, model pre-cached
 - **Compile-time fix was definitive** — v0.5.42's Dockerfile change ensures GPU can never be accessed regardless of config
-- **Comprehensive documentation** — CLAUDE.md Hardware constraints section, RCA with 8 lessons
+- **Comprehensive documentation** — CLAUDE.md Hardware constraints section, RCA with 8+ lessons
+- **Cascade protection worked** — v0.5.43 with `restart: :temporary` kept the site up even when search was broken ("site is up search is fucked" — intended degradation)
+- **Quick revert to safe state** — v0.5.43 StubClient revert stabilized the site within minutes
 
 ## What We Got Wrong
 
@@ -277,6 +322,9 @@ This is the definitive fix. The EXLA NIF is now compiled without GPU support. Th
 - **Assumed EXLA_TARGET was runtime** — set it in docker-compose.prod.yml and deployed, causing three more crashes before discovering it's compile-time
 - **Assumed StubClient was safe** — didn't realize the GPU-compiled EXLA NIF probes GPU on BEAM module load regardless of application config
 - **User's GPU warning was ignored across seven versions** — from v0.5.36 to v0.5.42, the user repeatedly stated "do not use GPU on the server" and was ignored each time
+- **LXC memory overcommit was invisible** — 20GB LXC on 20GB host with no headroom. Docker `mem_limit` likely unenforced in unprivileged LXC
+- **CI provisioning doesn't test inference** — model load (289MB) succeeded but JIT compilation on first real inference was never tested, which is likely the memory spike that crashes the LXC
+- **Kernel crash evidence destroyed by repeated reboots** — 6 reboots in 4 hours cleared dmesg ring buffer each time. No persistent kernel log storage configured
 
 ## Action Items
 
@@ -288,34 +336,39 @@ This is the definitive fix. The EXLA NIF is now compiled without GPU support. Th
 | 2 | Set persistent GHCR PAT on Docker host (not `ghs_` token) | davewil | Done |
 | 3 | Add container memory limits to `docker-compose.prod.yml` | | Done (v0.5.40, 2GB per container) |
 | 4 | Set `EXLA_TARGET=host` in Dockerfile at compile time | | Done (v0.5.42) |
+| 5 | Revert to StubClient after CPU-only EXLA still crashed LXC | | Done (v0.5.43) |
 
 ### P1 — This week
 
 | # | Action | Owner | Status |
 |---|--------|-------|--------|
-| 5 | Configure Proxmox HA policy for Docker host VM (auto-restart on crash) | | TODO |
-| 6 | Fix Tailscale DNS permanently — systemd service on boot + CI belt-and-suspenders | | Done (v0.5.40 — CI auto-provisions fix-dns.service) |
-| 7 | Add external uptime monitoring + alerting (e.g., UptimeRobot → Telegram) | | TODO |
-| 8 | CI deploy step: preserve long-lived PAT instead of overwriting with `GITHUB_TOKEN` | | Done (v0.5.40 — conditional auth check) |
-| 9 | Add `dmesg`/`journalctl` review on Docker host to confirm OOM theory | | TODO |
+| 6 | Configure Proxmox HA policy for Docker host LXC (auto-restart on crash) | | TODO |
+| 7 | Fix Tailscale DNS permanently — systemd service on boot + CI belt-and-suspenders | | Done (v0.5.40 — CI auto-provisions fix-dns.service) |
+| 8 | Add external uptime monitoring + alerting (e.g., UptimeRobot → Telegram) | | TODO |
+| 9 | CI deploy step: preserve long-lived PAT instead of overwriting with `GITHUB_TOKEN` | | Done (v0.5.40 — conditional auth check) |
+| 10 | `dmesg`/`journalctl` review on Proxmox host to confirm OOM theory | | Done (no evidence — logs destroyed by 6 reboots) |
+| 11 | Reduce LXC memory to 16GB, leaving 4GB headroom for Proxmox host + pihole | | TODO |
+| 12 | Verify Docker cgroup `mem_limit` enforcement inside unprivileged LXC | | TODO |
+| 13 | Configure persistent kernel logging on Proxmox host (`journald` persistent storage) | | TODO |
 
 ### P2 — Before next feature activation
 
 | # | Action | Owner | Status |
 |---|--------|-------|--------|
-| 10 | OTP resilience review required before activating any non-essential subsystem | | Policy (documented) |
-| 11 | Integration test: start app with BumblebeeClient config, verify graceful degradation | | TODO |
-| 12 | Warm-up inference in CI deploy pipeline (validates model loads + generates output) | | Done (v0.5.40 — CI runs model pre-cache step) |
-| 13 | Single-node EmbeddingServing (only on app1) to halve memory usage | | TODO |
+| 14 | OTP resilience review required before activating any non-essential subsystem | | Policy (documented) |
+| 15 | Integration test: start app with BumblebeeClient config, verify graceful degradation | | TODO |
+| 16 | CI provisioning must run a test inference (embed one sentence), not just model load | | TODO |
+| 17 | Single-node EmbeddingServing (only on app1) to halve EXLA memory | | TODO |
+| 18 | Measure actual EXLA peak memory during JIT compilation (dev Mac Mini) | | TODO |
 
 ### P3 — Process improvements
 
 | # | Action | Owner | Status |
 |---|--------|-------|--------|
-| 14 | RCA action items must have explicit owners and deadlines — review weekly | | Policy |
-| 15 | "Definition of Done" for RCA action items — not just "created" but verified in prod | | Policy |
-| 16 | Close the loop on prior RCA open items before deploying new features to same subsystem | | Policy |
-| 17 | Document compile-time vs runtime env vars for all NIF-based dependencies | | Done (CLAUDE.md Hardware constraints) |
+| 19 | RCA action items must have explicit owners and deadlines — review weekly | | Policy |
+| 20 | "Definition of Done" for RCA action items — not just "created" but verified in prod | | Policy |
+| 21 | Close the loop on prior RCA open items before deploying new features to same subsystem | | Policy |
+| 22 | Document compile-time vs runtime env vars for all NIF-based dependencies | | Done (CLAUDE.md Hardware constraints) |
 
 ## Lessons
 
@@ -386,6 +439,30 @@ This violated the assumption that "not using a feature" means "not touching its 
 
 **Rule: When a NIF has dangerous hardware interactions, the fix must be at the compilation level, not the configuration level.**
 
+### 9. LXC is not a VM — resource isolation has different guarantees
+
+The Docker host is an unprivileged LXC container, not a VM. This has critical implications:
+- **No kernel access**: `dmesg` returns "Operation not permitted". `journalctl -k` returns "No entries". Crash investigation must be done from the Proxmox host.
+- **Cgroup nesting may not work**: Docker's `mem_limit` uses cgroups. Inside an unprivileged LXC with `nesting=1`, these cgroup limits may not be enforced — the container can consume all memory allocated to the LXC.
+- **Memory overcommit is invisible**: The LXC is allocated 20GB on a host with ~20GB total. No monitoring alerts when the LXC approaches its limit.
+- **Crash evidence is destroyed**: When the LXC (or Proxmox host) crashes and reboots, the dmesg ring buffer is cleared. Without persistent kernel logging, root cause evidence is permanently lost.
+
+**Rule: Treat LXC memory allocation as a hard budget. Leave 20%+ headroom for kernel and host overhead. Verify Docker cgroup enforcement inside LXC with a memory stress test.**
+
+### 10. CI provisioning is not production testing
+
+The CI deploy pipeline pre-caches the Bumblebee model by calling `Bumblebee.load_model/1` and `Bumblebee.load_tokenizer/1`. This used only 289MB peak memory and completed in 2 seconds. But this step does **not** run inference — it only downloads and deserializes weights.
+
+EXLA's JIT compilation happens on **first inference**, not on model load. The JIT compiler allocates memory for:
+- XLA computation graphs
+- Intermediate tensors
+- Compiled HLO cache
+- Two app containers JIT-compiling simultaneously (double impact)
+
+The provisioning step gave false confidence that the model "works" when it only tested half the pipeline.
+
+**Rule: CI provisioning must include a test inference (e.g., embed a single sentence) to exercise the full EXLA JIT path and measure actual peak memory.**
+
 ## Appendix: Defense-in-Depth After Fixes
 
 | Layer | Control | Status |
@@ -405,5 +482,11 @@ This violated the assumption that "not using a feature" means "not touching its 
 | Infra | Persistent GHCR credentials (CI preserves PAT) | v0.5.40 ✅ |
 | Infra | Tailscale DNS fix-dns.service auto-provisioned by CI | v0.5.40 ✅ |
 | Infra | Bumblebee model pre-cached in shared volume on deploy | v0.5.40 ✅ |
+| Config | BumblebeeClient disabled (StubClient) until memory/infra resolved | v0.5.43 ✅ |
 | Infra | Proxmox HA auto-restart | TODO |
 | Infra | External monitoring + alerting | TODO |
+| Infra | Reduce LXC memory allocation to leave headroom on Proxmox host | TODO |
+| Infra | Verify Docker cgroup enforcement inside unprivileged LXC | TODO |
+| Infra | Persistent kernel logging on Proxmox host | TODO |
+| CI | CI provisioning runs test inference (not just model load) | TODO |
+| Infra | Single-node EmbeddingServing (only app1) to halve EXLA memory | TODO |

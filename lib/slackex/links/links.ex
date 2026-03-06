@@ -1,6 +1,10 @@
 defmodule Slackex.Links do
   @moduledoc "Context module for link preview operations."
 
+  use Boundary,
+    deps: [Slackex.Chat],
+    exports: [LinkPreview, LinkPreviewListener, URLExtractor]
+
   import Ecto.Query
 
   alias Slackex.Links.LinkPreview
