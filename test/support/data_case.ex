@@ -49,6 +49,20 @@ defmodule Slackex.DataCase do
     :ets.delete_all_objects(:slackex_message_cache)
 
     on_exit(fn ->
+      # Drain pipeline listeners before stopping sandbox — ensures they finish
+      # any in-progress DB queries triggered by ChannelServer's
+      # {:messages_persisted, ids} broadcast via FunWithFlags.
+      for name <- [Slackex.Links.LinkPreviewListener, Slackex.Embeddings.PersistenceListener],
+          listener_pid = Process.whereis(name),
+          listener_pid != nil,
+          Process.alive?(listener_pid) do
+        try do
+          :sys.get_state(listener_pid, 1000)
+        catch
+          :exit, _ -> :ok
+        end
+      end
+
       :ets.delete_all_objects(:slackex_message_cache)
       Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
       Ecto.Adapters.SQL.Sandbox.stop_owner(read_pid)

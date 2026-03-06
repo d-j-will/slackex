@@ -215,6 +215,15 @@ defmodule Slackex.Messaging.ChannelServer do
     {entry, new_in_flight} = Map.pop(state.in_flight, ref)
 
     if entry do
+      message_ids = Enum.map(entry.messages, & &1.id)
+
+      _ =
+        Phoenix.PubSub.broadcast(
+          Slackex.PubSub,
+          "pipeline:events",
+          {:messages_persisted, message_ids}
+        )
+
       Enum.each(entry.messages, fn msg ->
         enqueue_push_notification(state.channel_type, state.channel_id, msg)
       end)

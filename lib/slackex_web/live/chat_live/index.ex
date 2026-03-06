@@ -3,12 +3,13 @@ defmodule SlackexWeb.ChatLive.Index do
 
   alias Slackex.Accounts
   alias Slackex.Accounts.User
+  alias Slackex.AI.Summarizer
   alias Slackex.Chat
   alias Slackex.Chat.Permissions
+  alias Slackex.Links
   alias Slackex.Messaging
   alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
-  alias Slackex.Links
   alias Slackex.Search
   alias Slackex.Search.HistoryLoader
   alias SlackexWeb.ChatLive.BrowseChannelsModal
@@ -16,8 +17,8 @@ defmodule SlackexWeb.ChatLive.Index do
   alias SlackexWeb.ChatLive.CreateChannelModal
   alias SlackexWeb.ChatLive.InviteLinkModal
   alias SlackexWeb.ChatLive.NewDmModal
-  alias SlackexWeb.ChatLive.QuickSwitcherModal
   alias SlackexWeb.ChatLive.PinnedMessagesModal
+  alias SlackexWeb.ChatLive.QuickSwitcherModal
   alias SlackexWeb.ChatLive.SearchComponent
   alias SlackexWeb.ChatLive.SidebarComponent
   alias SlackexWeb.ChatLive.SlashCommand
@@ -1573,7 +1574,7 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
 
   defp stream_summary(channel_id, since, user_id, live_view_pid) do
-    case Slackex.AI.Summarizer.summarize_channel(channel_id, since, user_id) do
+    case Summarizer.summarize_channel(channel_id, since, user_id) do
       {:ok, stream} ->
         try do
           token_count =

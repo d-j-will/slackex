@@ -5,8 +5,9 @@ defmodule Slackex.Chat.Pins do
 
   import Ecto.Query
 
-  alias Slackex.Chat.PinnedMessage
   alias Slackex.Chat.Permissions
+  alias Slackex.Chat.PinnedMessage
+
   alias Slackex.Chat.Subscription
   alias Slackex.Repo
 
