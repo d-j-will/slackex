@@ -101,7 +101,10 @@ defmodule Slackex.AI.OpenAICompatibleClient do
            into: :self
          ) do
       {:ok, %Req.Response{status: 200} = resp} ->
-        resp.body
+        case resp.body do
+          %Req.Response.Async{ref: ref} -> ref
+          ref when is_reference(ref) -> ref
+        end
 
       {:ok, %Req.Response{status: status}} ->
         {:error, {:api_error, status}}
