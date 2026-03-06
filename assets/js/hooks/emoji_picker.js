@@ -2,17 +2,24 @@ const EmojiPicker = {
   mounted() {
     this.pickerContainer = null;
 
-    this.handleDocumentClick = (e) => {
-      if (
-        this.pickerContainer &&
-        !this.pickerContainer.contains(e.target) &&
-        !e.target.closest("[data-emoji-trigger]")
-      ) {
+    // Use mousedown instead of click — emoji-mart's Shadow DOM swallows
+    // click events, so contains() fails and the picker closes mid-select.
+    // Mousedown fires before the picker's internal click handler.
+    this.handleDocumentMousedown = (e) => {
+      if (!this.pickerContainer) return;
+
+      // Check if click is inside the picker container or its Shadow DOM
+      const path = e.composedPath();
+      const isInsidePicker = path.some(
+        (el) => el === this.pickerContainer || el === this.el,
+      );
+
+      if (!isInsidePicker) {
         this.closePicker();
       }
     };
 
-    document.addEventListener("click", this.handleDocumentClick);
+    document.addEventListener("mousedown", this.handleDocumentMousedown);
 
     this.el.addEventListener("emoji:open", () => {
       const trigger = this.el.querySelector("[data-emoji-trigger]");
@@ -22,7 +29,7 @@ const EmojiPicker = {
 
   destroyed() {
     this.closePicker();
-    document.removeEventListener("click", this.handleDocumentClick);
+    document.removeEventListener("mousedown", this.handleDocumentMousedown);
   },
 
   async openPicker(trigger) {
@@ -58,6 +65,7 @@ const EmojiPicker = {
       previewPosition: "none",
       skinTonePosition: "none",
       maxFrequentRows: 2,
+      perLine: 8,
     });
 
     container.appendChild(picker);

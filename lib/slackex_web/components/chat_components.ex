@@ -244,6 +244,17 @@ defmodule SlackexWeb.ChatComponents do
         class="hidden group-hover:flex absolute right-2 top-1 items-center gap-1"
         data-role="message-actions"
       >
+        <button
+          :for={emoji <- ~w(👍 😂 ❤️ 👀)}
+          :if={@reactions_enabled}
+          phx-click="toggle_reaction"
+          phx-value-message-id={@message.id}
+          phx-value-emoji={emoji}
+          class="btn btn-ghost btn-xs btn-circle text-sm"
+          title={"React with #{emoji}"}
+        >
+          {emoji}
+        </button>
         <div
           :if={@reactions_enabled}
           id={"emoji-picker-#{@message.id}"}
@@ -255,7 +266,7 @@ defmodule SlackexWeb.ChatComponents do
             data-message-id={@message.id}
             phx-click={JS.dispatch("emoji:open", to: "#emoji-picker-#{@message.id}")}
             class="btn btn-ghost btn-xs btn-circle"
-            title="Add reaction"
+            title="More reactions"
           >
             <span class="hero-face-smile size-4" />
           </button>
