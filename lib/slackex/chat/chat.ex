@@ -480,26 +480,53 @@ defmodule Slackex.Chat do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Toggles a reaction on a message. If the user has already reacted with
-  this emoji, removes it. Otherwise, adds it.
-  Returns `{:ok, {:added, reaction}}` or `{:ok, {:removed, reaction}}`.
+  Toggles a reaction on a message. Each user may have at most one reaction
+  per message. Clicking the same emoji removes it. Clicking a different
+  emoji swaps the old reaction for the new one.
+  Returns `{:ok, {:added, reaction}}`, `{:ok, {:removed, reaction}}`,
+  or `{:ok, {:swapped, new_reaction, old_reaction}}`.
   """
   def toggle_reaction(message_id, user_id, emoji) do
-    case Repo.get_by(MessageReaction, message_id: message_id, user_id: user_id, emoji: emoji) do
-      nil ->
-        %MessageReaction{}
-        |> MessageReaction.changeset(%{message_id: message_id, user_id: user_id, emoji: emoji})
-        |> Repo.insert()
-        |> case do
-          {:ok, reaction} -> {:ok, {:added, reaction}}
-          {:error, changeset} -> {:error, changeset}
-        end
+    same = Repo.get_by(MessageReaction, message_id: message_id, user_id: user_id, emoji: emoji)
 
-      reaction ->
-        case Repo.delete(reaction) do
-          {:ok, deleted} -> {:ok, {:removed, deleted}}
-          {:error, changeset} -> {:error, changeset}
-        end
+    other =
+      if is_nil(same), do: Repo.get_by(MessageReaction, message_id: message_id, user_id: user_id)
+
+    cond do
+      same -> remove_reaction(same)
+      other -> swap_reaction(other, message_id, user_id, emoji)
+      true -> add_reaction(message_id, user_id, emoji)
+    end
+  end
+
+  defp remove_reaction(reaction) do
+    case Repo.delete(reaction) do
+      {:ok, deleted} -> {:ok, {:removed, deleted}}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp swap_reaction(old, message_id, user_id, emoji) do
+    Repo.transaction(fn ->
+      Repo.delete!(old)
+
+      %MessageReaction{}
+      |> MessageReaction.changeset(%{message_id: message_id, user_id: user_id, emoji: emoji})
+      |> Repo.insert!()
+    end)
+    |> case do
+      {:ok, reaction} -> {:ok, {:swapped, reaction, old}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp add_reaction(message_id, user_id, emoji) do
+    %MessageReaction{}
+    |> MessageReaction.changeset(%{message_id: message_id, user_id: user_id, emoji: emoji})
+    |> Repo.insert()
+    |> case do
+      {:ok, reaction} -> {:ok, {:added, reaction}}
+      {:error, changeset} -> {:error, changeset}
     end
   end
 

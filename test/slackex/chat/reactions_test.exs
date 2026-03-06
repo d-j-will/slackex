@@ -21,9 +21,34 @@ defmodule Slackex.Chat.ReactionsTest do
       assert reaction.message_id == message.id
     end
 
-    test "removes a reaction when it already exists", %{user: user, message: message} do
+    test "removes a reaction when clicking the same emoji", %{user: user, message: message} do
       {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
       assert {:ok, {:removed, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+    end
+
+    test "swaps reaction when user picks a different emoji", %{user: user, message: message} do
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+      assert {:ok, {:swapped, new, old}} = Chat.toggle_reaction(message.id, user.id, "❤️")
+      assert new.emoji == "❤️"
+      assert old.emoji == "👍"
+
+      # Only the new emoji remains in the DB
+      result = Chat.list_reactions([message.id])
+      reactions = result[message.id]
+      assert length(reactions) == 1
+      assert hd(reactions).emoji == "❤️"
+      assert hd(reactions).count == 1
+    end
+
+    test "user can only have one reaction per message", %{user: user, message: message} do
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+      {:ok, {:swapped, _, _}} = Chat.toggle_reaction(message.id, user.id, "😂")
+      {:ok, {:swapped, _, _}} = Chat.toggle_reaction(message.id, user.id, "❤️")
+
+      result = Chat.list_reactions([message.id])
+      reactions = result[message.id]
+      assert length(reactions) == 1
+      assert hd(reactions).emoji == "❤️"
     end
 
     test "different users can react with same emoji", %{
@@ -33,6 +58,23 @@ defmodule Slackex.Chat.ReactionsTest do
     } do
       {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
       {:ok, {:added, _}} = Chat.toggle_reaction(message.id, other_user.id, "👍")
+
+      result = Chat.list_reactions([message.id])
+      thumbs = Enum.find(result[message.id], &(&1.emoji == "👍"))
+      assert thumbs.count == 2
+    end
+
+    test "different users can react with different emojis", %{
+      user: user,
+      other_user: other_user,
+      message: message
+    } do
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, other_user.id, "❤️")
+
+      result = Chat.list_reactions([message.id])
+      reactions = result[message.id]
+      assert length(reactions) == 2
     end
   end
 
@@ -44,7 +86,6 @@ defmodule Slackex.Chat.ReactionsTest do
     } do
       {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
       {:ok, {:added, _}} = Chat.toggle_reaction(message.id, other_user.id, "👍")
-      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "❤️")
 
       result = Chat.list_reactions([message.id])
 
@@ -54,9 +95,6 @@ defmodule Slackex.Chat.ReactionsTest do
       thumbs = Enum.find(reactions, &(&1.emoji == "👍"))
       assert thumbs.count == 2
       assert Enum.sort(thumbs.user_ids) == Enum.sort([user.id, other_user.id])
-
-      heart = Enum.find(reactions, &(&1.emoji == "❤️"))
-      assert heart.count == 1
     end
 
     test "returns empty map for no reactions" do

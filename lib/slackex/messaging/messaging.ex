@@ -111,18 +111,38 @@ defmodule Slackex.Messaging do
     with {:ok, message} <- Chat.get_message(message_id),
          {:ok, result} <- Chat.toggle_reaction(message_id, user_id, emoji) do
       target = message_target(message)
-      {action, reaction} = result
 
-      payload = %{
-        message_id: message_id,
-        emoji: emoji,
-        user_id: user_id,
-        action: action
-      }
+      case result do
+        {:swapped, new_reaction, old_reaction} ->
+          _ =
+            broadcast_envelope("reaction.toggled", target, %{
+              message_id: message_id,
+              emoji: old_reaction.emoji,
+              user_id: user_id,
+              action: :removed
+            })
 
-      _ = broadcast_envelope("reaction.toggled", target, payload)
+          _ =
+            broadcast_envelope("reaction.toggled", target, %{
+              message_id: message_id,
+              emoji: emoji,
+              user_id: user_id,
+              action: :added
+            })
 
-      {:ok, {action, reaction}}
+          {:ok, {:swapped, new_reaction, old_reaction}}
+
+        {action, reaction} ->
+          _ =
+            broadcast_envelope("reaction.toggled", target, %{
+              message_id: message_id,
+              emoji: emoji,
+              user_id: user_id,
+              action: action
+            })
+
+          {:ok, {action, reaction}}
+      end
     end
   end
 
