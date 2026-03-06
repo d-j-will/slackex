@@ -11,8 +11,10 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Search
   alias Slackex.Search.HistoryLoader
   alias SlackexWeb.ChatLive.BrowseChannelsModal
+  alias SlackexWeb.ChatLive.ChannelMembersModal
   alias SlackexWeb.ChatLive.CreateChannelModal
   alias SlackexWeb.ChatLive.NewDmModal
+  alias SlackexWeb.ChatLive.PinnedMessagesModal
   alias SlackexWeb.ChatLive.SearchComponent
   alias SlackexWeb.ChatLive.SidebarComponent
   alias SlackexWeb.ChatLive.SlashCommand
@@ -84,6 +86,8 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:editing_message_id, nil)
      |> assign(:reactions, %{})
      |> assign(:thread_parent, nil)
+     |> assign(:member_count, 0)
+     |> assign(:pin_count, 0)
      |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
      |> assign(:node_name, short_node_name())
      |> assign(:search_open, false)
@@ -622,6 +626,26 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  def handle_event("pin_message", %{"message-id" => msg_id}, socket) do
+    message_id = safe_to_integer(msg_id)
+    channel = socket.assigns.active_channel
+
+    case Chat.Pins.pin_message(channel.id, socket.assigns.current_user.id, message_id) do
+      {:ok, _} -> {:noreply, assign(socket, :pin_count, socket.assigns.pin_count + 1)}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not pin message.")}
+    end
+  end
+
+  def handle_event("unpin_message", %{"message-id" => msg_id}, socket) do
+    message_id = safe_to_integer(msg_id)
+    channel = socket.assigns.active_channel
+
+    case Chat.Pins.unpin_message(channel.id, socket.assigns.current_user.id, message_id) do
+      :ok -> {:noreply, assign(socket, :pin_count, max(socket.assigns.pin_count - 1, 0))}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not unpin message.")}
+    end
+  end
+
   def handle_event("open_thread", %{"message-id" => msg_id}, socket) do
     slug = socket.assigns.active_channel.slug
     {:noreply, push_patch(socket, to: ~p"/chat/#{slug}/thread/#{msg_id}")}
@@ -715,6 +739,11 @@ defmodule SlackexWeb.ChatLive.Index do
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_info({:pin_count_updated, count}, socket) do
+    {:noreply, assign(socket, :pin_count, count)}
   end
 
   @impl true
@@ -1136,6 +1165,8 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:user_role, user_role)
     |> assign(:page_title, "##{channel.name}")
     |> assign(:reactions, reactions)
+    |> assign(:member_count, length(Chat.Members.list_members(channel.id)))
+    |> assign(:pin_count, Chat.Pins.pin_count(channel.id))
     |> reset_unread_count(:channel_counts, channel.id)
     |> assign_conversation_state(messages)
     |> assign(:sidebar_open, true)
@@ -1532,6 +1563,22 @@ defmodule SlackexWeb.ChatLive.Index do
                     <span class="hidden sm:inline">Summarize</span>
                   </button>
                 <% end %>
+                <.link
+                  patch={~p"/chat/#{@active_channel.slug}/members"}
+                  class="btn btn-ghost btn-xs gap-1"
+                  aria-label="View members"
+                >
+                  <span class="hero-user-group size-4" />
+                  <span class="text-xs">{@member_count}</span>
+                </.link>
+                <.link
+                  patch={~p"/chat/#{@active_channel.slug}/pins"}
+                  class="btn btn-ghost btn-xs gap-1"
+                  aria-label="View pinned messages"
+                >
+                  <span class="hero-bookmark size-4" />
+                  <span :if={@pin_count > 0} class="text-xs">{@pin_count}</span>
+                </.link>
                 <%= if @search_enabled do %>
                   <button
                     phx-click="toggle_search"
@@ -1677,6 +1724,22 @@ defmodule SlackexWeb.ChatLive.Index do
       :if={@live_action == :browse_channels}
       module={BrowseChannelsModal}
       id="browse-channels-modal"
+      current_user={@current_user}
+    />
+
+    <.live_component
+      :if={@live_action == :members and @active_channel}
+      module={ChannelMembersModal}
+      id="channel-members-modal"
+      channel={@active_channel}
+      current_user={@current_user}
+    />
+
+    <.live_component
+      :if={@live_action == :pinned and @active_channel}
+      module={PinnedMessagesModal}
+      id="pinned-messages-modal"
+      channel={@active_channel}
       current_user={@current_user}
     />
 

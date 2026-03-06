@@ -155,6 +155,7 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:is_edited, message_edited?(message))
       |> assign(:is_own_message, is_own)
       |> assign(:can_delete, is_own or can_admin_delete)
+      |> assign(:can_pin, can_admin_delete)
       |> assign(:is_editing, Map.get(message, :editing, false) == true)
 
     ~H"""
@@ -244,6 +245,15 @@ defmodule SlackexWeb.ChatComponents do
           title="Reply in thread"
         >
           <span class="hero-chat-bubble-left size-4" />
+        </button>
+        <button
+          :if={@can_pin and is_nil(Map.get(@message, :parent_message_id))}
+          phx-click="pin_message"
+          phx-value-message-id={@message.id}
+          class="btn btn-ghost btn-xs btn-circle"
+          title="Pin message"
+        >
+          <span class="hero-bookmark size-4" />
         </button>
         <button
           :if={@is_own_message}
