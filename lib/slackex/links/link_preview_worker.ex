@@ -12,7 +12,10 @@ defmodule Slackex.Links.LinkPreviewWorker do
   fast and clean, it doesn't get a preview.
   """
 
-  use Oban.Worker, queue: :link_previews, max_attempts: 1
+  use Oban.Worker,
+    queue: :link_previews,
+    max_attempts: 1,
+    unique: [fields: [:args], keys: [:message_id], period: 60]
 
   require Logger
 
@@ -69,9 +72,20 @@ defmodule Slackex.Links.LinkPreviewWorker do
   end
 
   defp insert_preview(message_id, url, attrs) do
-    %LinkPreview{}
-    |> LinkPreview.changeset(Map.merge(attrs, %{message_id: message_id, url: url}))
-    |> Repo.insert!()
+    changeset =
+      %LinkPreview{}
+      |> LinkPreview.changeset(Map.merge(attrs, %{message_id: message_id, url: url}))
+
+    case Repo.insert(changeset,
+           on_conflict: :nothing,
+           conflict_target: [:message_id, :url]
+         ) do
+      {:ok, %LinkPreview{id: nil}} ->
+        Repo.get_by!(LinkPreview, message_id: message_id, url: url)
+
+      {:ok, preview} ->
+        preview
+    end
   end
 
   defp broadcast_previews(message_id, previews) do

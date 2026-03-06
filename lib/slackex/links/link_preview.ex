@@ -42,6 +42,7 @@ defmodule Slackex.Links.LinkPreview do
     |> truncate_field(:title, 200)
     |> truncate_field(:description, 500)
     |> truncate_field(:site_name, 100)
+    |> unique_constraint([:message_id, :url])
   end
 
   defp truncate_field(changeset, field, max_length) do

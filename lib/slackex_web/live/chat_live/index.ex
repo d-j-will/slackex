@@ -945,7 +945,21 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def handle_info({:link_previews_ready, message_id, previews}, socket) do
     updated = Map.put(socket.assigns.link_previews, message_id, previews)
-    {:noreply, assign(socket, :link_previews, updated)}
+    socket = assign(socket, :link_previews, updated)
+
+    # Stream items don't re-render when surrounding assigns change —
+    # re-insert the message to trigger a re-render with preview data.
+    socket =
+      case Chat.get_message(message_id) do
+        {:ok, message} ->
+          message = Slackex.Repo.preload(message, :sender)
+          stream_insert(socket, :messages, message)
+
+        {:error, _} ->
+          socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
