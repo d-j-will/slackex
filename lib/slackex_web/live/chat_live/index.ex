@@ -898,7 +898,7 @@ defmodule SlackexWeb.ChatLive.Index do
     live_view_pid = self()
 
     task =
-      Task.async(fn ->
+      Task.Supervisor.async_nolink(Slackex.TaskSupervisor, fn ->
         stream_summary(channel.id, since, user.id, live_view_pid)
       end)
 
@@ -941,8 +941,20 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, socket) do
-    {:noreply, socket}
+  def handle_info({:DOWN, _ref, :process, _pid, reason}, socket) do
+    if socket.assigns.summary_state == :loading do
+      require Logger
+      Logger.error("Summary task crashed: #{inspect(reason)}")
+
+      {:noreply,
+       assign(socket,
+         summary_state: :error,
+         summary_error: :task_crashed,
+         active_summary_task: nil
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true

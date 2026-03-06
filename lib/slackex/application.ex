@@ -27,7 +27,8 @@ defmodule Slackex.Application do
         Slackex.Cache.Redis,
         Slackex.Messaging.ChannelRegistry,
         Slackex.Messaging.ChannelSupervisor,
-        {Task.Supervisor, name: Slackex.WriteSupervisor}
+        {Task.Supervisor, name: Slackex.WriteSupervisor},
+        {Task.Supervisor, name: Slackex.TaskSupervisor}
       ] ++
         maybe_embedding_serving([]) ++
         [
