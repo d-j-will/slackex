@@ -96,6 +96,10 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:search_open, false)
      |> assign(:search_enabled, FunWithFlags.enabled?(:message_search))
      |> assign(:summarization_enabled, FunWithFlags.enabled?(:channel_summarization))
+     |> assign(:reactions_enabled, FunWithFlags.enabled?(:reactions))
+     |> assign(:threads_enabled, FunWithFlags.enabled?(:threads))
+     |> assign(:channel_management_enabled, FunWithFlags.enabled?(:channel_management))
+     |> assign(:quick_switcher_enabled, FunWithFlags.enabled?(:quick_switcher))
      |> assign(:show_summary_modal, false)
      |> assign(:summary_text, "")
      |> assign(:summary_state, :idle)
@@ -1586,7 +1590,7 @@ defmodule SlackexWeb.ChatLive.Index do
       <div class="flex-1 flex min-w-0">
         <div class={[
           "flex-1 flex flex-col min-w-0 overflow-hidden",
-          @thread_parent && "hidden md:flex"
+          (@threads_enabled and @thread_parent) && "hidden md:flex"
         ]}>
           <%= if @active_channel do %>
             <.conversation_header
@@ -1612,31 +1616,33 @@ defmodule SlackexWeb.ChatLive.Index do
                     <span class="hidden sm:inline">Summarize</span>
                   </button>
                 <% end %>
-                <.link
-                  patch={~p"/chat/#{@active_channel.slug}/members"}
-                  class="btn btn-ghost btn-xs gap-1"
-                  aria-label="View members"
-                >
-                  <span class="hero-user-group size-4" />
-                  <span class="text-xs">{@member_count}</span>
-                </.link>
-                <.link
-                  patch={~p"/chat/#{@active_channel.slug}/pins"}
-                  class="btn btn-ghost btn-xs gap-1"
-                  aria-label="View pinned messages"
-                >
-                  <span class="hero-bookmark size-4" />
-                  <span :if={@pin_count > 0} class="text-xs">{@pin_count}</span>
-                </.link>
-                <.link
-                  :if={@user_role in ["owner", "admin"]}
-                  patch={~p"/chat/#{@active_channel.slug}/invite"}
-                  class="btn btn-ghost btn-xs gap-1"
-                  aria-label="Invite people"
-                >
-                  <span class="hero-link size-4" />
-                  <span class="hidden sm:inline text-xs">Invite</span>
-                </.link>
+                <%= if @channel_management_enabled do %>
+                  <.link
+                    patch={~p"/chat/#{@active_channel.slug}/members"}
+                    class="btn btn-ghost btn-xs gap-1"
+                    aria-label="View members"
+                  >
+                    <span class="hero-user-group size-4" />
+                    <span class="text-xs">{@member_count}</span>
+                  </.link>
+                  <.link
+                    patch={~p"/chat/#{@active_channel.slug}/pins"}
+                    class="btn btn-ghost btn-xs gap-1"
+                    aria-label="View pinned messages"
+                  >
+                    <span class="hero-bookmark size-4" />
+                    <span :if={@pin_count > 0} class="text-xs">{@pin_count}</span>
+                  </.link>
+                  <.link
+                    :if={@user_role in ["owner", "admin"]}
+                    patch={~p"/chat/#{@active_channel.slug}/invite"}
+                    class="btn btn-ghost btn-xs gap-1"
+                    aria-label="Invite people"
+                  >
+                    <span class="hero-link size-4" />
+                    <span class="hidden sm:inline text-xs">Invite</span>
+                  </.link>
+                <% end %>
                 <%= if @search_enabled do %>
                   <button
                     phx-click="toggle_search"
@@ -1671,6 +1677,9 @@ defmodule SlackexWeb.ChatLive.Index do
               editing_message_id={@editing_message_id}
               current_user_role={@user_role}
               reactions={@reactions}
+              reactions_enabled={@reactions_enabled}
+              threads_enabled={@threads_enabled}
+              channel_management_enabled={@channel_management_enabled}
             />
             <.typing_indicator users={MapSet.to_list(@typing_users)} />
 
@@ -1727,6 +1736,8 @@ defmodule SlackexWeb.ChatLive.Index do
                 in_dm={true}
                 editing_message_id={@editing_message_id}
                 reactions={@reactions}
+                reactions_enabled={@reactions_enabled}
+                threads_enabled={@threads_enabled}
               />
               <.typing_indicator users={MapSet.to_list(@typing_users)} />
               <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
@@ -1747,7 +1758,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
         <%!-- Thread panel --%>
         <.live_component
-          :if={@thread_parent}
+          :if={@threads_enabled and @thread_parent}
           module={ThreadPanelComponent}
           id="thread-panel"
           parent_message={@thread_parent}
@@ -1786,7 +1797,7 @@ defmodule SlackexWeb.ChatLive.Index do
     />
 
     <.live_component
-      :if={@live_action == :members and @active_channel}
+      :if={@channel_management_enabled and @live_action == :members and @active_channel}
       module={ChannelMembersModal}
       id="channel-members-modal"
       channel={@active_channel}
@@ -1794,7 +1805,7 @@ defmodule SlackexWeb.ChatLive.Index do
     />
 
     <.live_component
-      :if={@live_action == :pinned and @active_channel}
+      :if={@channel_management_enabled and @live_action == :pinned and @active_channel}
       module={PinnedMessagesModal}
       id="pinned-messages-modal"
       channel={@active_channel}
@@ -1802,7 +1813,7 @@ defmodule SlackexWeb.ChatLive.Index do
     />
 
     <.live_component
-      :if={@live_action == :invite and @active_channel}
+      :if={@channel_management_enabled and @live_action == :invite and @active_channel}
       module={InviteLinkModal}
       id="invite-link-modal"
       channel={@active_channel}
@@ -1838,7 +1849,7 @@ defmodule SlackexWeb.ChatLive.Index do
     />
 
     <.live_component
-      :if={@show_quick_switcher}
+      :if={@quick_switcher_enabled and @show_quick_switcher}
       module={QuickSwitcherModal}
       id="quick-switcher"
       channels={@channels}

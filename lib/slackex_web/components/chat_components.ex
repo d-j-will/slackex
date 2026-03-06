@@ -139,6 +139,9 @@ defmodule SlackexWeb.ChatComponents do
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
   attr :reactions, :list, default: []
+  attr :reactions_enabled, :boolean, default: false
+  attr :threads_enabled, :boolean, default: false
+  attr :channel_management_enabled, :boolean, default: false
 
   def message_bubble(assigns) do
     message = assigns.message
@@ -204,13 +207,15 @@ defmodule SlackexWeb.ChatComponents do
           <% end %>
         <% end %>
         <.reaction_bar
+          :if={@reactions_enabled}
           reactions={@reactions}
           current_user_id={@current_user_id}
           message_id={@message.id}
         />
         <button
           :if={
-            Map.get(@message, :reply_count, 0) > 0 and is_nil(Map.get(@message, :parent_message_id))
+            @threads_enabled and Map.get(@message, :reply_count, 0) > 0 and
+              is_nil(Map.get(@message, :parent_message_id))
           }
           phx-click="open_thread"
           phx-value-message-id={@message.id}
@@ -226,7 +231,12 @@ defmodule SlackexWeb.ChatComponents do
         class="hidden group-hover:flex absolute right-2 top-1 items-center gap-1"
         data-role="message-actions"
       >
-        <div id={"emoji-picker-#{@message.id}"} phx-hook="EmojiPicker" class="relative">
+        <div
+          :if={@reactions_enabled}
+          id={"emoji-picker-#{@message.id}"}
+          phx-hook="EmojiPicker"
+          class="relative"
+        >
           <button
             data-emoji-trigger
             data-message-id={@message.id}
@@ -238,7 +248,7 @@ defmodule SlackexWeb.ChatComponents do
           </button>
         </div>
         <button
-          :if={is_nil(Map.get(@message, :parent_message_id))}
+          :if={@threads_enabled and is_nil(Map.get(@message, :parent_message_id))}
           phx-click="open_thread"
           phx-value-message-id={@message.id}
           class="btn btn-ghost btn-xs btn-circle"
@@ -247,7 +257,10 @@ defmodule SlackexWeb.ChatComponents do
           <span class="hero-chat-bubble-left size-4" />
         </button>
         <button
-          :if={@can_pin and is_nil(Map.get(@message, :parent_message_id))}
+          :if={
+            @channel_management_enabled and @can_pin and
+              is_nil(Map.get(@message, :parent_message_id))
+          }
           phx-click="pin_message"
           phx-value-message-id={@message.id}
           class="btn btn-ghost btn-xs btn-circle"
@@ -422,6 +435,9 @@ defmodule SlackexWeb.ChatComponents do
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
   attr :reactions, :map, default: %{}
+  attr :reactions_enabled, :boolean, default: false
+  attr :threads_enabled, :boolean, default: false
+  attr :channel_management_enabled, :boolean, default: false
 
   def message_stream(assigns) do
     ~H"""
@@ -439,6 +455,9 @@ defmodule SlackexWeb.ChatComponents do
           editing_message_id={@editing_message_id}
           current_user_role={@current_user_role}
           reactions={Map.get(@reactions, message.id, [])}
+          reactions_enabled={@reactions_enabled}
+          threads_enabled={@threads_enabled}
+          channel_management_enabled={@channel_management_enabled}
         />
       </div>
     </div>
