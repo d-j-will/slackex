@@ -102,6 +102,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:channel_management_enabled, FunWithFlags.enabled?(:channel_management))
      |> assign(:quick_switcher_enabled, FunWithFlags.enabled?(:quick_switcher))
      |> assign(:link_previews_enabled, FunWithFlags.enabled?(:link_previews))
+     |> assign(:markdown_enabled, FunWithFlags.enabled?(:markdown_rendering))
      |> assign(:link_previews, %{})
      |> assign(:show_summary_modal, false)
      |> assign(:summary_text, "")
@@ -1751,6 +1752,7 @@ defmodule SlackexWeb.ChatLive.Index do
               channel_management_enabled={@channel_management_enabled}
               link_previews={@link_previews}
               link_previews_enabled={@link_previews_enabled}
+              markdown_enabled={@markdown_enabled}
             />
             <.typing_indicator users={MapSet.to_list(@typing_users)} />
 
@@ -1811,6 +1813,7 @@ defmodule SlackexWeb.ChatLive.Index do
                 threads_enabled={@threads_enabled}
                 link_previews={@link_previews}
                 link_previews_enabled={@link_previews_enabled}
+                markdown_enabled={@markdown_enabled}
               />
               <.typing_indicator users={MapSet.to_list(@typing_users)} />
               <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
@@ -1919,6 +1922,7 @@ defmodule SlackexWeb.ChatLive.Index do
       summary_text={@summary_text}
       summary_state={@summary_state}
       summary_error={@summary_error}
+      markdown_enabled={@markdown_enabled}
     />
 
     <.live_component

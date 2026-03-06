@@ -144,6 +144,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :channel_management_enabled, :boolean, default: false
   attr :link_previews, :list, default: []
   attr :link_previews_enabled, :boolean, default: false
+  attr :markdown_enabled, :boolean, default: false
 
   def message_bubble(assigns) do
     message = assigns.message
@@ -164,7 +165,7 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:is_editing, Map.get(message, :editing, false) == true)
       |> assign(
         :rendered_content,
-        Slackex.Markdown.to_html(Map.get(message, :content, ""))
+        render_content(Map.get(message, :content, ""), assigns.markdown_enabled)
       )
 
     ~H"""
@@ -206,10 +207,16 @@ defmodule SlackexWeb.ChatComponents do
               </div>
             </div>
           <% else %>
-            <div class="text-sm text-base-content/90 break-words prose prose-sm max-w-none">
-              {@rendered_content}
-              <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
-            </div>
+            <%= if @markdown_enabled do %>
+              <div class="text-sm text-base-content/90 break-words prose prose-sm max-w-none">
+                {@rendered_content}
+                <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
+              </div>
+            <% else %>
+              <p class="text-sm text-base-content/90 break-words whitespace-pre-wrap">
+                {@rendered_content}<span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
+              </p>
+            <% end %>
             <div :if={@link_previews_enabled and @link_previews != []} class="mt-1 space-y-2">
               <.link_preview_card :for={preview <- @link_previews} preview={preview} />
             </div>
@@ -354,6 +361,9 @@ defmodule SlackexWeb.ChatComponents do
   defp message_deleted?(message), do: Map.get(message, :deleted_at) != nil
   defp message_edited?(message), do: Map.get(message, :edited_at) != nil
 
+  defp render_content(content, true), do: Slackex.Markdown.to_html(content)
+  defp render_content(content, _false), do: content
+
   defp own_message?(message, current_user_id) do
     Map.get(message, :sender_id) == current_user_id
   end
@@ -460,6 +470,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :channel_management_enabled, :boolean, default: false
   attr :link_previews, :map, default: %{}
   attr :link_previews_enabled, :boolean, default: false
+  attr :markdown_enabled, :boolean, default: false
 
   def message_stream(assigns) do
     ~H"""
@@ -482,6 +493,7 @@ defmodule SlackexWeb.ChatComponents do
           channel_management_enabled={@channel_management_enabled}
           link_previews={Map.get(@link_previews, message.id, [])}
           link_previews_enabled={@link_previews_enabled}
+          markdown_enabled={@markdown_enabled}
         />
       </div>
     </div>
