@@ -790,8 +790,20 @@ defmodule SlackexWeb.ChatLive.Index do
       msg_id = payload.message_id
       current = Map.get(reactions, msg_id, [])
       updated = apply_reaction_update(current, payload)
+      updated_reactions = Map.put(reactions, msg_id, updated)
 
-      {:noreply, assign(socket, :reactions, Map.put(reactions, msg_id, updated))}
+      # Re-insert the message into the stream to trigger re-render
+      socket =
+        case Chat.get_message(msg_id) do
+          {:ok, message} ->
+            message = Slackex.Repo.preload(message, :sender)
+            stream_insert(socket, :messages, message)
+
+          _ ->
+            socket
+        end
+
+      {:noreply, assign(socket, :reactions, updated_reactions)}
     else
       {:noreply, socket}
     end
