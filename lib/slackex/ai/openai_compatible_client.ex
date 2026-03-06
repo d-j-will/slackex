@@ -66,6 +66,7 @@ defmodule Slackex.AI.OpenAICompatibleClient do
             {:done, _ref} -> :ok
             {:error, _} -> :ok
             ref when is_reference(ref) -> :ok
+            _ -> :ok
           end
         )
         |> Stream.transform(
@@ -104,10 +105,11 @@ defmodule Slackex.AI.OpenAICompatibleClient do
         case resp.body do
           %Req.Response.Async{ref: ref} -> ref
           ref when is_reference(ref) -> ref
+          other -> {:error, {:unexpected_body, other}}
         end
 
-      {:ok, %Req.Response{status: status}} ->
-        {:error, {:api_error, status}}
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:api_error, status, body}}
 
       {:error, exception} ->
         {:error, {:network_error, exception}}
@@ -136,6 +138,7 @@ defmodule Slackex.AI.OpenAICompatibleClient do
   end
 
   defp next_chunk({:done, _ref} = done), do: {:halt, done}
+  defp next_chunk(other), do: {:halt, {:error, {:unexpected_state, other}}}
 
   defp parse_sse_data(data) do
     data
