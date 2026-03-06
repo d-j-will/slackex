@@ -314,3 +314,34 @@ jobs:
 
             echo "Deploy complete."
           EOF
+
+  notify:
+    name: Discord Notification
+    runs-on: ubuntu-latest
+    needs: [quality, deploy]
+    if: always() && (needs.quality.result == 'failure' || needs.deploy.result == 'failure')
+
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "${{ needs.quality.result }}" = "failure" ]; then
+            FAILED_JOB="Quality"
+          else
+            FAILED_JOB="Deploy"
+          fi
+
+          # Sanitize commit message for JSON (escape quotes, backslashes, newlines)
+          SAFE_MSG=$(echo "$COMMIT_MSG" | head -1 | sed 's/\\/\\\\/g; s/"/\\"/g' | cut -c1-100)
+
+          curl -sf -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"CI Failed: ${FAILED_JOB}\",
+                \"description\": \"**Repo:** ${{ github.repository }}\\n**Branch:** ${{ github.ref_name }}\\n**Commit:** \`${GITHUB_SHA::7}\` — ${SAFE_MSG}\\n**Run:** [View logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
+                \"color\": 15548997
+              }]
+            }" \
+            "$DISCORD_WEBHOOK_URL"
