@@ -9,9 +9,9 @@ ENV MIX_ENV=prod
 # This MUST be set before mix deps.compile so the EXLA NIF is built without GPU support.
 ENV EXLA_TARGET=host
 
-# Install build dependencies (git for heroicons, build-essential for bcrypt NIF)
+# Install build dependencies (git for heroicons, build-essential for bcrypt NIF, nodejs for npm packages)
 RUN apt-get update -y && \
-    apt-get install -y build-essential git curl && \
+    apt-get install -y build-essential git curl nodejs npm && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -39,8 +39,9 @@ RUN mix compile
 # Install esbuild + tailwind binaries
 RUN mix assets.setup
 
-# Copy asset source files (JS, CSS, vendor)
+# Copy asset source files (JS, CSS, vendor) and install npm dependencies
 COPY assets assets
+RUN cd assets && npm install --prefix .
 
 # Build, minify, and digest assets (must come after lib/ is present)
 RUN mix assets.deploy
