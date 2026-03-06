@@ -81,6 +81,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:show_edit_profile, false)
      |> assign(:edit_profile_form, build_profile_form(user))
      |> assign(:editing_message_id, nil)
+     |> assign(:reactions, %{})
      |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
      |> assign(:node_name, short_node_name())
      |> assign(:search_open, false)
@@ -571,6 +572,16 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  def handle_event("toggle_reaction", %{"message-id" => msg_id, "emoji" => emoji}, socket) do
+    message_id = safe_to_integer(msg_id)
+    user_id = socket.assigns.current_user.id
+
+    case Messaging.toggle_reaction(message_id, user_id, emoji) do
+      {:ok, _} -> {:noreply, socket}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not react.")}
+    end
+  end
+
   defp extract_message_id(%{"msg-id" => id}, _fallback), do: safe_to_integer(id)
   defp extract_message_id(_params, fallback), do: fallback
 
@@ -626,6 +637,23 @@ defmodule SlackexWeb.ChatLive.Index do
     if message_for_active_conversation?(envelope, socket) do
       deleted_message = apply_delete_to_stream(payload)
       {:noreply, stream_insert(socket, :messages, deleted_message)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(
+        {:envelope, %{event: "reaction.toggled", payload: payload} = envelope},
+        socket
+      ) do
+    if message_for_active_conversation?(envelope, socket) do
+      reactions = socket.assigns.reactions
+      msg_id = payload.message_id
+      current = Map.get(reactions, msg_id, [])
+      updated = apply_reaction_update(current, payload)
+
+      {:noreply, assign(socket, :reactions, Map.put(reactions, msg_id, updated))}
     else
       {:noreply, socket}
     end
@@ -995,6 +1023,7 @@ defmodule SlackexWeb.ChatLive.Index do
     _ = if connected?(socket), do: Messaging.subscribe_channel(channel.id)
 
     messages = fetch_messages_for_entry({:channel, channel.id}, target_message_id)
+    reactions = messages |> Enum.map(& &1.id) |> Chat.list_reactions()
     Chat.mark_as_read(user.id, channel.id)
 
     socket
@@ -1002,6 +1031,7 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:can_send, can_send)
     |> assign(:user_role, user_role)
     |> assign(:page_title, "##{channel.name}")
+    |> assign(:reactions, reactions)
     |> reset_unread_count(:channel_counts, channel.id)
     |> assign_conversation_state(messages)
     |> assign(:sidebar_open, true)
@@ -1015,6 +1045,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
     other_user = dm_other_user(dm, user.id)
     messages = fetch_messages_for_entry({:dm, dm.id}, target_message_id)
+    reactions = messages |> Enum.map(& &1.id) |> Chat.list_reactions()
     Chat.mark_dm_as_read(user.id, dm.id)
 
     socket
@@ -1022,6 +1053,7 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:active_channel, nil)
     |> assign(:can_send, true)
     |> assign(:page_title, other_user.display_name || other_user.username)
+    |> assign(:reactions, reactions)
     |> reset_unread_count(:dm_counts, dm.id)
     |> assign_conversation_state(messages)
   end
@@ -1229,6 +1261,30 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  defp apply_reaction_update(reactions, %{action: :added, emoji: emoji, user_id: user_id}) do
+    case Enum.find_index(reactions, &(&1.emoji == emoji)) do
+      nil ->
+        [%{emoji: emoji, count: 1, user_ids: [user_id]} | reactions]
+
+      idx ->
+        List.update_at(reactions, idx, fn r ->
+          %{r | count: r.count + 1, user_ids: [user_id | r.user_ids]}
+        end)
+    end
+  end
+
+  defp apply_reaction_update(reactions, %{action: :removed, emoji: emoji, user_id: user_id}) do
+    reactions
+    |> Enum.map(fn r ->
+      if r.emoji == emoji do
+        %{r | count: r.count - 1, user_ids: List.delete(r.user_ids, user_id)}
+      else
+        r
+      end
+    end)
+    |> Enum.reject(&(&1.count <= 0))
+  end
+
   defp apply_edit_to_stream(%{id: id, content: content, edited_at: edited_at}) do
     apply_update_to_stream(id, %{content: content, edited_at: edited_at})
   end
@@ -1401,6 +1457,7 @@ defmodule SlackexWeb.ChatLive.Index do
             current_user_id={@current_user.id}
             editing_message_id={@editing_message_id}
             current_user_role={@user_role}
+            reactions={@reactions}
           />
           <.typing_indicator users={MapSet.to_list(@typing_users)} />
 
@@ -1456,6 +1513,7 @@ defmodule SlackexWeb.ChatLive.Index do
               current_user_id={@current_user.id}
               in_dm={true}
               editing_message_id={@editing_message_id}
+              reactions={@reactions}
             />
             <.typing_indicator users={MapSet.to_list(@typing_users)} />
             <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />

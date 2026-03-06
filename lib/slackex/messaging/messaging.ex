@@ -104,6 +104,29 @@ defmodule Slackex.Messaging do
   end
 
   @doc """
+  Toggles a reaction on a message. Delegates to `Chat.toggle_reaction/3`,
+  then broadcasts `{:envelope, %{event: "reaction.toggled"}}`.
+  """
+  def toggle_reaction(message_id, user_id, emoji) do
+    with {:ok, message} <- Chat.get_message(message_id),
+         {:ok, result} <- Chat.toggle_reaction(message_id, user_id, emoji) do
+      target = message_target(message)
+      {action, reaction} = result
+
+      payload = %{
+        message_id: message_id,
+        emoji: emoji,
+        user_id: user_id,
+        action: action
+      }
+
+      _ = broadcast_envelope("reaction.toggled", target, payload)
+
+      {:ok, {action, reaction}}
+    end
+  end
+
+  @doc """
   Returns recent messages for a channel.
 
   Uses the in-memory `ChannelServer` queue if the server is running;

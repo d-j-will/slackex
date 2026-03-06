@@ -136,6 +136,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :in_dm, :boolean, default: false
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
+  attr :reactions, :list, default: []
 
   def message_bubble(assigns) do
     message = assigns.message
@@ -199,6 +200,11 @@ defmodule SlackexWeb.ChatComponents do
             </p>
           <% end %>
         <% end %>
+        <.reaction_bar
+          reactions={@reactions}
+          current_user_id={@current_user_id}
+          message_id={@message.id}
+        />
       </div>
       <div
         :if={(@is_own_message or @can_delete) and not @is_deleted and not @is_editing}
@@ -237,6 +243,36 @@ defmodule SlackexWeb.ChatComponents do
           Report
         </button>
       </div>
+    </div>
+    """
+  end
+
+  # ────────────────────────── Reaction Bar ──────────────────────────────
+
+  attr :reactions, :list, default: []
+  attr :current_user_id, :integer, required: true
+  attr :message_id, :integer, required: true
+
+  def reaction_bar(assigns) do
+    ~H"""
+    <div :if={@reactions != []} class="flex flex-wrap gap-1 mt-1">
+      <button
+        :for={reaction <- @reactions}
+        phx-click="toggle_reaction"
+        phx-value-message-id={@message_id}
+        phx-value-emoji={reaction.emoji}
+        class={[
+          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border",
+          "hover:bg-base-300 transition-colors cursor-pointer",
+          if(@current_user_id in reaction.user_ids,
+            do: "border-primary bg-primary/10 text-primary",
+            else: "border-base-300 bg-base-200 text-base-content"
+          )
+        ]}
+      >
+        <span>{reaction.emoji}</span>
+        <span class="font-medium">{reaction.count}</span>
+      </button>
     </div>
     """
   end
@@ -344,6 +380,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :in_dm, :boolean, default: false
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
+  attr :reactions, :map, default: %{}
 
   def message_stream(assigns) do
     ~H"""
@@ -360,6 +397,7 @@ defmodule SlackexWeb.ChatComponents do
           in_dm={@in_dm}
           editing_message_id={@editing_message_id}
           current_user_role={@current_user_role}
+          reactions={Map.get(@reactions, message.id, [])}
         />
       </div>
     </div>
