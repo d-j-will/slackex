@@ -17,6 +17,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias SlackexWeb.ChatLive.SidebarComponent
   alias SlackexWeb.ChatLive.SlashCommand
   alias SlackexWeb.ChatLive.SummaryModal
+  alias SlackexWeb.ChatLive.ThreadPanelComponent
 
   import SlackexWeb.ChatComponents
 
@@ -82,6 +83,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:edit_profile_form, build_profile_form(user))
      |> assign(:editing_message_id, nil)
      |> assign(:reactions, %{})
+     |> assign(:thread_parent, nil)
      |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
      |> assign(:node_name, short_node_name())
      |> assign(:search_open, false)
@@ -115,6 +117,44 @@ defmodule SlackexWeb.ChatLive.Index do
       {:noreply, socket}
     else
       {:noreply, socket |> put_flash(:error, "Not found.") |> redirect(to: ~p"/chat")}
+    end
+  end
+
+  @impl true
+  def handle_params(
+        %{"slug" => slug, "message_id" => message_id},
+        _uri,
+        %{assigns: %{live_action: :thread}} = socket
+      ) do
+    user = socket.assigns.current_user
+    channel = Chat.get_channel_by_slug!(slug)
+
+    case authorize_channel(user.id, channel) do
+      {:ok, can_send, role} ->
+        parent =
+          Chat.get_message!(String.to_integer(message_id))
+          |> Slackex.Repo.preload(:sender)
+
+        _ =
+          if connected?(socket) do
+            Phoenix.PubSub.subscribe(Slackex.PubSub, "thread:#{parent.id}")
+          end
+
+        socket =
+          if socket.assigns.active_channel == nil ||
+               socket.assigns.active_channel.id != channel.id do
+            enter_channel(socket, channel, can_send, role, nil)
+          else
+            socket
+          end
+
+        {:noreply, assign(socket, :thread_parent, parent)}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "You don't have access to that channel.")
+         |> redirect(to: ~p"/chat")}
     end
   end
 
@@ -582,6 +622,24 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  def handle_event("open_thread", %{"message-id" => msg_id}, socket) do
+    slug = socket.assigns.active_channel.slug
+    {:noreply, push_patch(socket, to: ~p"/chat/#{slug}/thread/#{msg_id}")}
+  end
+
+  def handle_event("close_thread", _params, socket) do
+    if socket.assigns.thread_parent do
+      _ =
+        Phoenix.PubSub.unsubscribe(
+          Slackex.PubSub,
+          "thread:#{socket.assigns.thread_parent.id}"
+        )
+    end
+
+    slug = socket.assigns.active_channel.slug
+    {:noreply, socket |> assign(:thread_parent, nil) |> push_patch(to: ~p"/chat/#{slug}")}
+  end
+
   defp extract_message_id(%{"msg-id" => id}, _fallback), do: safe_to_integer(id)
   defp extract_message_id(_params, fallback), do: fallback
 
@@ -656,6 +714,52 @@ defmodule SlackexWeb.ChatLive.Index do
       {:noreply, assign(socket, :reactions, Map.put(reactions, msg_id, updated))}
     else
       {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:send_thread_reply, parent_id, content}, socket) do
+    user = socket.assigns.current_user
+    channel = socket.assigns.active_channel
+
+    if channel do
+      case Messaging.send_reply(channel.id, :channel, user.id, parent_id, content) do
+        {:ok, _reply} -> {:noreply, socket}
+        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not send reply.")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:envelope, %{event: "thread.reply", payload: payload}}, socket) do
+    if socket.assigns.thread_parent &&
+         socket.assigns.thread_parent.id == payload.parent_message_id do
+      send_update(ThreadPanelComponent,
+        id: "thread-panel",
+        new_reply: payload
+      )
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(
+        {:envelope, %{event: "message.reply_count_updated", payload: payload}},
+        socket
+      ) do
+    msg_id = payload.message_id
+    reply_count = payload.reply_count
+
+    case Chat.get_message(msg_id) do
+      {:ok, message} ->
+        updated = message |> Slackex.Repo.preload(:sender) |> Map.put(:reply_count, reply_count)
+        {:noreply, stream_insert(socket, :messages, updated)}
+
+      {:error, _} ->
+        {:noreply, socket}
     end
   end
 
@@ -1398,83 +1502,36 @@ defmodule SlackexWeb.ChatLive.Index do
         />
       </div>
 
-      <%!-- Main chat area --%>
-      <div class="flex-1 flex flex-col min-w-0">
-        <%= if @active_channel do %>
-          <.conversation_header
-            title={"##{@active_channel.name}"}
-            subtitle={@active_channel.description}
-          >
-            <:actions>
-              <%= if @summarization_enabled do %>
-                <button
-                  data-role="summarize-button"
-                  phx-click="open_summary_modal"
-                  class="btn btn-ghost btn-xs gap-1"
-                  aria-label="Summarize channel"
-                >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"
-                    />
-                  </svg>
-                  <span class="hidden sm:inline">Summarize</span>
-                </button>
-              <% end %>
-              <%= if @search_enabled do %>
-                <button
-                  phx-click="toggle_search"
-                  class={["btn btn-ghost btn-xs btn-square", @search_open && "btn-active"]}
-                  aria-label="Search messages"
-                >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                </button>
-              <% end %>
-              <%= if @user_role == nil and not @active_channel.is_private do %>
-                <button phx-click="join_channel" class="btn btn-primary btn-xs">
-                  Join Channel
-                </button>
-              <% end %>
-              <%= if @user_role != nil and @user_role != "owner" do %>
-                <button phx-click="leave_channel" class="btn btn-ghost btn-xs text-base-content/60">
-                  Leave Channel
-                </button>
-              <% end %>
-            </:actions>
-          </.conversation_header>
-          <.message_stream
-            streams={@streams}
-            current_user_id={@current_user.id}
-            editing_message_id={@editing_message_id}
-            current_user_role={@user_role}
-            reactions={@reactions}
-          />
-          <.typing_indicator users={MapSet.to_list(@typing_users)} />
-
-          <%= if @can_send do %>
-            <.compose_area
-              message_form={@message_form}
-              placeholder={"Message ##{@active_channel.name}"}
-            />
-          <% else %>
-            <div class="p-3 border-t border-base-300 bg-base-100 text-center text-sm text-base-content/50">
-              Join this channel to send messages.
-            </div>
-          <% end %>
-        <% else %>
-          <%= if @active_dm do %>
-            <.conversation_header title={@page_title}>
+      <%!-- Main chat area + thread panel --%>
+      <div class="flex-1 flex min-w-0">
+        <div class={[
+          "flex-1 flex flex-col min-w-0 overflow-hidden",
+          @thread_parent && "hidden md:flex"
+        ]}>
+          <%= if @active_channel do %>
+            <.conversation_header
+              title={"##{@active_channel.name}"}
+              subtitle={@active_channel.description}
+            >
               <:actions>
+                <%= if @summarization_enabled do %>
+                  <button
+                    data-role="summarize-button"
+                    phx-click="open_summary_modal"
+                    class="btn btn-ghost btn-xs gap-1"
+                    aria-label="Summarize channel"
+                  >
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"
+                      />
+                    </svg>
+                    <span class="hidden sm:inline">Summarize</span>
+                  </button>
+                <% end %>
                 <%= if @search_enabled do %>
                   <button
                     phx-click="toggle_search"
@@ -1491,19 +1548,14 @@ defmodule SlackexWeb.ChatLive.Index do
                     </svg>
                   </button>
                 <% end %>
-                <%= if @active_dm.user_a_id != @active_dm.user_b_id do %>
-                  <button
-                    phx-click="open_report_modal"
-                    class="btn btn-ghost btn-xs text-warning"
-                  >
-                    Report
+                <%= if @user_role == nil and not @active_channel.is_private do %>
+                  <button phx-click="join_channel" class="btn btn-primary btn-xs">
+                    Join Channel
                   </button>
-                  <button
-                    phx-click="block_user"
-                    data-confirm="Are you sure you want to block this user? You will no longer receive messages from them."
-                    class="btn btn-ghost btn-xs text-error"
-                  >
-                    Block
+                <% end %>
+                <%= if @user_role != nil and @user_role != "owner" do %>
+                  <button phx-click="leave_channel" class="btn btn-ghost btn-xs text-base-content/60">
+                    Leave Channel
                   </button>
                 <% end %>
               </:actions>
@@ -1511,25 +1563,91 @@ defmodule SlackexWeb.ChatLive.Index do
             <.message_stream
               streams={@streams}
               current_user_id={@current_user.id}
-              in_dm={true}
               editing_message_id={@editing_message_id}
+              current_user_role={@user_role}
               reactions={@reactions}
             />
             <.typing_indicator users={MapSet.to_list(@typing_users)} />
-            <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
-          <% else %>
-            <%!-- No conversation selected --%>
-            <div class="flex-1 flex flex-col">
-              <div class="px-4 py-3 border-b border-base-300 bg-base-100 md:hidden">
-                <.sidebar_toggle />
-              </div>
-              <.empty_state
-                title="Welcome to Slackex"
-                subtitle="Select a channel from the sidebar to start chatting."
+
+            <%= if @can_send do %>
+              <.compose_area
+                message_form={@message_form}
+                placeholder={"Message ##{@active_channel.name}"}
               />
-            </div>
+            <% else %>
+              <div class="p-3 border-t border-base-300 bg-base-100 text-center text-sm text-base-content/50">
+                Join this channel to send messages.
+              </div>
+            <% end %>
+          <% else %>
+            <%= if @active_dm do %>
+              <.conversation_header title={@page_title}>
+                <:actions>
+                  <%= if @search_enabled do %>
+                    <button
+                      phx-click="toggle_search"
+                      class={["btn btn-ghost btn-xs btn-square", @search_open && "btn-active"]}
+                      aria-label="Search messages"
+                    >
+                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                    </button>
+                  <% end %>
+                  <%= if @active_dm.user_a_id != @active_dm.user_b_id do %>
+                    <button
+                      phx-click="open_report_modal"
+                      class="btn btn-ghost btn-xs text-warning"
+                    >
+                      Report
+                    </button>
+                    <button
+                      phx-click="block_user"
+                      data-confirm="Are you sure you want to block this user? You will no longer receive messages from them."
+                      class="btn btn-ghost btn-xs text-error"
+                    >
+                      Block
+                    </button>
+                  <% end %>
+                </:actions>
+              </.conversation_header>
+              <.message_stream
+                streams={@streams}
+                current_user_id={@current_user.id}
+                in_dm={true}
+                editing_message_id={@editing_message_id}
+                reactions={@reactions}
+              />
+              <.typing_indicator users={MapSet.to_list(@typing_users)} />
+              <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
+            <% else %>
+              <%!-- No conversation selected --%>
+              <div class="flex-1 flex flex-col">
+                <div class="px-4 py-3 border-b border-base-300 bg-base-100 md:hidden">
+                  <.sidebar_toggle />
+                </div>
+                <.empty_state
+                  title="Welcome to Slackex"
+                  subtitle="Select a channel from the sidebar to start chatting."
+                />
+              </div>
+            <% end %>
           <% end %>
-        <% end %>
+        </div>
+
+        <%!-- Thread panel --%>
+        <.live_component
+          :if={@thread_parent}
+          module={ThreadPanelComponent}
+          id="thread-panel"
+          parent_message={@thread_parent}
+          current_user={@current_user}
+        />
       </div>
 
       <%!-- Search panel --%>

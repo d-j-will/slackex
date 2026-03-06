@@ -207,6 +207,18 @@ defmodule SlackexWeb.ChatComponents do
           current_user_id={@current_user_id}
           message_id={@message.id}
         />
+        <button
+          :if={
+            Map.get(@message, :reply_count, 0) > 0 and is_nil(Map.get(@message, :parent_message_id))
+          }
+          phx-click="open_thread"
+          phx-value-message-id={@message.id}
+          class="text-xs text-primary hover:underline cursor-pointer mt-1"
+        >
+          {Map.get(@message, :reply_count)} {if Map.get(@message, :reply_count) == 1,
+            do: "reply",
+            else: "replies"}
+        </button>
       </div>
       <div
         :if={not @is_deleted and not @is_editing}
@@ -224,6 +236,15 @@ defmodule SlackexWeb.ChatComponents do
             <span class="hero-face-smile size-4" />
           </button>
         </div>
+        <button
+          :if={is_nil(Map.get(@message, :parent_message_id))}
+          phx-click="open_thread"
+          phx-value-message-id={@message.id}
+          class="btn btn-ghost btn-xs btn-circle"
+          title="Reply in thread"
+        >
+          <span class="hero-chat-bubble-left size-4" />
+        </button>
         <button
           :if={@is_own_message}
           phx-click="edit_message"
