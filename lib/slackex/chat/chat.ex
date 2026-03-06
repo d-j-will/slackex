@@ -471,6 +471,55 @@ defmodule Slackex.Chat do
   end
 
   # ---------------------------------------------------------------------------
+  # Reactions
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Toggles a reaction on a message. If the user has already reacted with
+  this emoji, removes it. Otherwise, adds it.
+  Returns `{:ok, {:added, reaction}}` or `{:ok, {:removed, reaction}}`.
+  """
+  def toggle_reaction(message_id, user_id, emoji) do
+    case Repo.get_by(MessageReaction, message_id: message_id, user_id: user_id, emoji: emoji) do
+      nil ->
+        %MessageReaction{}
+        |> MessageReaction.changeset(%{message_id: message_id, user_id: user_id, emoji: emoji})
+        |> Repo.insert()
+        |> case do
+          {:ok, reaction} -> {:ok, {:added, reaction}}
+          {:error, changeset} -> {:error, changeset}
+        end
+
+      reaction ->
+        case Repo.delete(reaction) do
+          {:ok, deleted} -> {:ok, {:removed, deleted}}
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  @doc """
+  Batch-loads reactions for a list of message IDs.
+  Returns `%{message_id => [%{emoji: "...", count: N, user_ids: [...]}]}`.
+  """
+  def list_reactions([]), do: %{}
+
+  def list_reactions(message_ids) when is_list(message_ids) do
+    from(r in MessageReaction,
+      where: r.message_id in ^message_ids,
+      group_by: [r.message_id, r.emoji],
+      select: %{
+        message_id: r.message_id,
+        emoji: r.emoji,
+        count: count(),
+        user_ids: fragment("array_agg(?)", r.user_id)
+      }
+    )
+    |> Repo.all()
+    |> Enum.group_by(& &1.message_id)
+  end
+
+  # ---------------------------------------------------------------------------
   # DM operations
   # ---------------------------------------------------------------------------
 

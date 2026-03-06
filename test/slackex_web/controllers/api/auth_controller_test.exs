@@ -6,6 +6,8 @@ defmodule SlackexWeb.API.AuthControllerTest do
   alias Slackex.Accounts.Auth
 
   setup do
+    # Clear rate-limit counter so repeated test runs don't hit 429
+    Redix.command(:redix_0, ["DEL", "rate_limit:127.0.0.1"])
     user = insert(:user)
     %{user: user}
   end
