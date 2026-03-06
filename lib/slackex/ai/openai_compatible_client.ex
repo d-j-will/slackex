@@ -95,6 +95,9 @@ defmodule Slackex.AI.OpenAICompatibleClient do
   # -- Streaming internals --
 
   defp start_stream(body, api_key) do
+    require Logger
+    Logger.info("LLM stream starting: #{completions_url()} model=#{body[:model]}")
+
     case Req.post(completions_url(),
            json: body,
            headers: auth_headers(api_key),
@@ -102,16 +105,22 @@ defmodule Slackex.AI.OpenAICompatibleClient do
            into: :self
          ) do
       {:ok, %Req.Response{status: 200} = resp} ->
+        Logger.info(
+          "LLM stream connected (200), body is_struct=#{is_struct(resp.body)}, is_ref=#{is_reference(resp.body)}"
+        )
+
         case resp.body do
           %Req.Response.Async{ref: ref} -> ref
           ref when is_reference(ref) -> ref
           other -> {:error, {:unexpected_body, other}}
         end
 
-      {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {:api_error, status, body}}
+      {:ok, %Req.Response{status: status, body: resp_body}} ->
+        Logger.error("LLM API error: status=#{status} body=#{inspect(resp_body)}")
+        {:error, {:api_error, status, resp_body}}
 
       {:error, exception} ->
+        Logger.error("LLM network error: #{inspect(exception)}")
         {:error, {:network_error, exception}}
     end
   end
@@ -119,9 +128,15 @@ defmodule Slackex.AI.OpenAICompatibleClient do
   defp next_chunk({:error, _reason} = err), do: {:halt, err}
 
   defp next_chunk(ref) when is_reference(ref) do
+    require Logger
+
     receive do
       {^ref, {:data, data}} ->
         chunks = parse_sse_data(data)
+
+        Logger.debug(
+          "LLM stream data: #{inspect(String.slice(data, 0, 200))}, parsed #{length(chunks)} chunks"
+        )
 
         if :done in chunks do
           {Enum.filter(chunks, &is_binary/1), {:done, ref}}
@@ -130,9 +145,11 @@ defmodule Slackex.AI.OpenAICompatibleClient do
         end
 
       {^ref, :done} ->
+        Logger.debug("LLM stream done signal received")
         {:halt, {:done, ref}}
     after
       @receive_timeout_ms ->
+        Logger.warning("LLM stream timed out after #{@receive_timeout_ms}ms")
         {:halt, {:error, :timeout}}
     end
   end
