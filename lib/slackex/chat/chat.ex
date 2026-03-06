@@ -8,6 +8,12 @@ defmodule Slackex.Chat do
     exports: [
       Channel,
       Message,
+      MessageReaction,
+      PinnedMessage,
+      Members,
+      Pins,
+      InviteLink,
+      Invites,
       DMConversation,
       DMRequest,
       ReadCursor,
@@ -31,6 +37,7 @@ defmodule Slackex.Chat do
     DMRateLimiter,
     DMRequest,
     Message,
+    MessageReaction,
     Permissions,
     ReadCursor,
     Subscription,
@@ -466,6 +473,119 @@ defmodule Slackex.Chat do
 
   defp scope_filter({:dm, dm_conversation_id}) do
     dynamic([m], m.dm_conversation_id == ^dm_conversation_id)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Reactions
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Toggles a reaction on a message. If the user has already reacted with
+  this emoji, removes it. Otherwise, adds it.
+  Returns `{:ok, {:added, reaction}}` or `{:ok, {:removed, reaction}}`.
+  """
+  def toggle_reaction(message_id, user_id, emoji) do
+    case Repo.get_by(MessageReaction, message_id: message_id, user_id: user_id, emoji: emoji) do
+      nil ->
+        %MessageReaction{}
+        |> MessageReaction.changeset(%{message_id: message_id, user_id: user_id, emoji: emoji})
+        |> Repo.insert()
+        |> case do
+          {:ok, reaction} -> {:ok, {:added, reaction}}
+          {:error, changeset} -> {:error, changeset}
+        end
+
+      reaction ->
+        case Repo.delete(reaction) do
+          {:ok, deleted} -> {:ok, {:removed, deleted}}
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  @doc """
+  Batch-loads reactions for a list of message IDs.
+  Returns `%{message_id => [%{emoji: "...", count: N, user_ids: [...]}]}`.
+  """
+  def list_reactions([]), do: %{}
+
+  def list_reactions(message_ids) when is_list(message_ids) do
+    from(r in MessageReaction,
+      where: r.message_id in ^message_ids,
+      group_by: [r.message_id, r.emoji],
+      select: %{
+        message_id: r.message_id,
+        emoji: r.emoji,
+        count: count(),
+        user_ids: fragment("array_agg(?)", r.user_id)
+      }
+    )
+    |> Repo.all()
+    |> Enum.group_by(& &1.message_id)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Threads
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Sends a reply to a parent message. Creates the reply message and
+  atomically increments the parent's reply_count.
+
+  Returns `{:ok, message}` or `{:error, reason}`.
+  """
+  def send_reply(channel_id, sender_id, parent_message_id, content) do
+    parent = get_message!(parent_message_id)
+
+    target_matches =
+      (parent.channel_id != nil and parent.channel_id == channel_id) or
+        (parent.dm_conversation_id != nil and parent.dm_conversation_id == channel_id)
+
+    if target_matches do
+      id = Snowflake.generate()
+      sanitized = HtmlSanitizeEx.strip_tags(content)
+
+      attrs = %{
+        id: id,
+        content: sanitized,
+        sender_id: sender_id,
+        channel_id: parent.channel_id,
+        dm_conversation_id: parent.dm_conversation_id,
+        parent_message_id: parent_message_id
+      }
+
+      Multi.new()
+      |> Multi.insert(:reply, Message.changeset(%Message{}, attrs))
+      |> Multi.update_all(
+        :increment_reply_count,
+        from(m in Message, where: m.id == ^parent_message_id),
+        inc: [reply_count: 1]
+      )
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{reply: reply}} -> {:ok, Repo.preload(reply, :sender)}
+        {:error, :reply, changeset, _} -> {:error, changeset}
+      end
+    else
+      {:error, :invalid_parent}
+    end
+  end
+
+  @doc """
+  Lists replies to a parent message, ordered by insertion time ascending.
+  Excludes soft-deleted replies.
+  """
+  def list_thread(parent_message_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+
+    from(m in Message,
+      where: m.parent_message_id == ^parent_message_id,
+      where: is_nil(m.deleted_at),
+      order_by: [asc: m.id],
+      limit: ^limit,
+      preload: [:sender]
+    )
+    |> Repo.all()
   end
 
   # ---------------------------------------------------------------------------

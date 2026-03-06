@@ -400,9 +400,10 @@ defmodule SlackexWeb.ChatLive.IndexTest do
 
       # Report action should exist in DOM for other user's messages (hidden via CSS)
       assert html =~ "report_message"
-      # The button with phx-click="report_message" should NOT appear for own messages
-      # We check that there is no report button associated with own_message id
-      refute html =~ ~s(phx-value-message-id="#{own_message.id}")
+      # The report button should NOT appear for own messages
+      # Own messages have edit/delete but no report; other messages have report but no edit/delete
+      refute html =~
+               ~s(phx-click="report_message" phx-value-message-id="#{own_message.id}")
     end
 
     test "report action not shown in channel messages", %{conn: conn, user: user} do

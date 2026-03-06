@@ -70,6 +70,11 @@ defmodule SlackexWeb.Router do
       live "/chat/channels/browse", ChatLive.Index, :browse_channels
       live "/chat/dm/new", ChatLive.Index, :new_dm
       live "/chat/dm/:dm_id", ChatLive.Index, :dm
+      live "/chat/:slug/thread/:message_id", ChatLive.Index, :thread
+      live "/chat/:slug/members", ChatLive.Index, :members
+      live "/chat/:slug/pins", ChatLive.Index, :pinned
+      live "/chat/:slug/invite", ChatLive.Index, :invite
+      live "/chat/invite/:code", ChatLive.Index, :redeem_invite
       live "/chat/:slug", ChatLive.Index, :show
     end
   end

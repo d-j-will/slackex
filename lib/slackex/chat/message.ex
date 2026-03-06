@@ -15,6 +15,8 @@ defmodule Slackex.Chat.Message do
     field :search_content, :string
     field :edited_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
+    field :parent_message_id, :integer
+    field :reply_count, :integer, default: 0
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :channel, Slackex.Chat.Channel
@@ -28,7 +30,15 @@ defmodule Slackex.Chat.Message do
 
   def changeset(message, attrs) do
     message
-    |> cast(attrs, [:id, :content, :sender_id, :channel_id, :dm_conversation_id, :edited_at])
+    |> cast(attrs, [
+      :id,
+      :content,
+      :sender_id,
+      :channel_id,
+      :dm_conversation_id,
+      :edited_at,
+      :parent_message_id
+    ])
     |> validate_required([:id, :content, :sender_id])
     |> validate_content_length(min: 1, max: 4000)
     |> put_search_content()

@@ -7,6 +7,8 @@ defmodule SlackexWeb.ChatComponents do
   """
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
+
   use Phoenix.VerifiedRoutes,
     endpoint: SlackexWeb.Endpoint,
     router: SlackexWeb.Router,
@@ -136,6 +138,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :in_dm, :boolean, default: false
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
+  attr :reactions, :list, default: []
 
   def message_bubble(assigns) do
     message = assigns.message
@@ -152,6 +155,7 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:is_edited, message_edited?(message))
       |> assign(:is_own_message, is_own)
       |> assign(:can_delete, is_own or can_admin_delete)
+      |> assign(:can_pin, can_admin_delete)
       |> assign(:is_editing, Map.get(message, :editing, false) == true)
 
     ~H"""
@@ -199,12 +203,58 @@ defmodule SlackexWeb.ChatComponents do
             </p>
           <% end %>
         <% end %>
+        <.reaction_bar
+          reactions={@reactions}
+          current_user_id={@current_user_id}
+          message_id={@message.id}
+        />
+        <button
+          :if={
+            Map.get(@message, :reply_count, 0) > 0 and is_nil(Map.get(@message, :parent_message_id))
+          }
+          phx-click="open_thread"
+          phx-value-message-id={@message.id}
+          class="text-xs text-primary hover:underline cursor-pointer mt-1"
+        >
+          {Map.get(@message, :reply_count)} {if Map.get(@message, :reply_count) == 1,
+            do: "reply",
+            else: "replies"}
+        </button>
       </div>
       <div
-        :if={(@is_own_message or @can_delete) and not @is_deleted and not @is_editing}
+        :if={not @is_deleted and not @is_editing}
         class="hidden group-hover:flex absolute right-2 top-1 items-center gap-1"
         data-role="message-actions"
       >
+        <div id={"emoji-picker-#{@message.id}"} phx-hook="EmojiPicker" class="relative">
+          <button
+            data-emoji-trigger
+            data-message-id={@message.id}
+            phx-click={JS.dispatch("emoji:open", to: "#emoji-picker-#{@message.id}")}
+            class="btn btn-ghost btn-xs btn-circle"
+            title="Add reaction"
+          >
+            <span class="hero-face-smile size-4" />
+          </button>
+        </div>
+        <button
+          :if={is_nil(Map.get(@message, :parent_message_id))}
+          phx-click="open_thread"
+          phx-value-message-id={@message.id}
+          class="btn btn-ghost btn-xs btn-circle"
+          title="Reply in thread"
+        >
+          <span class="hero-chat-bubble-left size-4" />
+        </button>
+        <button
+          :if={@can_pin and is_nil(Map.get(@message, :parent_message_id))}
+          phx-click="pin_message"
+          phx-value-message-id={@message.id}
+          class="btn btn-ghost btn-xs btn-circle"
+          title="Pin message"
+        >
+          <span class="hero-bookmark size-4" />
+        </button>
         <button
           :if={@is_own_message}
           phx-click="edit_message"
@@ -215,6 +265,7 @@ defmodule SlackexWeb.ChatComponents do
           Edit
         </button>
         <button
+          :if={@can_delete}
           phx-click="delete_message"
           phx-value-msg-id={@message.id}
           data-confirm="Are you sure you want to delete this message?"
@@ -223,12 +274,8 @@ defmodule SlackexWeb.ChatComponents do
         >
           Delete
         </button>
-      </div>
-      <div
-        :if={@show_report_action and not @is_deleted and not @can_delete}
-        class="hidden group-hover:flex absolute right-2 top-1 items-center"
-      >
         <button
+          :if={@show_report_action and not @can_delete}
           phx-click="report_message"
           phx-value-message-id={@message.id}
           class="btn btn-ghost btn-xs text-warning"
@@ -237,6 +284,36 @@ defmodule SlackexWeb.ChatComponents do
           Report
         </button>
       </div>
+    </div>
+    """
+  end
+
+  # ────────────────────────── Reaction Bar ──────────────────────────────
+
+  attr :reactions, :list, default: []
+  attr :current_user_id, :integer, required: true
+  attr :message_id, :integer, required: true
+
+  def reaction_bar(assigns) do
+    ~H"""
+    <div :if={@reactions != []} class="flex flex-wrap gap-1 mt-1">
+      <button
+        :for={reaction <- @reactions}
+        phx-click="toggle_reaction"
+        phx-value-message-id={@message_id}
+        phx-value-emoji={reaction.emoji}
+        class={[
+          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border",
+          "hover:bg-base-300 transition-colors cursor-pointer",
+          if(@current_user_id in reaction.user_ids,
+            do: "border-primary bg-primary/10 text-primary",
+            else: "border-base-300 bg-base-200 text-base-content"
+          )
+        ]}
+      >
+        <span>{reaction.emoji}</span>
+        <span class="font-medium">{reaction.count}</span>
+      </button>
     </div>
     """
   end
@@ -344,6 +421,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :in_dm, :boolean, default: false
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
+  attr :reactions, :map, default: %{}
 
   def message_stream(assigns) do
     ~H"""
@@ -360,6 +438,7 @@ defmodule SlackexWeb.ChatComponents do
           in_dm={@in_dm}
           editing_message_id={@editing_message_id}
           current_user_role={@current_user_role}
+          reactions={Map.get(@reactions, message.id, [])}
         />
       </div>
     </div>

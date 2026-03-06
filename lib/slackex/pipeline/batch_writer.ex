@@ -105,6 +105,7 @@ defmodule Slackex.Pipeline.BatchWriter do
       sender_id: sender_id,
       channel_id: Map.get(message, :channel_id),
       dm_conversation_id: Map.get(message, :dm_conversation_id),
+      parent_message_id: Map.get(message, :parent_message_id),
       inserted_at: inserted_at
     }
   end

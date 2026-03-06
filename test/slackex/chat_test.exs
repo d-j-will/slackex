@@ -238,7 +238,7 @@ defmodule Slackex.ChatTest do
       charlie = insert(:user)
 
       {:ok, _dm1} = Chat.find_or_create_dm(alice.id, bob.id)
-      Process.sleep(10)
+      Process.sleep(50)
       {:ok, _dm2} = Chat.find_or_create_dm(alice.id, charlie.id)
 
       results = Chat.list_user_dm_conversations(alice.id)

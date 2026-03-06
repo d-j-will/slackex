@@ -283,6 +283,15 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
             />
           </svg>
         </button>
+        <button
+          phx-click={JS.dispatch("phx:set-theme", detail: %{toggle: true})}
+          class="btn btn-ghost btn-xs btn-circle"
+          aria-label="Toggle theme"
+          data-phx-theme="toggle"
+        >
+          <span class="hero-sun-solid size-3.5 hidden dark:block" />
+          <span class="hero-moon-solid size-3.5 dark:hidden" />
+        </button>
         <.link
           href={~p"/users/log-out"}
           method="delete"

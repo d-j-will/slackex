@@ -1,0 +1,71 @@
+defmodule Slackex.Chat.ReactionsTest do
+  use Slackex.DataCase, async: true
+
+  alias Slackex.Chat
+
+  import Slackex.Factory
+
+  setup do
+    user = insert(:user)
+    other_user = insert(:user)
+    channel = insert(:channel) |> with_subscription(user)
+    message = insert(:message, sender: user, channel: channel)
+    %{user: user, other_user: other_user, channel: channel, message: message}
+  end
+
+  describe "toggle_reaction/3" do
+    test "adds a reaction when none exists", %{user: user, message: message} do
+      assert {:ok, {:added, reaction}} = Chat.toggle_reaction(message.id, user.id, "👍")
+      assert reaction.emoji == "👍"
+      assert reaction.user_id == user.id
+      assert reaction.message_id == message.id
+    end
+
+    test "removes a reaction when it already exists", %{user: user, message: message} do
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+      assert {:ok, {:removed, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+    end
+
+    test "different users can react with same emoji", %{
+      user: user,
+      other_user: other_user,
+      message: message
+    } do
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, other_user.id, "👍")
+    end
+  end
+
+  describe "list_reactions/1" do
+    test "returns grouped reactions by message_id", %{
+      user: user,
+      other_user: other_user,
+      message: message
+    } do
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "👍")
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, other_user.id, "👍")
+      {:ok, {:added, _}} = Chat.toggle_reaction(message.id, user.id, "❤️")
+
+      result = Chat.list_reactions([message.id])
+
+      assert Map.has_key?(result, message.id)
+      reactions = result[message.id]
+
+      thumbs = Enum.find(reactions, &(&1.emoji == "👍"))
+      assert thumbs.count == 2
+      assert Enum.sort(thumbs.user_ids) == Enum.sort([user.id, other_user.id])
+
+      heart = Enum.find(reactions, &(&1.emoji == "❤️"))
+      assert heart.count == 1
+    end
+
+    test "returns empty map for no reactions" do
+      assert Chat.list_reactions([]) == %{}
+    end
+
+    test "returns empty map for messages with no reactions", %{message: message} do
+      result = Chat.list_reactions([message.id])
+      assert result == %{}
+    end
+  end
+end

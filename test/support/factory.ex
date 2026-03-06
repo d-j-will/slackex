@@ -13,6 +13,7 @@ defmodule Slackex.Factory do
     DMConversation,
     DMRequest,
     Message,
+    MessageReaction,
     ReadCursor,
     Subscription
   }
@@ -92,6 +93,14 @@ defmodule Slackex.Factory do
       recipient: build(:user),
       preview_text: sequence(:preview_text, &"Hey, can we chat? #{&1}"),
       status: "pending"
+    }
+  end
+
+  def message_reaction_factory do
+    %MessageReaction{
+      emoji: "👍",
+      user: build(:user),
+      message: build(:message)
     }
   end
 
