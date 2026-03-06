@@ -9,11 +9,17 @@ defmodule Slackex.Workers.CacheWarmerTest do
 
   setup do
     on_exit(fn ->
-      # Clean up any ChannelServer processes started during tests
+      # Clean up any ChannelServer processes started during tests.
+      # Filter to actual PIDs — Horde uses :restarting as a placeholder
+      # during restarts, and terminate_child/2 requires a real pid.
       ChannelSupervisor
       |> Horde.DynamicSupervisor.which_children()
-      |> Enum.each(fn {_, pid, _, _} ->
-        Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+      |> Enum.each(fn
+        {_, pid, _, _} when is_pid(pid) ->
+          Horde.DynamicSupervisor.terminate_child(ChannelSupervisor, pid)
+
+        _ ->
+          :ok
       end)
     end)
 

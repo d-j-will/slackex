@@ -237,8 +237,16 @@ defmodule Slackex.ChatTest do
       bob = insert(:user)
       charlie = insert(:user)
 
-      {:ok, _dm1} = Chat.find_or_create_dm(alice.id, bob.id)
-      Process.sleep(50)
+      {:ok, dm1} = Chat.find_or_create_dm(alice.id, bob.id)
+
+      # Explicitly backdate dm1 to guarantee ordering — Process.sleep is
+      # unreliable when DB timestamps share the same second.
+      one_minute_ago = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      dm1
+      |> Ecto.Changeset.change(updated_at: one_minute_ago)
+      |> Slackex.Repo.update!()
+
       {:ok, _dm2} = Chat.find_or_create_dm(alice.id, charlie.id)
 
       results = Chat.list_user_dm_conversations(alice.id)
