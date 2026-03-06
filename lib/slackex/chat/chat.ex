@@ -8,6 +8,7 @@ defmodule Slackex.Chat do
     exports: [
       Channel,
       Message,
+      MessageReaction,
       DMConversation,
       DMRequest,
       ReadCursor,
@@ -31,6 +32,7 @@ defmodule Slackex.Chat do
     DMRateLimiter,
     DMRequest,
     Message,
+    MessageReaction,
     Permissions,
     ReadCursor,
     Subscription,
