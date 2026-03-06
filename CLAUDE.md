@@ -81,6 +81,16 @@ Read the relevant doc **before** working in these areas:
 - **UI/UX decisions**: `docs/design/` — component system, design system, information architecture
 - **Incident history**: `docs/rca/` — root cause analyses for past production incidents
 
+## Req Streaming (into: :self)
+
+When using `Req.post(..., into: :self)` for streaming responses:
+- The response body is a `%Req.Response.Async{}` struct, **not** a raw reference
+- The process receives **raw Mint HTTP messages** (e.g., `{:ssl, socket, binary}`), not `{ref, {:data, data}}` tuples
+- You **must** use `Req.parse_message(resp, message)` to translate messages into `[{:data, chunk}]` / `[:done]`
+- Clean up with `Req.cancel_async_response(resp)` passing the full `%Req.Response{}`
+
+Incident precedent: v0.5.58-v0.5.61 -- streaming connected (200) but yielded zero tokens because raw Mint messages never matched the receive patterns. See `docs/rca/2026-03-06-summarization-streaming-failure.md`.
+
 ## General Workflow
 
 When the user provides a specific URL, package name, or configuration detail, use it immediately rather than exploring the codebase first. Ask for missing specifics upfront before starting work.
