@@ -46,8 +46,18 @@ const EmojiPicker = {
       import("emoji-mart"),
     ]);
 
+    // Backdrop overlay
+    const backdrop = document.createElement("div");
+    backdrop.className = "fixed inset-0 z-40 bg-black/30";
+    backdrop.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      this.closePicker();
+    });
+
+    // Centered container
     const container = document.createElement("div");
-    container.className = "absolute z-50 bottom-full right-0 mb-2";
+    container.className =
+      "fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2";
 
     const picker = new Picker({
       data,
@@ -62,18 +72,24 @@ const EmojiPicker = {
         document.documentElement.getAttribute("data-theme") === "dark"
           ? "dark"
           : "light",
-      previewPosition: "none",
-      skinTonePosition: "none",
-      maxFrequentRows: 2,
-      perLine: 8,
+      previewPosition: "bottom",
+      skinTonePosition: "search",
+      maxFrequentRows: 3,
+      perLine: 9,
     });
 
     container.appendChild(picker);
-    trigger.closest(".relative").appendChild(container);
+    document.body.appendChild(backdrop);
+    document.body.appendChild(container);
+    this.backdrop = backdrop;
     this.pickerContainer = container;
   },
 
   closePicker() {
+    if (this.backdrop) {
+      this.backdrop.remove();
+      this.backdrop = null;
+    }
     if (this.pickerContainer) {
       this.pickerContainer.remove();
       this.pickerContainer = null;

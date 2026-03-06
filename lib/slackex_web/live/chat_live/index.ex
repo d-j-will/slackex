@@ -1502,16 +1502,20 @@ defmodule SlackexWeb.ChatLive.Index do
         [%{emoji: emoji, count: 1, user_ids: [user_id]} | reactions]
 
       idx ->
-        List.update_at(reactions, idx, fn r ->
-          %{r | count: r.count + 1, user_ids: [user_id | r.user_ids]}
-        end)
+        List.update_at(reactions, idx, &add_user_to_reaction(&1, user_id))
     end
+  end
+
+  defp add_user_to_reaction(%{user_ids: user_ids} = reaction, user_id) do
+    if user_id in user_ids,
+      do: reaction,
+      else: %{reaction | count: reaction.count + 1, user_ids: [user_id | user_ids]}
   end
 
   defp apply_reaction_update(reactions, %{action: :removed, emoji: emoji, user_id: user_id}) do
     reactions
     |> Enum.map(fn r ->
-      if r.emoji == emoji do
+      if r.emoji == emoji and user_id in r.user_ids do
         %{r | count: r.count - 1, user_ids: List.delete(r.user_ids, user_id)}
       else
         r
