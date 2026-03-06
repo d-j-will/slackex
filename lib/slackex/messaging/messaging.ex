@@ -127,6 +127,53 @@ defmodule Slackex.Messaging do
   end
 
   @doc """
+  Sends a reply to a parent message. Broadcasts to both the channel topic
+  and the thread topic.
+  """
+  def send_reply(channel_id, channel_type, sender_id, parent_message_id, content) do
+    with {:ok, reply} <- Chat.send_reply(channel_id, sender_id, parent_message_id, content) do
+      target = {channel_type, channel_id}
+
+      reply_payload = %{
+        id: reply.id,
+        content: reply.content,
+        sender_id: reply.sender_id,
+        sender: %{
+          id: reply.sender.id,
+          username: reply.sender.username,
+          display_name: reply.sender.display_name,
+          avatar_url: reply.sender.avatar_url
+        },
+        inserted_at: reply.inserted_at,
+        parent_message_id: parent_message_id,
+        channel_id: reply.channel_id,
+        dm_conversation_id: reply.dm_conversation_id
+      }
+
+      _ = broadcast_envelope("message.new", target, reply_payload)
+
+      thread_envelope = Envelope.wrap("thread.reply", target, reply_payload)
+
+      _ =
+        Phoenix.PubSub.broadcast(
+          @pubsub,
+          "thread:#{parent_message_id}",
+          {:envelope, thread_envelope}
+        )
+
+      parent = Chat.get_message!(parent_message_id)
+
+      _ =
+        broadcast_envelope("message.reply_count_updated", target, %{
+          message_id: parent_message_id,
+          reply_count: parent.reply_count
+        })
+
+      {:ok, reply}
+    end
+  end
+
+  @doc """
   Returns recent messages for a channel.
 
   Uses the in-memory `ChannelServer` queue if the server is running;
