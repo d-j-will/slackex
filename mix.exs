@@ -76,6 +76,7 @@ defmodule Slackex.MixProject do
 
       # Content safety
       {:html_sanitize_ex, "~> 1.4"},
+      {:earmark, "~> 1.4"},
 
       # Background jobs
       {:oban, "~> 2.18"},

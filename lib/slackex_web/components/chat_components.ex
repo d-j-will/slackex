@@ -8,7 +8,6 @@ defmodule SlackexWeb.ChatComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
-  alias Slackex.Links.URLExtractor
 
   use Phoenix.VerifiedRoutes,
     endpoint: SlackexWeb.Endpoint,
@@ -165,11 +164,7 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:is_editing, Map.get(message, :editing, false) == true)
       |> assign(
         :rendered_content,
-        if assigns.link_previews_enabled do
-          URLExtractor.linkify(Map.get(message, :content, ""))
-        else
-          Map.get(message, :content, "")
-        end
+        Slackex.Markdown.to_html(Map.get(message, :content, ""))
       )
 
     ~H"""
@@ -211,9 +206,10 @@ defmodule SlackexWeb.ChatComponents do
               </div>
             </div>
           <% else %>
-            <p class="text-sm text-base-content/90 break-words whitespace-pre-wrap">
-              {@rendered_content}<span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
-            </p>
+            <div class="text-sm text-base-content/90 break-words prose prose-sm max-w-none">
+              {@rendered_content}
+              <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
+            </div>
             <div :if={@link_previews_enabled and @link_previews != []} class="mt-1 space-y-2">
               <.link_preview_card :for={preview <- @link_previews} preview={preview} />
             </div>
