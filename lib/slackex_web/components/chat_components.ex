@@ -7,6 +7,8 @@ defmodule SlackexWeb.ChatComponents do
   """
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
+
   use Phoenix.VerifiedRoutes,
     endpoint: SlackexWeb.Endpoint,
     router: SlackexWeb.Router,
@@ -207,10 +209,21 @@ defmodule SlackexWeb.ChatComponents do
         />
       </div>
       <div
-        :if={(@is_own_message or @can_delete) and not @is_deleted and not @is_editing}
+        :if={not @is_deleted and not @is_editing}
         class="hidden group-hover:flex absolute right-2 top-1 items-center gap-1"
         data-role="message-actions"
       >
+        <div id={"emoji-picker-#{@message.id}"} phx-hook="EmojiPicker" class="relative">
+          <button
+            data-emoji-trigger
+            data-message-id={@message.id}
+            phx-click={JS.dispatch("emoji:open", to: "#emoji-picker-#{@message.id}")}
+            class="btn btn-ghost btn-xs btn-circle"
+            title="Add reaction"
+          >
+            <span class="hero-face-smile size-4" />
+          </button>
+        </div>
         <button
           :if={@is_own_message}
           phx-click="edit_message"
@@ -221,6 +234,7 @@ defmodule SlackexWeb.ChatComponents do
           Edit
         </button>
         <button
+          :if={@can_delete}
           phx-click="delete_message"
           phx-value-msg-id={@message.id}
           data-confirm="Are you sure you want to delete this message?"
@@ -229,12 +243,8 @@ defmodule SlackexWeb.ChatComponents do
         >
           Delete
         </button>
-      </div>
-      <div
-        :if={@show_report_action and not @is_deleted and not @can_delete}
-        class="hidden group-hover:flex absolute right-2 top-1 items-center"
-      >
         <button
+          :if={@show_report_action and not @can_delete}
           phx-click="report_message"
           phx-value-message-id={@message.id}
           class="btn btn-ghost btn-xs text-warning"
