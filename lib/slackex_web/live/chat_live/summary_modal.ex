@@ -117,5 +117,9 @@ defmodule SlackexWeb.ChatLive.SummaryModal do
   defp error_message(:no_messages), do: "No messages found in this time range."
   defp error_message(:not_configured), do: "AI features are not configured."
   defp error_message(:unauthorized), do: "You don't have access to this channel."
+
+  defp error_message(:empty_response),
+    do: "The AI service returned an empty response. Check API key configuration."
+
   defp error_message(_), do: "Something went wrong. Please try again."
 end

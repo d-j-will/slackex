@@ -136,8 +136,8 @@ defmodule SlackexWeb.ChatLive.LayoutTest do
     test "uses full-height layout without navbar padding", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
-      # The chat layout should use h-screen
-      assert html =~ "h-screen"
+      # The chat layout should use h-dvh for correct mobile viewport height
+      assert html =~ "h-dvh"
       # Standard layout padding should NOT be present
       refute html =~ "px-4 py-6 sm:px-6 lg:px-8"
     end

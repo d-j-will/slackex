@@ -1546,8 +1546,17 @@ defmodule SlackexWeb.ChatLive.Index do
   defp stream_summary(channel_id, since, user_id, live_view_pid) do
     case Slackex.AI.Summarizer.summarize_channel(channel_id, since, user_id) do
       {:ok, stream} ->
-        Enum.each(stream, fn chunk -> send(live_view_pid, {:summary_token, chunk}) end)
-        send(live_view_pid, :summary_complete)
+        token_count =
+          Enum.reduce(stream, 0, fn chunk, count ->
+            send(live_view_pid, {:summary_token, chunk})
+            count + 1
+          end)
+
+        if token_count > 0 do
+          send(live_view_pid, :summary_complete)
+        else
+          send(live_view_pid, {:summary_error, :empty_response})
+        end
 
       {:error, reason} ->
         send(live_view_pid, {:summary_error, reason})

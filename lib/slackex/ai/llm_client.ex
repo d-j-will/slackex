@@ -39,7 +39,11 @@ defmodule Slackex.AI.LLMClient do
   @doc "Returns true if an LLM client is configured and has an API key."
   @spec configured?() :: boolean()
   def configured? do
-    client() != nil and Application.get_env(:slackex, :llm_api) != nil
+    client() != nil and
+      match?(
+        %{api_key: key} when is_binary(key) and key != "",
+        Application.get_env(:slackex, :llm_api)
+      )
   end
 
   defp client do

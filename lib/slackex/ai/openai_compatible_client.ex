@@ -187,6 +187,7 @@ defmodule Slackex.AI.OpenAICompatibleClient do
   defp fetch_api_key do
     case config(:api_key, nil) do
       nil -> {:error, :not_configured}
+      "" -> {:error, :not_configured}
       key -> {:ok, key}
     end
   end
