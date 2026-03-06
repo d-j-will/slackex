@@ -116,8 +116,9 @@ defmodule Slackex.MixProject do
       {:bumblebee, "~> 0.6.0"},
       {:exla, ">= 0.0.0"},
 
-      # HTTP client (OpenAI embeddings API)
+      # HTTP client (OpenAI embeddings API) + HTML parsing (link previews)
       {:req, "~> 0.5"},
+      {:floki, "~> 0.37"},
 
       # Dev & Test
       {:tidewave, "~> 0.5", only: :dev},
