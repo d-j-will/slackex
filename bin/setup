@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -e
+
+echo "=== Slackex Development Setup ==="
+
+echo "Step 1: Starting Docker services..."
+docker compose up -d
+echo "Waiting for Postgres..."
+until docker compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do
+  sleep 1
+done
+echo "Waiting for Redis..."
+until docker compose exec -T redis redis-cli ping > /dev/null 2>&1; do
+  sleep 1
+done
+echo "Docker services ready."
+
+echo "Step 2: Installing Elixir dependencies..."
+mix deps.get
+
+echo "Step 3: Setting up database..."
+mix ecto.setup
+
+echo "Step 4: Building assets..."
+mix assets.setup
+mix assets.build
+
+echo "Step 5: Installing git hooks..."
+mix git_hooks.install
+
+echo "Step 6: Building Dialyzer PLT (this may take a while on first run)..."
+mix dialyzer --plt
+
+echo ""
+echo "=== Setup complete! ==="
+echo "Run 'bin/server' to start the dev server."
