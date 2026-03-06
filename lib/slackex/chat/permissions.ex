@@ -4,13 +4,13 @@ defmodule Slackex.Chat.Permissions do
 
   Role hierarchy:
 
-  | Role   | Level | send_message | read_messages | manage_channel | delete_channel |
-  |--------|-------|:---:|:---:|:---:|:---:|
-  | owner  |   4   | yes | yes | yes | yes |
-  | admin  |   3   | yes | yes | yes | no  |
-  | member |   2   | yes | yes | no  | no  |
-  | viewer |   1   | no  | yes | no  | no  |
-  | nil    |   0   | no  | no  | no  | no  |
+  | Role   | Level | send_message | read_messages | manage_channel | delete_channel | manage_members | pin_message |
+  |--------|-------|:---:|:---:|:---:|:---:|:---:|:---:|
+  | owner  |   4   | yes | yes | yes | yes | yes | yes |
+  | admin  |   3   | yes | yes | yes | no  | yes | yes |
+  | member |   2   | yes | yes | no  | no  | no  | no  |
+  | viewer |   1   | no  | yes | no  | no  | no  | no  |
+  | nil    |   0   | no  | no  | no  | no  | no  | no  |
   """
 
   @role_levels %{
@@ -29,7 +29,9 @@ defmodule Slackex.Chat.Permissions do
     delete_channel: 4,
     edit_own_message: 2,
     delete_own_message: 2,
-    delete_any_message: 3
+    delete_any_message: 3,
+    manage_members: 3,
+    pin_message: 3
   }
 
   @spec can?(String.t() | nil, atom()) :: boolean()
