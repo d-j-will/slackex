@@ -13,6 +13,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias SlackexWeb.ChatLive.BrowseChannelsModal
   alias SlackexWeb.ChatLive.ChannelMembersModal
   alias SlackexWeb.ChatLive.CreateChannelModal
+  alias SlackexWeb.ChatLive.InviteLinkModal
   alias SlackexWeb.ChatLive.NewDmModal
   alias SlackexWeb.ChatLive.PinnedMessagesModal
   alias SlackexWeb.ChatLive.SearchComponent
@@ -194,6 +195,43 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def handle_params(_params, _uri, %{assigns: %{live_action: :browse_channels}} = socket) do
     {:noreply, enter_modal(socket, "Browse Channels")}
+  end
+
+  def handle_params(%{"code" => code}, _uri, %{assigns: %{live_action: :redeem_invite}} = socket) do
+    user = socket.assigns.current_user
+
+    case Chat.Invites.redeem_invite(code, user.id) do
+      {:ok, invite} ->
+        channel = Chat.get_channel!(invite.channel_id)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "You joined ##{channel.name}!")
+         |> push_navigate(to: ~p"/chat/#{channel.slug}")}
+
+      {:error, :already_member} ->
+        invite = Slackex.Repo.get_by!(Chat.InviteLink, code: code)
+        channel = Chat.get_channel!(invite.channel_id)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "You're already a member of ##{channel.name}.")
+         |> push_navigate(to: ~p"/chat/#{channel.slug}")}
+
+      {:error, reason} ->
+        message =
+          case reason do
+            :not_found -> "This invite link is invalid."
+            :expired -> "This invite link has expired."
+            :max_uses_reached -> "This invite link has reached its usage limit."
+            _ -> "Could not join channel."
+          end
+
+        {:noreply,
+         socket
+         |> put_flash(:error, message)
+         |> push_navigate(to: ~p"/chat")}
+    end
   end
 
   @impl true
@@ -1579,6 +1617,15 @@ defmodule SlackexWeb.ChatLive.Index do
                   <span class="hero-bookmark size-4" />
                   <span :if={@pin_count > 0} class="text-xs">{@pin_count}</span>
                 </.link>
+                <.link
+                  :if={@user_role in ["owner", "admin"]}
+                  patch={~p"/chat/#{@active_channel.slug}/invite"}
+                  class="btn btn-ghost btn-xs gap-1"
+                  aria-label="Invite people"
+                >
+                  <span class="hero-link size-4" />
+                  <span class="hidden sm:inline text-xs">Invite</span>
+                </.link>
                 <%= if @search_enabled do %>
                   <button
                     phx-click="toggle_search"
@@ -1739,6 +1786,14 @@ defmodule SlackexWeb.ChatLive.Index do
       :if={@live_action == :pinned and @active_channel}
       module={PinnedMessagesModal}
       id="pinned-messages-modal"
+      channel={@active_channel}
+      current_user={@current_user}
+    />
+
+    <.live_component
+      :if={@live_action == :invite and @active_channel}
+      module={InviteLinkModal}
+      id="invite-link-modal"
       channel={@active_channel}
       current_user={@current_user}
     />
