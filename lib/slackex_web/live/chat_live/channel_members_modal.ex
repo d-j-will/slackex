@@ -27,39 +27,42 @@ defmodule SlackexWeb.ChatLive.ChannelMembersModal do
   end
 
   def handle_event("promote", %{"user-id" => raw_id}, socket) do
-    with {user_id, ""} <- Integer.parse(raw_id) do
-      Members.update_member_role(
-        socket.assigns.channel.id,
-        socket.assigns.current_user.id,
-        user_id,
-        "admin"
-      )
-    end
+    _result =
+      with {user_id, ""} <- Integer.parse(raw_id) do
+        Members.update_member_role(
+          socket.assigns.channel.id,
+          socket.assigns.current_user.id,
+          user_id,
+          "admin"
+        )
+      end
 
     {:noreply, reload_members(socket)}
   end
 
   def handle_event("demote", %{"user-id" => raw_id}, socket) do
-    with {user_id, ""} <- Integer.parse(raw_id) do
-      Members.update_member_role(
-        socket.assigns.channel.id,
-        socket.assigns.current_user.id,
-        user_id,
-        "member"
-      )
-    end
+    _result =
+      with {user_id, ""} <- Integer.parse(raw_id) do
+        Members.update_member_role(
+          socket.assigns.channel.id,
+          socket.assigns.current_user.id,
+          user_id,
+          "member"
+        )
+      end
 
     {:noreply, reload_members(socket)}
   end
 
   def handle_event("kick", %{"user-id" => raw_id}, socket) do
-    with {user_id, ""} <- Integer.parse(raw_id) do
-      Members.kick_member(
-        socket.assigns.channel.id,
-        socket.assigns.current_user.id,
-        user_id
-      )
-    end
+    _result =
+      with {user_id, ""} <- Integer.parse(raw_id) do
+        Members.kick_member(
+          socket.assigns.channel.id,
+          socket.assigns.current_user.id,
+          user_id
+        )
+      end
 
     {:noreply, reload_members(socket)}
   end

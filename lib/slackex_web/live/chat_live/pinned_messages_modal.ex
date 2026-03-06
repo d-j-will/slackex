@@ -28,13 +28,14 @@ defmodule SlackexWeb.ChatLive.PinnedMessagesModal do
   end
 
   def handle_event("unpin", %{"message-id" => raw_id}, socket) do
-    with {message_id, ""} <- Integer.parse(raw_id) do
-      Pins.unpin_message(
-        socket.assigns.channel.id,
-        socket.assigns.current_user.id,
-        message_id
-      )
-    end
+    _result =
+      with {message_id, ""} <- Integer.parse(raw_id) do
+        Pins.unpin_message(
+          socket.assigns.channel.id,
+          socket.assigns.current_user.id,
+          message_id
+        )
+      end
 
     pins = Pins.list_pinned_messages(socket.assigns.channel.id)
     send(self(), {:pin_count_updated, length(pins)})
