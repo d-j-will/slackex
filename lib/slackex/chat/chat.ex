@@ -520,6 +520,70 @@ defmodule Slackex.Chat do
   end
 
   # ---------------------------------------------------------------------------
+  # Threads
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Sends a reply to a parent message. Creates the reply message and
+  atomically increments the parent's reply_count.
+
+  Returns `{:ok, message}` or `{:error, reason}`.
+  """
+  def send_reply(channel_id, sender_id, parent_message_id, content) do
+    parent = get_message!(parent_message_id)
+
+    target_matches =
+      (parent.channel_id != nil and parent.channel_id == channel_id) or
+        (parent.dm_conversation_id != nil and parent.dm_conversation_id == channel_id)
+
+    if target_matches do
+      id = Snowflake.generate()
+      sanitized = HtmlSanitizeEx.strip_tags(content)
+
+      attrs = %{
+        id: id,
+        content: sanitized,
+        sender_id: sender_id,
+        channel_id: parent.channel_id,
+        dm_conversation_id: parent.dm_conversation_id,
+        parent_message_id: parent_message_id
+      }
+
+      Multi.new()
+      |> Multi.insert(:reply, Message.changeset(%Message{}, attrs))
+      |> Multi.update_all(
+        :increment_reply_count,
+        from(m in Message, where: m.id == ^parent_message_id),
+        inc: [reply_count: 1]
+      )
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{reply: reply}} -> {:ok, Repo.preload(reply, :sender)}
+        {:error, :reply, changeset, _} -> {:error, changeset}
+      end
+    else
+      {:error, :invalid_parent}
+    end
+  end
+
+  @doc """
+  Lists replies to a parent message, ordered by insertion time ascending.
+  Excludes soft-deleted replies.
+  """
+  def list_thread(parent_message_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+
+    from(m in Message,
+      where: m.parent_message_id == ^parent_message_id,
+      where: is_nil(m.deleted_at),
+      order_by: [asc: m.id],
+      limit: ^limit,
+      preload: [:sender]
+    )
+    |> Repo.all()
+  end
+
+  # ---------------------------------------------------------------------------
   # DM operations
   # ---------------------------------------------------------------------------
 
