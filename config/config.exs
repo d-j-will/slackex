@@ -61,7 +61,7 @@ config :phoenix, :json_library, Jason
 
 config :slackex, Oban,
   repo: Slackex.Repo,
-  queues: [default: 10, notifications: 20, embeddings: 5],
+  queues: [default: 10, notifications: 20, embeddings: 5, link_previews: 5],
   plugins: [
     Oban.Plugins.Pruner,
     {Oban.Plugins.Cron,
