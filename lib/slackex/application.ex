@@ -33,6 +33,7 @@ defmodule Slackex.Application do
         [
           {Oban, Application.fetch_env!(:slackex, Oban)},
           Slackex.Embeddings.PersistenceListener,
+          Slackex.Links.LinkPreviewListener,
           # FunWithFlags auto-starts via OTP app dependency ordering (before Slackex.Application).
           # Its Ecto adapter queries are lazy, so the Repo being started here first is safe.
           # Start to serve requests, typically the last entry
