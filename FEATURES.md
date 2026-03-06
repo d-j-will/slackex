@@ -18,6 +18,7 @@ FunWithFlags.enable(:flag_name)
 | `:threads` | Disabled | Threaded replies on messages | Reply-in-thread hover action, reply count links, side thread panel |
 | `:channel_management` | Disabled | Channel administration tools | Members modal (roles, kick), pinned messages modal, invite link generation/revocation, pin hover action |
 | `:quick_switcher` | Disabled | Keyboard-driven channel/DM navigation | Ctrl+K / Cmd+K modal with fuzzy search across channels and DMs |
+| `:link_previews` | Disabled | Rich inline link preview cards | URL extraction, OG metadata fetching, safety checking (blocklist + Safe Browsing), preview cards below messages |
 | `:show_cluster_node` | Disabled | Show cluster node badge in sidebar | Per-user flag. Shows which BEAM node the user is connected to (useful for debugging distributed deployments) |
 
 ## Per-User Flags

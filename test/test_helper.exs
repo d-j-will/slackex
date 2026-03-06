@@ -11,7 +11,8 @@ for flag <- [
       :reactions,
       :threads,
       :channel_management,
-      :quick_switcher
+      :quick_switcher,
+      :link_previews
     ] do
   FunWithFlags.enable(flag)
 end
