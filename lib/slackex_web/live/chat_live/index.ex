@@ -8,6 +8,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Messaging
   alias Slackex.Messaging.Envelope
   alias Slackex.Notifications.OnlineTracker
+  alias Slackex.Links
   alias Slackex.Search
   alias Slackex.Search.HistoryLoader
   alias SlackexWeb.ChatLive.BrowseChannelsModal
@@ -100,6 +101,8 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:threads_enabled, FunWithFlags.enabled?(:threads))
      |> assign(:channel_management_enabled, FunWithFlags.enabled?(:channel_management))
      |> assign(:quick_switcher_enabled, FunWithFlags.enabled?(:quick_switcher))
+     |> assign(:link_previews_enabled, FunWithFlags.enabled?(:link_previews))
+     |> assign(:link_previews, %{})
      |> assign(:show_summary_modal, false)
      |> assign(:summary_text, "")
      |> assign(:summary_state, :idle)
@@ -738,6 +741,10 @@ defmodule SlackexWeb.ChatLive.Index do
     if message_for_active_conversation?(envelope, socket) do
       message = enrich_message(message)
 
+      if socket.assigns.link_previews_enabled do
+        Phoenix.PubSub.subscribe(Slackex.PubSub, "link_previews:#{message.id}")
+      end
+
       socket =
         socket
         |> stream_insert(:messages, message)
@@ -918,6 +925,12 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_info({:summary_error, reason}, socket) do
     {:noreply,
      assign(socket, summary_state: :error, summary_error: reason, active_summary_task: nil)}
+  end
+
+  @impl true
+  def handle_info({:link_previews_ready, message_id, previews}, socket) do
+    updated = Map.put(socket.assigns.link_previews, message_id, previews)
+    {:noreply, assign(socket, :link_previews, updated)}
   end
 
   @impl true
@@ -1297,10 +1310,19 @@ defmodule SlackexWeb.ChatLive.Index do
   defp oldest_message_id([]), do: nil
 
   defp assign_conversation_state(socket, messages) do
+    previews =
+      if socket.assigns.link_previews_enabled do
+        message_ids = Enum.map(messages, & &1.id)
+        Links.list_previews_for_messages(message_ids)
+      else
+        %{}
+      end
+
     socket
     |> assign(:typing_users, MapSet.new())
     |> assign(:oldest_message_id, oldest_message_id(messages))
     |> assign(:has_more_messages, length(messages) >= @message_page_size)
+    |> assign(:link_previews, previews)
     |> stream(:messages, messages, reset: true)
   end
 
@@ -1680,6 +1702,8 @@ defmodule SlackexWeb.ChatLive.Index do
               reactions_enabled={@reactions_enabled}
               threads_enabled={@threads_enabled}
               channel_management_enabled={@channel_management_enabled}
+              link_previews={@link_previews}
+              link_previews_enabled={@link_previews_enabled}
             />
             <.typing_indicator users={MapSet.to_list(@typing_users)} />
 
@@ -1738,6 +1762,8 @@ defmodule SlackexWeb.ChatLive.Index do
                 reactions={@reactions}
                 reactions_enabled={@reactions_enabled}
                 threads_enabled={@threads_enabled}
+                link_previews={@link_previews}
+                link_previews_enabled={@link_previews_enabled}
               />
               <.typing_indicator users={MapSet.to_list(@typing_users)} />
               <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />

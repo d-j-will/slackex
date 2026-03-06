@@ -142,6 +142,8 @@ defmodule SlackexWeb.ChatComponents do
   attr :reactions_enabled, :boolean, default: false
   attr :threads_enabled, :boolean, default: false
   attr :channel_management_enabled, :boolean, default: false
+  attr :link_previews, :list, default: []
+  attr :link_previews_enabled, :boolean, default: false
 
   def message_bubble(assigns) do
     message = assigns.message
@@ -160,6 +162,14 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:can_delete, is_own or can_admin_delete)
       |> assign(:can_pin, can_admin_delete)
       |> assign(:is_editing, Map.get(message, :editing, false) == true)
+      |> assign(
+        :rendered_content,
+        if assigns.link_previews_enabled do
+          Slackex.Links.URLExtractor.linkify(Map.get(message, :content, ""))
+        else
+          Map.get(message, :content, "")
+        end
+      )
 
     ~H"""
     <div class="group relative flex gap-3 px-2 py-1 hover:bg-base-200/50 rounded-lg transition-colors">
@@ -201,9 +211,11 @@ defmodule SlackexWeb.ChatComponents do
             </div>
           <% else %>
             <p class="text-sm text-base-content/90 break-words whitespace-pre-wrap">
-              {Map.get(@message, :content, "")}
-              <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
+              {@rendered_content}<span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
             </p>
+            <div :if={@link_previews_enabled and @link_previews != []} class="mt-1 space-y-2">
+              <.link_preview_card :for={preview <- @link_previews} preview={preview} />
+            </div>
           <% end %>
         <% end %>
         <.reaction_bar
@@ -438,6 +450,8 @@ defmodule SlackexWeb.ChatComponents do
   attr :reactions_enabled, :boolean, default: false
   attr :threads_enabled, :boolean, default: false
   attr :channel_management_enabled, :boolean, default: false
+  attr :link_previews, :map, default: %{}
+  attr :link_previews_enabled, :boolean, default: false
 
   def message_stream(assigns) do
     ~H"""
@@ -458,9 +472,53 @@ defmodule SlackexWeb.ChatComponents do
           reactions_enabled={@reactions_enabled}
           threads_enabled={@threads_enabled}
           channel_management_enabled={@channel_management_enabled}
+          link_previews={Map.get(@link_previews, message.id, [])}
+          link_previews_enabled={@link_previews_enabled}
         />
       </div>
     </div>
+    """
+  end
+
+  # ────────────────────────── Link Preview Card ─────────────────────────
+
+  @doc "Renders an inline link preview card with OG metadata."
+  attr :preview, :map, required: true
+
+  def link_preview_card(assigns) do
+    ~H"""
+    <a
+      href={@preview.url}
+      target="_blank"
+      rel="noopener noreferrer ugc"
+      class="block max-w-md rounded-lg border border-base-300 bg-base-100 hover:bg-base-200 transition-colors overflow-hidden"
+    >
+      <img
+        :if={@preview.image_url}
+        src={@preview.image_url}
+        alt=""
+        class="w-full h-32 object-cover"
+        loading="lazy"
+      />
+      <div class="p-3">
+        <div :if={@preview.site_name} class="text-xs text-base-content/50 mb-1">
+          <img
+            :if={@preview.favicon_url}
+            src={@preview.favicon_url}
+            alt=""
+            class="inline-block w-4 h-4 mr-1 align-text-bottom"
+            loading="lazy"
+          />
+          {@preview.site_name}
+        </div>
+        <div :if={@preview.title} class="text-sm font-semibold text-primary line-clamp-2">
+          {@preview.title}
+        </div>
+        <div :if={@preview.description} class="text-xs text-base-content/70 mt-1 line-clamp-2">
+          {@preview.description}
+        </div>
+      </div>
+    </a>
     """
   end
 
