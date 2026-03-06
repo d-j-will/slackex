@@ -12,6 +12,8 @@ defmodule Slackex.Chat do
       PinnedMessage,
       Members,
       Pins,
+      InviteLink,
+      Invites,
       DMConversation,
       DMRequest,
       ReadCursor,
