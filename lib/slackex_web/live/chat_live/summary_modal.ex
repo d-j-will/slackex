@@ -121,5 +121,12 @@ defmodule SlackexWeb.ChatLive.SummaryModal do
   defp error_message(:empty_response),
     do: "The AI service returned an empty response. Check API key configuration."
 
-  defp error_message(_), do: "Something went wrong. Please try again."
+  defp error_message(:task_crashed),
+    do: "The summary task crashed unexpectedly. Check server logs."
+
+  defp error_message({:api_error, status, _}), do: "API returned error (HTTP #{status})."
+  defp error_message({:api_error, status}), do: "API returned error (HTTP #{status})."
+  defp error_message({:network_error, _}), do: "Could not reach the AI service. Network error."
+  defp error_message({:stream_error, msg}), do: "Stream error: #{msg}"
+  defp error_message(other), do: "Something went wrong: #{inspect(other)}"
 end

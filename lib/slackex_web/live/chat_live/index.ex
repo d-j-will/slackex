@@ -1574,19 +1574,28 @@ defmodule SlackexWeb.ChatLive.Index do
   defp stream_summary(channel_id, since, user_id, live_view_pid) do
     case Slackex.AI.Summarizer.summarize_channel(channel_id, since, user_id) do
       {:ok, stream} ->
-        token_count =
-          Enum.reduce(stream, 0, fn chunk, count ->
-            send(live_view_pid, {:summary_token, chunk})
-            count + 1
-          end)
+        try do
+          token_count =
+            Enum.reduce(stream, 0, fn chunk, count ->
+              send(live_view_pid, {:summary_token, chunk})
+              count + 1
+            end)
 
-        if token_count > 0 do
-          send(live_view_pid, :summary_complete)
-        else
-          send(live_view_pid, {:summary_error, :empty_response})
+          if token_count > 0 do
+            send(live_view_pid, :summary_complete)
+          else
+            send(live_view_pid, {:summary_error, :empty_response})
+          end
+        rescue
+          e ->
+            require Logger
+            Logger.error("Stream enumeration failed: #{inspect(e)}")
+            send(live_view_pid, {:summary_error, {:stream_error, Exception.message(e)}})
         end
 
       {:error, reason} ->
+        require Logger
+        Logger.error("Summarization failed: #{inspect(reason)}")
         send(live_view_pid, {:summary_error, reason})
     end
   end
