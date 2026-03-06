@@ -14,5 +14,13 @@
   }
   window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
 
-  window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+  window.addEventListener("phx:set-theme", (e) => {
+    const theme = e.target.dataset.phxTheme;
+    if (theme === "toggle") {
+      const current = document.documentElement.getAttribute("data-theme");
+      setTheme(current === "dark" ? "light" : "dark");
+    } else {
+      setTheme(theme);
+    }
+  });
 })();
