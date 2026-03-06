@@ -6,6 +6,8 @@ defmodule Slackex.Links.LinkPreview do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   @statuses ~w(pending fetched blocked)
 
   schema "link_previews" do

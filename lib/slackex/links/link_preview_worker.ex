@@ -37,9 +37,10 @@ defmodule Slackex.Links.LinkPreviewWorker do
 
     fetched = Enum.filter(previews, &(&1.status == "fetched"))
 
-    if fetched != [] do
-      broadcast_previews(message_id, fetched)
-    end
+    _ =
+      if fetched != [] do
+        broadcast_previews(message_id, fetched)
+      end
 
     :ok
   end

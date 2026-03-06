@@ -741,9 +741,10 @@ defmodule SlackexWeb.ChatLive.Index do
     if message_for_active_conversation?(envelope, socket) do
       message = enrich_message(message)
 
-      if socket.assigns.link_previews_enabled do
-        Phoenix.PubSub.subscribe(Slackex.PubSub, "link_previews:#{message.id}")
-      end
+      _ =
+        if socket.assigns.link_previews_enabled do
+          Phoenix.PubSub.subscribe(Slackex.PubSub, "link_previews:#{message.id}")
+        end
 
       socket =
         socket
