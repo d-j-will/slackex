@@ -28,6 +28,23 @@ Before adding any new supervised process, background worker, or external depende
 
 Incident precedent: v0.5.36 — EmbeddingWorker swallowed errors, cascaded through supervisor, took down the entire app. All CI gates had passed.
 
+## Spec-Driven Acceptance Tests
+
+Every spec that introduces a **PubSub event bridge**, **Oban job pipeline**, or **cross-context integration point** must have at least one integration test that verifies the full producer → consumer path exists. Do not test consumers in isolation by faking the upstream event — that proves the handler works, not that the wiring exists.
+
+```elixir
+# BAD: fakes the upstream — proves handler, not wiring
+PubSub.broadcast(Slackex.PubSub, "pipeline:events", {:messages_persisted, [id]})
+assert_enqueued(worker: LinkPreviewWorker)
+
+# GOOD: exercises the full path — proves the bridge exists
+{:ok, _} = Messaging.send_message(channel_id, user_id, "https://example.com")
+assert_receive {:batch_result, _, :ok}, 5000
+assert_enqueued(worker: LinkPreviewWorker)
+```
+
+Incident precedent: v0.5.47-v0.5.64 — `pipeline:events` broadcast was designed in spec but never implemented. Listeners subscribed to a dead topic for 18 hours. All unit tests passed because they faked the upstream event. See `docs/rca/2026-03-06-pipeline-events-bridge-missing.md`.
+
 ## Test Environment
 
 Docker required: `docker compose up -d postgres_test redis` then `mix test`. Test DB on port 5433, Redis on 6379.
@@ -62,6 +79,7 @@ The following are **enforced by hooks or guided by skills** — use them instead
 - **Feature flags**: Use `/new-feature`. Guards both context module and LiveView template.
 - **Deploy**: Use `/deploy`. Runs `scripts/pre-deploy` (7-step verification) then tags.
 - **Oban workers**: Hook warns on `_ =` in `_worker.ex` files. Never discard `perform/1` return values.
+- **Listener wiring**: Hook warns on `*_listener.ex` files with PubSub subscriptions — reminds to add integration tests for full producer → consumer path.
 - **CI deploy edits**: Hook warns on SSH heredoc issues in `ci-deploy.yml`.
 - **Docker/Caddy**: Hooks block bare `docker pull`, `caddy reload`, `build:` in prod compose, `--no-verify`.
 

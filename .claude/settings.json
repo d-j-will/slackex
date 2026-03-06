@@ -39,6 +39,10 @@
           {
             "type": "command",
             "command": "scripts/hooks/block-prod-compose-build.sh"
+          },
+          {
+            "type": "command",
+            "command": "scripts/hooks/warn-listener-wiring.sh"
           }
         ]
       },
@@ -56,6 +60,10 @@
           {
             "type": "command",
             "command": "scripts/hooks/block-prod-compose-build.sh"
+          },
+          {
+            "type": "command",
+            "command": "scripts/hooks/warn-listener-wiring.sh"
           }
         ]
       }
