@@ -4,10 +4,6 @@
 FROM hexpm/elixir:1.19.2-erlang-28.1.1-debian-bookworm-20260223-slim AS build
 
 ENV MIX_ENV=prod
-# Force EXLA to compile for CPU only — GPU is off-limits on the production
-# mini-PC (flaky GPU causes hard power-off under any intensive workload).
-# This MUST be set before mix deps.compile so the EXLA NIF is built without GPU support.
-ENV EXLA_TARGET=host
 
 # Install build dependencies (git for heroicons, build-essential for bcrypt NIF, nodejs for npm packages)
 RUN apt-get update -y && \
@@ -75,9 +71,6 @@ WORKDIR /app
 
 # Copy the release from the build stage
 COPY --from=build --chown=appuser:appuser /app/_build/prod/rel/slackex ./
-
-# Create models directory for Bumblebee cache (volume mount point)
-RUN mkdir -p /app/models && chown appuser:appuser /app/models
 
 USER appuser
 
