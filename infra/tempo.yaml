@@ -1,0 +1,37 @@
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+    pool:
+      max_workers: 10
+      queue_depth: 100
+
+  # 7-day retention
+  block:
+    retention: 168h
+
+metrics_generator:
+  processor:
+    service_graphs:
+      dimensions: ["service.name"]
+    span_metrics:
+      dimensions: ["service.name", "http.method", "http.route", "http.status_code"]
+  storage:
+    path: /var/tempo/metrics
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write

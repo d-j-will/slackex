@@ -1,0 +1,143 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "BEAM Memory",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "vm_memory_total_bytes", "legendFormat": "total" },
+        { "expr": "vm_memory_processes_bytes", "legendFormat": "processes" },
+        { "expr": "vm_memory_binary_bytes", "legendFormat": "binary" },
+        { "expr": "vm_memory_ets_bytes", "legendFormat": "ets" },
+        { "expr": "vm_memory_atom_bytes", "legendFormat": "atom" }
+      ]
+    },
+    {
+      "title": "Request Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(phoenix_endpoint_stop_duration_milliseconds_count[5m])",
+          "legendFormat": "req/s"
+        }
+      ]
+    },
+    {
+      "title": "Request Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(phoenix_endpoint_stop_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(phoenix_endpoint_stop_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(phoenix_endpoint_stop_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Ecto Query Time (avg)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(slackex_repo_query_total_time_milliseconds_sum[5m]) / rate(slackex_repo_query_total_time_milliseconds_count[5m])",
+          "legendFormat": "avg query time"
+        },
+        {
+          "expr": "rate(slackex_repo_query_queue_time_milliseconds_sum[5m]) / rate(slackex_repo_query_queue_time_milliseconds_count[5m])",
+          "legendFormat": "avg pool wait"
+        }
+      ]
+    },
+    {
+      "title": "Connected Users",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "slackex_presence_connected_users_count",
+          "legendFormat": "users"
+        }
+      ]
+    },
+    {
+      "title": "BEAM Processes",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "vm_system_counts_process_count",
+          "legendFormat": "processes"
+        }
+      ]
+    },
+    {
+      "title": "VM Run Queue",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "vm_total_run_queue_lengths_total", "legendFormat": "total" },
+        { "expr": "vm_total_run_queue_lengths_cpu", "legendFormat": "cpu" },
+        { "expr": "vm_total_run_queue_lengths_io", "legendFormat": "io" }
+      ]
+    },
+    {
+      "title": "Oban Queue Depth",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "slackex_oban_queue_depth_running",
+          "legendFormat": "{{queue}} running"
+        },
+        {
+          "expr": "slackex_oban_queue_depth_available",
+          "legendFormat": "{{queue}} available"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["slackex", "elixir", "phoenix"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Slackex Overview",
+  "uid": "slackex-overview"
+}
