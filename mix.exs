@@ -31,6 +31,14 @@ defmodule Slackex.MixProject do
           Mix.Tasks.Slackex.RotateKey
         ]
       ],
+      releases: [
+        slackex: [
+          applications: [
+            opentelemetry_exporter: :permanent,
+            opentelemetry: :temporary
+          ]
+        ]
+      ],
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/project.plt"},
         plt_add_apps: [:mix, :ex_unit],
@@ -96,6 +104,21 @@ defmodule Slackex.MixProject do
       # Telemetry
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
+
+      # OpenTelemetry — tracing & metrics
+      {:opentelemetry_api, "~> 1.4"},
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.8"},
+
+      # OTEL automatic instrumentation
+      {:opentelemetry_bandit, "~> 0.3"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_ecto, "~> 1.2"},
+      {:opentelemetry_oban, "~> 1.2"},
+      {:opentelemetry_req, "~> 1.0"},
+
+      # Prometheus metrics export
+      {:telemetry_metrics_prometheus_core, "~> 1.2"},
 
       # Assets
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
