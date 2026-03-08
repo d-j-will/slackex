@@ -15,6 +15,9 @@ defmodule Slackex.Application do
     OpentelemetryEcto.setup([:slackex, :repo])
     OpentelemetryOban.setup()
 
+    # Instrument all outbound Req HTTP calls (DeepInfra, link previews, etc.)
+    Req.default_options(plugins: [OpentelemetryReq])
+
     children =
       [
         SlackexWeb.Telemetry,
