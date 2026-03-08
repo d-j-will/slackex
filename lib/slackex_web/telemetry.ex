@@ -82,18 +82,59 @@ defmodule SlackexWeb.Telemetry do
       ),
 
       # VM Metrics
-      last_value("vm.memory.total", unit: {:byte, :kilobyte}),
+      last_value("vm.memory.total", unit: :byte),
+      last_value("vm.memory.processes", unit: :byte),
+      last_value("vm.memory.binary", unit: :byte),
+      last_value("vm.memory.ets", unit: :byte),
+      last_value("vm.memory.atom", unit: :byte),
+      last_value("vm.system_counts.process_count"),
+      last_value("vm.system_counts.port_count"),
       last_value("vm.total_run_queue_lengths.total"),
       last_value("vm.total_run_queue_lengths.cpu"),
-      last_value("vm.total_run_queue_lengths.io")
+      last_value("vm.total_run_queue_lengths.io"),
+
+      # Application Metrics
+      last_value("slackex.oban.queue_depth.running", tags: [:queue]),
+      last_value("slackex.oban.queue_depth.available", tags: [:queue]),
+      last_value("slackex.presence.connected_users.count")
     ]
   end
 
   defp periodic_measurements do
     [
-      # A module, function and arguments to be invoked periodically.
-      # This function must call :telemetry.execute/3 and a metric must be added above.
-      # {SlackexWeb, :count_users, []}
+      {__MODULE__, :measure_oban_queue_depth, []},
+      {__MODULE__, :measure_connected_users, []}
     ]
+  end
+
+  @doc false
+  def measure_oban_queue_depth do
+    for queue <- [:default, :notifications, :embeddings, :link_previews] do
+      case Oban.check_queue(queue: queue) do
+        %{running: running, available: available} ->
+          :telemetry.execute(
+            [:slackex, :oban, :queue_depth],
+            %{running: running, available: available},
+            %{queue: queue}
+          )
+
+        _ ->
+          :ok
+      end
+    end
+  rescue
+    _ -> :ok
+  end
+
+  @doc false
+  def measure_connected_users do
+    count =
+      SlackexWeb.Presence
+      |> Phoenix.Presence.list("users:lobby")
+      |> map_size()
+
+    :telemetry.execute([:slackex, :presence, :connected_users], %{count: count}, %{})
+  rescue
+    _ -> :ok
   end
 end
