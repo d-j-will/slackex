@@ -43,5 +43,8 @@ npm-debug.log
 # Dialyzer PLT files
 /priv/plts/
 
+# Git worktrees
+.worktrees/
+
 # Production secrets
 .env
