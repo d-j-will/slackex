@@ -72,6 +72,10 @@ config :slackex, :flags_admin_auth,
   username: "admin",
   password: "testpassword"
 
+# Disable OpenTelemetry tracing in tests to avoid noise
+config :opentelemetry,
+  traces_exporter: :none
+
 # Use deterministic stub for embeddings in tests
 config :slackex, :embedding_client, Slackex.Embeddings.StubClient
 

@@ -152,6 +152,12 @@ if config_env() == :prod do
     }
   end
 
+  # OpenTelemetry — allow runtime override of collector endpoint
+  if otel_endpoint = System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
+    config :opentelemetry_exporter,
+      otlp_endpoint: otel_endpoint
+  end
+
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",
     password:

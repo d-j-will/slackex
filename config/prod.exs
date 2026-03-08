@@ -28,5 +28,14 @@ config :slackex, :embedding_client, Slackex.Embeddings.OpenAIClient
 # Use real LLM API in production (DeepInfra with Gemma-3-4b-it by default)
 config :slackex, :llm_client, Slackex.AI.OpenAICompatibleClient
 
+# OpenTelemetry — export via OTLP to collector
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :otlp
+
+config :opentelemetry_exporter,
+  otlp_protocol: :http_protobuf,
+  otlp_endpoint: "http://otel-collector:4318"
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
