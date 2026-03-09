@@ -232,6 +232,12 @@ jobs:
             # Prune old backups, keep last 10
             ls -t /root/slackex/backups/pre_deploy_*.dump 2>/dev/null | tail -n +11 | xargs -r rm --
 
+            # Prune stale containers and images to free disk space before pulling
+            echo "=== Docker Cleanup ==="
+            docker image prune -af --filter "until=168h" 2>&1 || true
+            docker container prune -f 2>&1 || true
+            echo "Cleanup complete."
+
             # Start observability stack (must be running before app containers for OTEL export)
             echo "=== Observability Stack ==="
             echo "Pulling observability images..."
