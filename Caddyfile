@@ -18,6 +18,13 @@ davewil.dev {
     respond "Hello from tono!"
 }
 
+grafana.davewil.dev {
+    tls {
+        dns cloudflare ${CADDY_CF_TOKEN}
+    }
+    reverse_proxy grafana:3000
+}
+
 chat.davewil.dev {
     tls {
         dns cloudflare ${CADDY_CF_TOKEN}
