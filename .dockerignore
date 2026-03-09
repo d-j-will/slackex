@@ -34,5 +34,20 @@ Thumbs.db
 .nwave
 tmp
 
-# Docker compose (dev)
-docker-compose.yml
+# Docker compose files (not needed in image)
+docker-compose*.yml
+
+# Infrastructure configs (OTEL, Prometheus, Grafana, Tempo)
+infra
+
+# CI/CD
+.github
+
+# Claude / hooks
+.claude
+.worktrees
+CLAUDE.md
+
+# Deployment files
+Caddyfile
+scripts
