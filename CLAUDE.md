@@ -127,7 +127,19 @@ Incident precedent: v0.5.58-v0.5.61 -- streaming connected (200) but yielded zer
 
 **Contract tests are mandatory** when the codebase depends on library-generated names (metric names, event names, header values). These tests assert against actual library output at CI time, catching naming mismatches before they reach production dashboards or alerts.
 
-Incident precedent: Observability v1 — plan assumed `summary` metric type support, unit suffixes on metric names, and `attach/2` API for Req instrumentation. All three were wrong. Four bugs discovered during manual Grafana testing that should have been caught during planning. See `docs/runbooks/observability.md` § "Known Gotchas".
+**Infrastructure image pinning:** Never use `:latest` for Docker infrastructure images (Tempo, Prometheus, Grafana, OTEL Collector). Pin to specific versions. Major version changes break configs silently — there is no test to catch a YAML schema change in a Docker image.
+
+**No silent failure in periodic measurements:** Never `rescue _ -> :ok` in telemetry pollers or periodic measurement functions. If a measurement can't produce data, it must log a warning. Silent rescues hide broken metrics for days — the only symptom is a blank Grafana panel that nobody notices until they need the data.
+
+**Agent cross-checking is mandatory during feature development.** After implementation, dispatch a separate reviewer agent to verify:
+1. All library-dependent code matches actual library documentation (not assumptions)
+2. Config files reference correct field names for the pinned version of the tool
+3. Contract tests exist for every name/format the codebase depends on from an external library
+4. No silent error handling (`rescue _ -> :ok`) in periodic or background work
+
+Do not rely on the implementing agent to catch its own assumption errors — the same context that produced the assumption will not question it.
+
+Incident precedent: Observability v1 — plan assumed `summary` metric type support, unit suffixes on metric names, `attach/2` API for Req instrumentation, Oban `check_queue` return shape, and Tempo v2 config compatibility with `:latest` tag. Six bugs discovered during integration testing that should have been caught during planning or review. See `docs/runbooks/observability.md` § "Known Gotchas".
 
 ## General Workflow
 

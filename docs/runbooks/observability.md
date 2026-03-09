@@ -42,6 +42,46 @@ Prometheus (scrape) ◀────────┘
 - Changing UIDs after first boot requires deleting the Grafana volume: `docker volume rm <project>_grafana_data`
 - Dashboard JSON must reference datasources by `{"type": "prometheus", "uid": "prometheus"}` matching the provisioned UID
 
+### Oban.check_queue/1 return shape
+
+`Oban.check_queue(queue: :default)` returns `%{running: [%Job{}, ...], queue: "default", limit: 10, ...}`.
+
+- `running` is a **list of job structs**, not an integer count — use `length(running)`
+- There is **no `available` key** — don't pattern match on it
+- Pattern matching `%{running: running, available: available}` silently fails and emits zero metrics if rescued
+
+### Infrastructure image versions
+
+**Never use `:latest` for infra images.** Pin to specific versions:
+
+| Image | Pinned Version | Why |
+|-------|---------------|-----|
+| `grafana/tempo` | `2.7.2` | v3 broke config schema (removed `compactor`, `storage.block`) |
+| `prom/prometheus` | `latest` OK for now | Config schema stable across versions |
+| `grafana/grafana` | `latest` OK for now | Backwards-compatible provisioning |
+| `otel/opentelemetry-collector-contrib` | `latest` OK for now | Config schema stable |
+
+### Silent failures in periodic measurements
+
+Never `rescue _ -> :ok` in telemetry poller functions. If `Oban.check_queue/1` changes its return shape, a rescued pattern match will silently emit zero data. Log failures instead:
+
+```elixir
+# BAD: hides broken metrics
+rescue
+  _ -> :ok
+
+# GOOD: makes failures visible
+rescue
+  error -> Logger.warning("measure_oban_queue_depth failed: #{inspect(error)}")
+```
+
+### Git worktrees and asset builds
+
+Worktrees share git history but NOT compiled artifacts. When starting a new worktree:
+1. `npm install --prefix assets` — install JS dependencies
+2. `mix assets.build` — compile JS/CSS
+3. Without this, the app serves 404s for all JS/CSS assets
+
 ### /metrics endpoint security
 
 - In production, `/metrics` is restricted to private network IPs (10.x, 172.16-31.x, 192.168.x, 127.x)
