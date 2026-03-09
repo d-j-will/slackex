@@ -340,11 +340,20 @@ jobs:
               fi
             done
 
-            # Verify app can serve metrics
-            METRICS=$(docker compose -f docker-compose.prod.yml exec -T app1 curl -sf http://localhost:4000/metrics < /dev/null 2>&1) || echo "WARN: /metrics not reachable on app1"
-            echo "$METRICS" | grep -q "vm_memory_total" \
-              && echo "PASS: Prometheus metrics exporting" \
-              || echo "WARN: vm_memory_total not found in /metrics output"
+            # Verify app can serve metrics (retry up to 3 times — endpoint may still be booting)
+            METRICS_OK=0
+            for i in 1 2 3; do
+              METRICS=$(docker compose -f docker-compose.prod.yml exec -T app1 curl -sf http://localhost:4000/metrics < /dev/null 2>&1) && {
+                echo "$METRICS" | grep -q "vm_memory_total" && { METRICS_OK=1; break; }
+              }
+              echo "Metrics attempt $i: not ready, waiting 5s..."
+              sleep 5
+            done
+            if [ "$METRICS_OK" = "1" ]; then
+              echo "PASS: Prometheus metrics exporting"
+            else
+              echo "WARN: /metrics not reachable after 3 attempts (non-fatal)"
+            fi
 
             if [ "$SMOKE_FAILED" = "1" ]; then
               echo "DEPLOY SMOKE TEST FAILED — containers may need manual intervention"
