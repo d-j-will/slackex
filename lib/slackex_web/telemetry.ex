@@ -95,7 +95,6 @@ defmodule SlackexWeb.Telemetry do
 
       # Application Metrics
       last_value("slackex.oban.queue_depth.running", tags: [:queue]),
-      last_value("slackex.oban.queue_depth.available", tags: [:queue]),
       last_value("slackex.presence.connected_users.count")
     ]
   end
@@ -111,10 +110,10 @@ defmodule SlackexWeb.Telemetry do
   def measure_oban_queue_depth do
     for queue <- [:default, :notifications, :embeddings, :link_previews] do
       case Oban.check_queue(queue: queue) do
-        %{running: running, available: available} ->
+        %{running: running} when is_list(running) ->
           :telemetry.execute(
             [:slackex, :oban, :queue_depth],
-            %{running: running, available: available},
+            %{running: length(running)},
             %{queue: queue}
           )
 
