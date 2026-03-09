@@ -9,6 +9,15 @@ defmodule Slackex.Application do
   def start(_type, _args) do
     _ = Slackex.AI.Telemetry.attach_handlers()
 
+    # OpenTelemetry automatic instrumentation — must run before children start
+    OpentelemetryBandit.setup()
+    OpentelemetryPhoenix.setup(adapter: :bandit)
+    OpentelemetryEcto.setup([:slackex, :repo])
+    OpentelemetryOban.setup()
+
+    # Instrument all outbound Req HTTP calls (DeepInfra, link previews, etc.)
+    Req.default_options(plugins: [OpentelemetryReq])
+
     children =
       [
         SlackexWeb.Telemetry,

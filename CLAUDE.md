@@ -109,6 +109,38 @@ When using `Req.post(..., into: :self)` for streaming responses:
 
 Incident precedent: v0.5.58-v0.5.61 -- streaming connected (200) but yielded zero tokens because raw Mint messages never matched the receive patterns. See `docs/rca/2026-03-06-summarization-streaming-failure.md`.
 
+## Library Documentation Verification (NON-NEGOTIABLE)
+
+**Never assume library behavior from memory or training data.** Before writing any plan step, config snippet, or implementation that depends on library-specific behavior (metric naming, API shape, config options, supported types), you **must** fetch and verify against current documentation.
+
+**Required sources** (use at least one per library dependency):
+- `context7` MCP tool — resolve library ID then query docs
+- `WebFetch` — fetch hex.pm docs or GitHub README directly
+- `mix hex.info <package>` — verify version compatibility
+
+**What must be verified:**
+- Metric/event naming conventions (e.g., does the library append unit suffixes?)
+- Supported metric types or configuration options
+- Function signatures and required options (e.g., mandatory `buckets` for distribution metrics)
+- Setup/initialization APIs (e.g., `setup/0` vs `attach/2` vs plugin-based)
+- Wire format and protocol details
+
+**Contract tests are mandatory** when the codebase depends on library-generated names (metric names, event names, header values). These tests assert against actual library output at CI time, catching naming mismatches before they reach production dashboards or alerts.
+
+**Infrastructure image pinning:** Never use `:latest` for Docker infrastructure images (Tempo, Prometheus, Grafana, OTEL Collector). Pin to specific versions. Major version changes break configs silently — there is no test to catch a YAML schema change in a Docker image.
+
+**No silent failure in periodic measurements:** Never `rescue _ -> :ok` in telemetry pollers or periodic measurement functions. If a measurement can't produce data, it must log a warning. Silent rescues hide broken metrics for days — the only symptom is a blank Grafana panel that nobody notices until they need the data.
+
+**Agent cross-checking is mandatory during feature development.** After implementation, dispatch a separate reviewer agent to verify:
+1. All library-dependent code matches actual library documentation (not assumptions)
+2. Config files reference correct field names for the pinned version of the tool
+3. Contract tests exist for every name/format the codebase depends on from an external library
+4. No silent error handling (`rescue _ -> :ok`) in periodic or background work
+
+Do not rely on the implementing agent to catch its own assumption errors — the same context that produced the assumption will not question it.
+
+Incident precedent: Observability v1 — plan assumed `summary` metric type support, unit suffixes on metric names, `attach/2` API for Req instrumentation, Oban `check_queue` return shape, and Tempo v2 config compatibility with `:latest` tag. Six bugs discovered during integration testing that should have been caught during planning or review. See `docs/runbooks/observability.md` § "Known Gotchas".
+
 ## General Workflow
 
 When the user provides a specific URL, package name, or configuration detail, use it immediately rather than exploring the codebase first. Ask for missing specifics upfront before starting work.

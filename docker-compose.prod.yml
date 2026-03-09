@@ -23,6 +23,8 @@ x-app: &app-defaults
     LLM_API_KEY: "${LLM_API_KEY}"
     BUMBLEBEE_CACHE_DIR: "/app/models"
     EXLA_TARGET: "host"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+    OTEL_SERVICE_NAME: "slackex"
   volumes:
     - bumblebee_models:/app/models
   expose:
@@ -86,10 +88,72 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- Observability stack ---
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    restart: unless-stopped
+    mem_limit: 256m
+    volumes:
+      - ./infra/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - default
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    mem_limit: 256m
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=14d'
+      - '--storage.tsdb.retention.size=2GB'
+      - '--web.enable-remote-write-receiver'
+    networks:
+      - default
+
+  tempo:
+    image: grafana/tempo:2.7.2
+    restart: unless-stopped
+    mem_limit: 256m
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infra/tempo.yaml:/etc/tempo.yaml
+      - tempo_data:/var/tempo
+    networks:
+      - default
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - default
+
 volumes:
   pgdata:
   redisdata:
   bumblebee_models:
+  prometheus_data:
+  grafana_data:
+  tempo_data:
 
 networks:
   proxy:
