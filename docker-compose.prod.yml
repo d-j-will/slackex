@@ -118,7 +118,7 @@ services:
       - default
 
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.7.2
     restart: unless-stopped
     mem_limit: 256m
     command: ["-config.file=/etc/tempo.yaml"]
