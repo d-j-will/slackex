@@ -158,6 +158,14 @@ jobs:
 
           # Copy deployment files to the server (ensures they stay in sync with the repo)
           scp docker-compose.prod.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/docker-compose.prod.yml
+          # Copy observability infra configs (OTEL Collector, Prometheus, Tempo, Grafana)
+          ssh root@${{ secrets.DEPLOY_HOST }} "mkdir -p /root/slackex/infra/grafana/provisioning/datasources /root/slackex/infra/grafana/provisioning/dashboards /root/slackex/infra/grafana/dashboards"
+          scp infra/otel-collector-config.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/otel-collector-config.yaml
+          scp infra/prometheus.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/prometheus.yml
+          scp infra/tempo.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/tempo.yaml
+          scp infra/grafana/provisioning/datasources/datasources.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/datasources/datasources.yaml
+          scp infra/grafana/provisioning/dashboards/dashboard.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/dashboards/dashboard.yaml
+          scp infra/grafana/dashboards/slackex-overview.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/slackex-overview.json
           # Render Caddyfile template (substitute token) and deploy directly to the Caddy config path.
           # Do NOT use `import` directives — only the Caddyfile itself is bind-mounted into the
           # Caddy container; files written alongside it on the host are invisible inside.
@@ -223,6 +231,18 @@ jobs:
 
             # Prune old backups, keep last 10
             ls -t /root/slackex/backups/pre_deploy_*.dump 2>/dev/null | tail -n +11 | xargs -r rm --
+
+            # Start observability stack (must be running before app containers for OTEL export)
+            echo "=== Observability Stack ==="
+            echo "Pulling observability images..."
+            docker compose -f docker-compose.prod.yml pull otel-collector prometheus tempo grafana 2>&1
+            echo "Starting observability containers..."
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build otel-collector prometheus tempo grafana 2>&1
+            echo "Waiting for OTEL collector to be ready..."
+            sleep 5
+            docker compose -f docker-compose.prod.yml ps otel-collector 2>&1 | grep -q "Up" \
+              && echo "OTEL collector is running." \
+              || echo "WARN: OTEL collector may not be ready (app will retry connections)"
 
             # Pull new image via Compose (ensures Compose tracks the updated digest)
             echo "Pulling latest image..."
@@ -303,6 +323,22 @@ jobs:
             else
               echo "WARN: Cluster size is ${CLUSTER_SIZE:-unknown}, expected 2 (nodes may still be joining)"
             fi
+
+            # Verify observability stack
+            echo "=== Observability Check ==="
+            for SVC in otel-collector prometheus tempo grafana; do
+              if docker compose -f docker-compose.prod.yml ps "$SVC" 2>&1 | grep -q "Up"; then
+                echo "PASS: $SVC is running"
+              else
+                echo "WARN: $SVC is not running (non-fatal)"
+              fi
+            done
+
+            # Verify app can serve metrics
+            METRICS=$(docker compose -f docker-compose.prod.yml exec -T app1 curl -sf http://localhost:4000/metrics < /dev/null 2>&1) || echo "WARN: /metrics not reachable on app1"
+            echo "$METRICS" | grep -q "vm_memory_total" \
+              && echo "PASS: Prometheus metrics exporting" \
+              || echo "WARN: vm_memory_total not found in /metrics output"
 
             if [ "$SMOKE_FAILED" = "1" ]; then
               echo "DEPLOY SMOKE TEST FAILED — containers may need manual intervention"
