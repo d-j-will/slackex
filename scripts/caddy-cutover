@@ -87,8 +87,8 @@ info "Phase 3: Starting on test ports (8080/8443)..."
 ssh_cmd "cd /root/caddy && sed -i 's/\"80:80\"/\"8080:80\"/' docker-compose.yml && sed -i 's/\"443:443\"/\"8443:443\"/' docker-compose.yml"
 ssh_cmd "cd /root/caddy && docker compose up -d" || { error "Failed to start caddy-docker-proxy"; exit 1; }
 
-info "Waiting 15s for caddy-docker-proxy to discover containers..."
-sleep 15
+info "Waiting 90s for container discovery + ACME certificate issuance..."
+sleep 90
 
 # Show caddy logs for debugging
 info "Caddy-docker-proxy logs:"
@@ -104,7 +104,7 @@ for ROUTE in "chat.davewil.dev:/health" "grafana.davewil.dev:/" "davewil.dev:/";
   URI="${ROUTE#*:}"
   echo -n "  ${HOST}${URI} ... "
 
-  RESULT=$(ssh_cmd "curl -sk -o /dev/null -w '%{http_code}' -H 'Host: ${HOST}' 'https://localhost:8443${URI}'" 2>/dev/null) || RESULT="000"
+  RESULT=$(ssh_cmd "curl -sk -o /dev/null -w '%{http_code}' --resolve '${HOST}:8443:127.0.0.1' 'https://${HOST}:8443${URI}'" 2>/dev/null) || RESULT="000"
 
   if [[ "$RESULT" =~ ^(200|302)$ ]]; then
     echo -e "${GREEN}OK${NC} (HTTP ${RESULT})"
