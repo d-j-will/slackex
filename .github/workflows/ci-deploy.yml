@@ -148,7 +148,6 @@ jobs:
         env:
           FLAGS_ADMIN_USER: ${{ secrets.FLAGS_ADMIN_USER }}
           FLAGS_ADMIN_PASSWORD: ${{ secrets.FLAGS_ADMIN_PASSWORD }}
-          CADDY_CF_TOKEN: ${{ secrets.CADDY_CF_TOKEN }}
           EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
         run: |
           mkdir -p ~/.ssh
@@ -166,11 +165,11 @@ jobs:
           scp infra/grafana/provisioning/datasources/datasources.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/datasources/datasources.yaml
           scp infra/grafana/provisioning/dashboards/dashboard.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/dashboards/dashboard.yaml
           scp infra/grafana/dashboards/slackex-overview.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/slackex-overview.json
-          # Render Caddyfile template (substitute token) and deploy directly to the Caddy config path.
-          # Do NOT use `import` directives — only the Caddyfile itself is bind-mounted into the
-          # Caddy container; files written alongside it on the host are invisible inside.
-          sed "s|\${CADDY_CF_TOKEN}|${CADDY_CF_TOKEN}|g" Caddyfile > /tmp/Caddyfile.rendered
-          scp /tmp/Caddyfile.rendered root@${{ secrets.DEPLOY_HOST }}:/opt/caddy/Caddyfile
+          # Copy caddy-docker-proxy infra files to server (Dockerfile, compose, fallback Caddyfile)
+          ssh root@${{ secrets.DEPLOY_HOST }} "mkdir -p /root/caddy"
+          scp infra/caddy/Dockerfile root@${{ secrets.DEPLOY_HOST }}:/root/caddy/Dockerfile
+          scp infra/caddy/docker-compose.yml root@${{ secrets.DEPLOY_HOST }}:/root/caddy/docker-compose.yml
+          scp infra/caddy/Caddyfile root@${{ secrets.DEPLOY_HOST }}:/root/caddy/Caddyfile
 
           # Ensure FLAGS_ADMIN credentials and EMBEDDING_API_KEY are in the server .env
           ssh root@${{ secrets.DEPLOY_HOST }} "
@@ -286,10 +285,7 @@ jobs:
               && echo "Provisioning complete." \
               || echo "Model provisioning failed (non-fatal), continuing deploy..."
 
-            # Restart Caddy to pick up the new config (rendered and SCPed above).
-            # Full restart (not reload) clears stale DNS/connection state after container recreation.
-            echo "Restarting Caddy..."
-            docker restart caddy 2>&1 && echo "Caddy restarted." || echo "Caddy restart failed (non-fatal)"
+            # Caddy-docker-proxy auto-discovers container changes — no restart needed.
 
             # Verify containers are healthy
             echo "Waiting for containers to start..."
