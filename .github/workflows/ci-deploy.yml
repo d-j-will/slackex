@@ -179,6 +179,8 @@ jobs:
               echo 'CF_API_TOKEN=${CADDY_CF_TOKEN}' >> /root/caddy/.env
             chmod 600 /root/caddy/.env
           "
+          # Recreate caddy-proxy if compose config changed (certs cached in volume, instant restart)
+          ssh root@${{ secrets.DEPLOY_HOST }} "cd /root/caddy && docker compose up -d --force-recreate --no-build 2>&1 || echo 'caddy-proxy recreate failed (non-fatal)'"
 
           # Ensure FLAGS_ADMIN credentials and EMBEDDING_API_KEY are in the server .env
           ssh root@${{ secrets.DEPLOY_HOST }} "
