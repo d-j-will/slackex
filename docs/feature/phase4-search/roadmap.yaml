@@ -1,0 +1,128 @@
+roadmap:
+  project_id: phase4-search
+  created_at: '2026-03-04T17:12:11Z'
+  total_steps: 7
+  phases: 2
+phases:
+- id: '01'
+  name: 'Search Result Match Highlighting'
+  steps:
+  - id: 01-01
+    name: 'Add headline virtual field and ts_headline to FTS query'
+    criteria: >
+      Message schema has a :headline virtual field.
+      MessageSearch.text_search/3 returns messages with headline populated
+      via ts_headline('english', search_content, query, 'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15').
+      headline is nil when search_content is nil.
+      Test: text_search returns headline with <mark> tags around matching terms.
+    files_to_modify:
+    - lib/slackex/chat/message.ex
+    - lib/slackex/search/message_search.ex
+    - test/slackex/search/message_search_test.exs
+    dependencies: []
+    time_estimate: 30m
+  - id: 01-02
+    name: 'Add headline to semantic and hybrid search paths'
+    criteria: >
+      MessageSearch.semantic_search/3 returns messages with headline populated
+      via ts_headline with HighlightAll=true using the original query text.
+      MessageSearch.hybrid_search/3 preserves headline through RRF merge,
+      preferring the FTS headline when both exist.
+      Test: semantic_search returns headline; hybrid merge preserves headline.
+    files_to_modify:
+    - lib/slackex/search/message_search.ex
+    - test/slackex/search/message_search_test.exs
+    dependencies: ['01-01']
+    time_estimate: 25m
+  - id: 01-03
+    name: 'Sanitize headlines and render in SearchComponent'
+    criteria: >
+      sanitize_headline/1 escapes all HTML then restores only <mark></mark>.
+      SearchComponent renders headline with Phoenix.HTML.raw/1 when present,
+      falls back to truncated content when nil.
+      CSS styles mark element with warning-color background.
+      Test: sanitize_headline strips <script> but preserves <mark>;
+      component renders highlighted snippet.
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/search_component.ex
+    - assets/css/app.css
+    - test/slackex_web/live/chat_live/search_component_test.exs
+    dependencies: ['01-02']
+    time_estimate: 25m
+- id: '02'
+  name: 'Scroll-to-Message Navigation'
+  steps:
+  - id: 02-01
+    name: 'Add list_messages_around query to Chat context'
+    criteria: >
+      Chat.list_messages_around/3 loads half_page messages before target_id,
+      the target itself, and half_page messages after, using UNION ALL.
+      Results ordered by id ASC with sender preloaded.
+      Returns empty list if target_id does not exist.
+      Test: returns centered window around target; handles edge cases
+      (target is newest message, target is oldest, target not found).
+    files_to_modify:
+    - lib/slackex/chat/chat.ex
+    - test/slackex/chat/chat_test.exs
+    dependencies: []
+    time_estimate: 30m
+  - id: 02-02
+    name: 'Add HistoryLoader.around/3 and wire into enter_channel'
+    criteria: >
+      HistoryLoader.around/3 delegates to Chat.list_messages_around/3,
+      bypassing cache. enter_channel/4 and enter_dm/2 accept optional
+      target_message_id and use around/3 when present instead of
+      fetch_initial_messages/2.
+      Test: HistoryLoader.around returns messages centered on target.
+    files_to_modify:
+    - lib/slackex/search/history_loader.ex
+    - lib/slackex_web/live/chat_live/index.ex
+    - test/slackex/search/history_loader_test.exs
+    dependencies: ['02-01']
+    time_estimate: 25m
+  - id: 02-03
+    name: 'Add target query param to jump_to_message and handle_params'
+    criteria: >
+      jump_to_message handlers push_patch with ?target=message_id query param.
+      New handle_params clause matches target param, loads messages around
+      target, resets stream, and calls push_event("scroll_to_message", %{id: dom_id}).
+      Existing handle_params without target param unchanged.
+      Test: handle_params with target loads around-window and pushes scroll event.
+    files_to_modify:
+    - lib/slackex_web/live/chat_live/index.ex
+    - lib/slackex_web/live/chat_live/search_component.ex
+    - test/slackex_web/live/chat_live/index_test.exs
+    dependencies: ['02-02']
+    time_estimate: 30m
+  - id: 02-04
+    name: 'Extend MessageList JS hook with scroll_to_message and highlight-flash'
+    criteria: >
+      MessageList hook handles scroll_to_message event via handleEvent,
+      scrolls target element into view with behavior smooth and block center
+      inside requestAnimationFrame. Adds highlight-flash CSS class that
+      fades from warning-color background to transparent over 2 seconds.
+      Test: JS hook file exports handleEvent registration; CSS keyframes exist.
+    files_to_modify:
+    - assets/js/hooks/message_list.js
+    - assets/css/app.css
+    - test/slackex_web/live/chat_live/search_component_test.exs
+    dependencies: ['02-03']
+    time_estimate: 20m
+implementation_scope:
+  source_directories:
+  - lib/slackex/chat/
+  - lib/slackex/search/
+  - lib/slackex_web/live/chat_live/
+  - assets/js/hooks/
+  - assets/css/
+  test_directories:
+  - test/slackex/chat/
+  - test/slackex/search/
+  - test/slackex_web/live/chat_live/
+  excluded_patterns:
+  - _build/**
+  - deps/**
+validation:
+  status: approved
+  reviewer: orchestrator-auto-approved
+  approved_at: '2026-03-04T17:15:00Z'
