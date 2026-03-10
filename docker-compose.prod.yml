@@ -36,6 +36,7 @@ x-app: &app-defaults
 services:
   app1:
     <<: *app-defaults
+    container_name: slackex-app-1
     hostname: app1
     labels:
       caddy: chat.davewil.dev
@@ -57,6 +58,7 @@ services:
 
   app2:
     <<: *app-defaults
+    container_name: slackex-app-2
     hostname: app2
     labels:
       caddy: chat.davewil.dev
