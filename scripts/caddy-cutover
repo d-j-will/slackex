@@ -92,7 +92,7 @@ sleep 90
 
 # Show caddy logs for debugging
 info "Caddy-docker-proxy logs:"
-ssh_cmd "docker logs caddy-caddy-proxy-1 2>&1 | tail -15"
+ssh_cmd "docker logs caddy-proxy 2>&1 | tail -15"
 echo ""
 
 # Verify routes
@@ -118,7 +118,7 @@ echo ""
 
 if [ "$VERIFY_FAILED" = "1" ]; then
   error "Test-port verification failed. Inspect with:"
-  echo "  ssh root@${DEPLOY_HOST} 'docker logs caddy-caddy-proxy-1'"
+  echo "  ssh root@${DEPLOY_HOST} 'docker logs caddy-proxy'"
   echo "  ssh root@${DEPLOY_HOST} 'cd /root/caddy && docker compose down'"
   echo ""
   warn "Restoring docker-compose.yml to production ports before exiting..."
@@ -188,7 +188,7 @@ if [ "$PROD_FAILED" = "1" ]; then
   error "Production verification failed!"
   echo ""
   echo "  To rollback: ssh root@${DEPLOY_HOST} 'cd /root/caddy && docker compose down && docker start caddy'"
-  echo "  To debug:    ssh root@${DEPLOY_HOST} 'docker logs caddy-caddy-proxy-1'"
+  echo "  To debug:    ssh root@${DEPLOY_HOST} 'docker logs caddy-proxy'"
   exit 1
 fi
 

@@ -1,5 +1,6 @@
 services:
   caddy-proxy:
+    container_name: caddy-proxy
     build: .
     restart: unless-stopped
     ports:
