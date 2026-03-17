@@ -14,11 +14,16 @@ defmodule Slackex.Links.MetadataParser do
   """
   @spec fetch_and_parse(String.t()) :: {:ok, map()} | {:error, String.t()}
   def fetch_and_parse(url) do
-    case Req.get(url,
-           receive_timeout: @fetch_timeout,
-           connect_options: [timeout: @fetch_timeout],
-           max_redirects: 3,
-           decode_body: false
+    extra_opts = Application.get_env(:slackex, :metadata_parser_req_options, [])
+
+    case Req.get(
+           url,
+           [
+             receive_timeout: @fetch_timeout,
+             connect_options: [timeout: @fetch_timeout],
+             max_redirects: 3,
+             decode_body: false
+           ] ++ extra_opts
          ) do
       {:ok, %{status: status, body: body}} when status in 200..299 ->
         {:ok, parse_html(body, url)}

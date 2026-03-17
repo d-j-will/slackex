@@ -6,10 +6,14 @@ defmodule SlackexWeb.ChatLive.E2ETest do
     mix test --include e2e
   """
   use SlackexWeb.ConnCase, async: false
+  use Oban.Testing, repo: Slackex.Repo
 
   import Slackex.Factory
 
   alias Slackex.Chat
+  alias Slackex.Links.LinkPreview
+  alias Slackex.Messaging.Envelope
+  alias Slackex.Repo
 
   @moduletag :e2e
 
@@ -73,6 +77,92 @@ defmodule SlackexWeb.ChatLive.E2ETest do
       # shows the "Message Requests" section — verifying the full producer → consumer wiring.
       assert_eventually(fn ->
         render(bob_view) =~ "Message Requests"
+      end)
+    end
+  end
+
+  describe "link preview pipeline" do
+    test "pipeline:events → LinkPreviewWorker runs → preview persisted → LiveView updates via PubSub",
+         %{conn: conn} do
+      # Ensure the feature flag is enabled within the sandbox for this test.
+      FunWithFlags.enable(:link_previews)
+      on_exit(fn -> FunWithFlags.disable(:link_previews) end)
+
+      # Stub MetadataParser HTTP for this test only — avoids real network calls.
+      # Uses a module plug (not Req.Test ownership) so it works across globally
+      # supervised GenServer processes like LinkPreviewListener.
+      Application.put_env(:slackex, :metadata_parser_req_options,
+        plug: Slackex.Test.MetadataParserStub
+      )
+
+      on_exit(fn ->
+        Application.delete_env(:slackex, :metadata_parser_req_options)
+      end)
+
+      #
+      # Full pipeline path proven:
+      #   pipeline:events → LinkPreviewListener → LinkPreviewWorker (inline Oban)
+      #   → MetadataParser (stubbed HTTP) → LinkPreview record
+      #   → link_previews:{id} PubSub → LiveView re-render.
+      alice = insert(:user)
+      channel = insert(:channel) |> with_subscription(alice)
+
+      # Insert the message directly — bypasses the async ChannelServer batch writer.
+      message =
+        insert(:message,
+          content: "Check out https://example.com for details",
+          channel: channel,
+          sender: alice
+        )
+
+      # Mount the LiveView on the channel so it subscribes to channel PubSub.
+      alice_conn = log_in_user(conn, alice)
+      {:ok, alice_view, _html} = live(alice_conn, ~p"/chat/#{channel.slug}")
+
+      # Broadcast a message.new envelope on the channel topic. The LiveView handles
+      # this in handle_info({:envelope, %{event: "message.new", ...}}) and subscribes
+      # to "link_previews:{message.id}" — required for the re-render assertion below.
+      envelope =
+        Envelope.wrap(
+          "message.new",
+          {:channel, channel.id},
+          Map.merge(message, %{sender: alice})
+        )
+
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "channel:#{channel.id}",
+        {:envelope, envelope}
+      )
+
+      # Give the LiveView time to process the envelope and subscribe to the preview topic.
+      assert_eventually(fn ->
+        render(alice_view) =~ "https://example.com"
+      end)
+
+      # Broadcast pipeline:events to the global LinkPreviewListener — proves
+      # the full producer → consumer wiring exists.
+      Phoenix.PubSub.broadcast(
+        Slackex.PubSub,
+        "pipeline:events",
+        {:messages_persisted, [message.id]}
+      )
+
+      # Wait for the LinkPreviewListener GenServer to finish processing the event.
+      # :sys.get_state/1 blocks until the GenServer's mailbox is drained.
+      listener_pid = Process.whereis(Slackex.Links.LinkPreviewListener)
+      if listener_pid, do: :sys.get_state(listener_pid, 2_000)
+
+      # The LinkPreview record must be persisted with status "fetched"
+      preview = Repo.get_by!(LinkPreview, message_id: message.id)
+      assert preview.status == "fetched"
+      assert preview.url == "https://example.com"
+      assert preview.title == "Test Page Title"
+
+      # The LiveView must receive the {:link_previews_ready, ...} PubSub broadcast
+      # and re-render with preview data — verifying the full consumer wiring.
+      assert_eventually(fn ->
+        render(alice_view) =~ "Test Page Title"
       end)
     end
   end
