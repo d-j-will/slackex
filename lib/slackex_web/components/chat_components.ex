@@ -539,38 +539,51 @@ defmodule SlackexWeb.ChatComponents do
 
   def link_preview_card(assigns) do
     ~H"""
-    <a
-      href={@preview.url}
-      target="_blank"
-      rel="noopener noreferrer ugc"
-      class="block max-w-md rounded-lg border border-base-300 bg-base-100 hover:bg-base-200 transition-colors overflow-hidden"
-    >
-      <img
-        :if={@preview.image_url}
-        src={@preview.image_url}
-        alt=""
-        class="w-full h-32 object-cover"
-        loading="lazy"
-      />
-      <div class="p-3">
-        <div :if={@preview.site_name} class="text-xs text-base-content/50 mb-1">
+    <%= case @preview.status do %>
+      <% "pending" -> %>
+        <div class="block max-w-md rounded-lg border border-base-300 bg-base-100 overflow-hidden animate-pulse">
+          <div class="skeleton h-32 w-full rounded-none"></div>
+          <div class="p-3 space-y-2">
+            <div class="skeleton h-3 w-1/4"></div>
+            <div class="skeleton h-4 w-3/4"></div>
+            <div class="skeleton h-3 w-full"></div>
+          </div>
+        </div>
+      <% "fetched" -> %>
+        <a
+          href={@preview.url}
+          target="_blank"
+          rel="noopener noreferrer ugc"
+          class="block max-w-md rounded-lg border border-base-300 bg-base-100 hover:bg-base-200 transition-colors overflow-hidden"
+        >
           <img
-            :if={@preview.favicon_url}
-            src={@preview.favicon_url}
+            :if={@preview.image_url}
+            src={@preview.image_url}
             alt=""
-            class="inline-block w-4 h-4 mr-1 align-text-bottom"
+            class="w-full h-32 object-cover"
             loading="lazy"
           />
-          {@preview.site_name}
-        </div>
-        <div :if={@preview.title} class="text-sm font-semibold text-primary line-clamp-2">
-          {@preview.title}
-        </div>
-        <div :if={@preview.description} class="text-xs text-base-content/70 mt-1 line-clamp-2">
-          {@preview.description}
-        </div>
-      </div>
-    </a>
+          <div class="p-3">
+            <div :if={@preview.site_name} class="text-xs text-base-content/50 mb-1">
+              <img
+                :if={@preview.favicon_url}
+                src={@preview.favicon_url}
+                alt=""
+                class="inline-block w-4 h-4 mr-1 align-text-bottom"
+                loading="lazy"
+              />
+              {@preview.site_name}
+            </div>
+            <div :if={@preview.title} class="text-sm font-semibold text-primary line-clamp-2">
+              {@preview.title}
+            </div>
+            <div :if={@preview.description} class="text-xs text-base-content/70 mt-1 line-clamp-2">
+              {@preview.description}
+            </div>
+          </div>
+        </a>
+      <% _ -> %>
+    <% end %>
     """
   end
 

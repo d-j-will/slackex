@@ -80,6 +80,58 @@ defmodule SlackexWeb.ChatComponentsTest do
     end
   end
 
+  # ── link_preview_card ─────────────────────────────────────────────────
+
+  describe "link_preview_card" do
+    defp fetched_preview_fixture(overrides \\ %{}) do
+      Map.merge(
+        %{
+          status: "fetched",
+          url: "https://example.com/article",
+          title: "Example Article",
+          description: "A great article about testing",
+          site_name: "Example",
+          image_url: "https://example.com/og.jpg",
+          favicon_url: "https://example.com/favicon.ico"
+        },
+        overrides
+      )
+    end
+
+    test "renders fetched preview as a clickable link with title and description" do
+      html =
+        render_component(&ChatComponents.link_preview_card/1,
+          preview: fetched_preview_fixture()
+        )
+
+      assert html =~ ~s(href="https://example.com/article")
+      assert html =~ "Example Article"
+      assert html =~ "A great article about testing"
+      assert html =~ "Example"
+    end
+
+    test "renders pending preview as a skeleton placeholder without a link" do
+      html =
+        render_component(&ChatComponents.link_preview_card/1,
+          preview: %{status: "pending", url: "https://example.com"}
+        )
+
+      assert html =~ "animate-pulse"
+      assert html =~ "skeleton"
+      refute html =~ ~s(href=)
+    end
+
+    test "renders nothing for blocked status" do
+      html =
+        render_component(&ChatComponents.link_preview_card/1,
+          preview: %{status: "blocked", url: "https://example.com"}
+        )
+
+      refute html =~ "animate-pulse"
+      refute html =~ ~s(href=)
+    end
+  end
+
   # ── dm_list_item ──────────────────────────────────────────────────────
 
   describe "dm_list_item bold styling" do
