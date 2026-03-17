@@ -22,8 +22,6 @@ defmodule Slackex.Chat.MessageGrouping do
   - Older → "March 15 at 14:30"
   """
 
-  alias Slackex.Chat.Message
-
   @group_window_seconds 5 * 60
   @divider_gap_seconds 30 * 60
 
