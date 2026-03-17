@@ -98,7 +98,7 @@ jobs:
         run: mix test --only contract
 
       - name: E2E tests
-        run: mix test --include e2e
+        run: mix test --only e2e
 
       - name: Hex audit
         run: mix hex.audit
