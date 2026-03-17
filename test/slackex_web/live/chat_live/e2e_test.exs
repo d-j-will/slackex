@@ -12,6 +12,7 @@ defmodule SlackexWeb.ChatLive.E2ETest do
 
   alias Slackex.Chat
   alias Slackex.Links.LinkPreview
+  alias Slackex.Messaging
   alias Slackex.Messaging.Envelope
   alias Slackex.Repo
 
@@ -164,6 +165,49 @@ defmodule SlackexWeb.ChatLive.E2ETest do
       assert_eventually(fn ->
         render(alice_view) =~ "Test Page Title"
       end)
+    end
+  end
+
+  describe "thread dual broadcast" do
+    test "reply triggers channel broadcast (reply_count_updated) and thread topic broadcast", %{
+      conn: conn
+    } do
+      # Enable the :threads feature flag for this test.
+      FunWithFlags.enable(:threads)
+      on_exit(fn -> FunWithFlags.disable(:threads) end)
+
+      alice = insert(:user)
+      bob = insert(:user)
+      channel = insert(:channel) |> with_subscription(alice) |> with_subscription(bob)
+
+      # Insert the parent message directly so it is immediately visible in the DB
+      # (bypasses the async ChannelServer batch writer).
+      parent_message = insert(:message, channel: channel, sender: alice)
+
+      # Mount Alice's LiveView — she will receive the channel-topic broadcasts.
+      alice_conn = log_in_user(conn, alice)
+      {:ok, alice_view, _html} = live(alice_conn, ~p"/chat/#{channel.slug}")
+
+      # Subscribe the test process directly to the thread topic so we can assert
+      # the thread.reply broadcast arrives without opening the thread panel UI.
+      Phoenix.PubSub.subscribe(Slackex.PubSub, "thread:#{parent_message.id}")
+
+      # Bob sends a reply via the Messaging facade — this proves the full
+      # producer path (send_reply → dual broadcast) rather than faking an event.
+      assert {:ok, _reply} =
+               Messaging.send_reply(channel.id, :channel, bob.id, parent_message.id, "hey alice!")
+
+      # 1. Channel topic broadcast: message.reply_count_updated causes the LiveView
+      #    to stream-insert the updated parent, which renders "1 reply".
+      assert_eventually(fn ->
+        render(alice_view) =~ "1 reply"
+      end)
+
+      # 2. Thread topic broadcast: the test process receives {:envelope, thread_envelope}
+      #    on "thread:#{parent_message.id}" — proving the thread topic wiring exists.
+      assert_receive {:envelope, %{event: "thread.reply", payload: payload}}, 5_000
+      assert payload.parent_message_id == parent_message.id
+      assert payload.content == "hey alice!"
     end
   end
 
