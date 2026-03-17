@@ -107,12 +107,13 @@ defmodule Slackex.Chat.MessageGrouping do
   # ---------------------------------------------------------------------------
 
   defp within_group_window?(incoming_ts, last_ts) do
-    diff = DateTime.diff(incoming_ts, last_ts, :second)
+    diff = DateTime.diff(to_datetime(incoming_ts), to_datetime(last_ts), :second)
     diff < @group_window_seconds
   end
 
   defp compute_divider_info(incoming, last, today) do
-    gap_seconds = DateTime.diff(incoming.inserted_at, last.inserted_at, :second)
+    gap_seconds =
+      DateTime.diff(to_datetime(incoming.inserted_at), to_datetime(last.inserted_at), :second)
 
     if gap_seconds >= @divider_gap_seconds do
       label = format_divider_label(incoming.inserted_at, today)
@@ -122,9 +123,13 @@ defmodule Slackex.Chat.MessageGrouping do
     end
   end
 
+  defp to_datetime(%DateTime{} = dt), do: dt
+  defp to_datetime(%NaiveDateTime{} = ndt), do: DateTime.from_naive!(ndt, "Etc/UTC")
+
   defp format_divider_label(ts, today) do
-    msg_date = DateTime.to_date(ts)
-    time_str = Calendar.strftime(ts, "%H:%M")
+    dt = to_datetime(ts)
+    msg_date = DateTime.to_date(dt)
+    time_str = Calendar.strftime(dt, "%H:%M")
 
     cond do
       msg_date == today ->
@@ -134,7 +139,7 @@ defmodule Slackex.Chat.MessageGrouping do
         "Yesterday at #{time_str}"
 
       true ->
-        date_str = Calendar.strftime(ts, "%B %-d")
+        date_str = Calendar.strftime(dt, "%B %-d")
         "#{date_str} at #{time_str}"
     end
   end

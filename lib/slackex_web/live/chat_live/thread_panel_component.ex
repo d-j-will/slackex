@@ -2,6 +2,7 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
   use SlackexWeb, :live_component
 
   alias Slackex.Chat
+  alias Slackex.Chat.MessageGrouping
 
   import SlackexWeb.ChatComponents
 
@@ -19,7 +20,10 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
   end
 
   def update(assigns, socket) do
-    replies = Chat.list_thread(assigns.parent_message.id)
+    replies =
+      assigns.parent_message.id
+      |> Chat.list_thread()
+      |> MessageGrouping.annotate()
 
     {:ok,
      socket
@@ -64,11 +68,17 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
         <div :if={@replies == []} class="text-center text-base-content/50 py-8 text-sm">
           No replies yet. Start the conversation!
         </div>
-        <.message_bubble
-          :for={reply <- @replies}
-          message={reply}
-          current_user_id={@current_user.id}
-        />
+        <div :for={reply <- @replies}>
+          <.time_divider
+            :if={Map.get(reply, :show_divider, false)}
+            label={Map.get(reply, :divider_label) || ""}
+          />
+          <.message_bubble
+            message={reply}
+            current_user_id={@current_user.id}
+            grouped={Map.get(reply, :grouped, false)}
+          />
+        </div>
       </div>
 
       <div class="px-4 py-3 border-t border-base-300">

@@ -129,11 +129,27 @@ defmodule SlackexWeb.ChatComponents do
     ]
   end
 
+  # ────────────────────────── Time Divider ─────────────────────────────────
+
+  @doc "Renders a time separator between message groups."
+  attr :label, :string, required: true
+
+  def time_divider(assigns) do
+    ~H"""
+    <div class="flex items-center gap-3 my-4">
+      <div class="flex-1 border-t border-base-300"></div>
+      <span class="text-xs text-base-content/50 font-medium whitespace-nowrap">{@label}</span>
+      <div class="flex-1 border-t border-base-300"></div>
+    </div>
+    """
+  end
+
   # ────────────────────────── Message Bubble ───────────────────────────────
 
   @doc "Renders a single message with sender avatar, name, timestamp, and content."
   attr :message, :map, required: true
   attr :current_user_id, :integer, required: true
+  attr :grouped, :boolean, default: false
   attr :show_hover_actions, :boolean, default: false
   attr :in_dm, :boolean, default: false
   attr :editing_message_id, :integer, default: nil
@@ -169,12 +185,23 @@ defmodule SlackexWeb.ChatComponents do
       )
 
     ~H"""
-    <div class="group relative flex gap-3 px-2 py-1 hover:bg-base-200/50 rounded-lg transition-colors">
+    <div class={[
+      "group relative flex gap-3 px-2 hover:bg-base-200/50 rounded-lg transition-colors",
+      if(@grouped, do: "py-0.5 mt-0.5", else: "py-1 mt-1")
+    ]}>
       <div class="flex-shrink-0 pt-0.5">
-        <.avatar user={@sender} size="md" />
+        <%= if @grouped do %>
+          <div class="w-10 shrink-0 flex items-center justify-center">
+            <span class="hidden group-hover:inline text-[10px] text-base-content/40">
+              {Calendar.strftime(@message.inserted_at, "%H:%M")}
+            </span>
+          </div>
+        <% else %>
+          <.avatar user={@sender} size="md" />
+        <% end %>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="flex items-baseline gap-2">
+        <div class={["flex items-baseline gap-2", @grouped && "hidden"]}>
           <span class="font-semibold text-sm">{@sender_name}</span>
           <time class="text-xs text-base-content/40">{@time}</time>
         </div>
@@ -481,9 +508,14 @@ defmodule SlackexWeb.ChatComponents do
       class="flex-1 overflow-y-auto px-2 py-4"
     >
       <div :for={{dom_id, message} <- @streams.messages} id={dom_id}>
+        <.time_divider
+          :if={Map.get(message, :show_divider, false)}
+          label={Map.get(message, :divider_label) || ""}
+        />
         <.message_bubble
           message={message}
           current_user_id={@current_user_id}
+          grouped={Map.get(message, :grouped, false)}
           in_dm={@in_dm}
           editing_message_id={@editing_message_id}
           current_user_role={@current_user_role}
