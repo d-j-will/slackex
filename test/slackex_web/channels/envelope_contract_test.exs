@@ -3,8 +3,9 @@ defmodule SlackexWeb.Channels.EnvelopeContractTest do
   Contract tests for the versioned envelope protocol.
 
   These tests verify that the realtime channel protocol maintains its shape
-  guarantees for client consumers. Tagged `:contract` — excluded from the
-  default test run; use `mix test --include contract` to run them explicitly.
+  guarantees for client consumers. Tagged :contract — runs in the default
+  test suite AND as an isolated CI step for visibility. These tests assert
+  on wire format that external consumers depend on.
   """
 
   use SlackexWeb.ChannelCase, async: false

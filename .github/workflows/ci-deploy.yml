@@ -94,6 +94,12 @@ jobs:
       - name: Tests
         run: mix test --warnings-as-errors
 
+      - name: Contract tests
+        run: mix test --only contract
+
+      - name: E2E tests
+        run: mix test --include e2e
+
       - name: Hex audit
         run: mix hex.audit
 
