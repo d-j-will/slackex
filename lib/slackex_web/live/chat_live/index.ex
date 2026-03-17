@@ -110,6 +110,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:summary_state, :idle)
      |> assign(:summary_error, nil)
      |> assign(:active_summary_task, nil)
+     |> assign(:last_message, nil)
      |> stream(:messages, [])}
   end
 
@@ -742,6 +743,17 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_info({:envelope, %{event: "message.new", payload: message} = envelope}, socket) do
     if message_for_active_conversation?(envelope, socket) do
       message = enrich_message(message)
+      last = socket.assigns.last_message
+
+      grouped = Slackex.Chat.MessageGrouping.should_group?(message, last)
+      {show_divider, divider_label} = Slackex.Chat.MessageGrouping.divider_info(message, last)
+
+      message =
+        Map.merge(message, %{
+          grouped: grouped,
+          show_divider: show_divider,
+          divider_label: divider_label
+        })
 
       _ =
         if socket.assigns.link_previews_enabled do
@@ -750,6 +762,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
       socket =
         socket
+        |> assign(:last_message, message)
         |> stream_insert(:messages, message)
         |> maybe_mark_as_read(message)
 
@@ -776,6 +789,14 @@ defmodule SlackexWeb.ChatLive.Index do
       ) do
     if message_for_active_conversation?(envelope, socket) do
       deleted_message = apply_delete_to_stream(payload)
+
+      socket =
+        if socket.assigns.last_message && socket.assigns.last_message.id == deleted_message.id do
+          assign(socket, :last_message, deleted_message)
+        else
+          socket
+        end
+
       {:noreply, stream_insert(socket, :messages, deleted_message)}
     else
       {:noreply, socket}
@@ -1223,6 +1244,7 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   defp prepend_older_messages(messages, socket) do
+    messages = Slackex.Chat.MessageGrouping.annotate(messages)
     new_oldest = List.first(messages).id
 
     socket =
@@ -1351,6 +1373,8 @@ defmodule SlackexWeb.ChatLive.Index do
   defp oldest_message_id([]), do: nil
 
   defp assign_conversation_state(socket, messages) do
+    messages = Slackex.Chat.MessageGrouping.annotate(messages)
+
     previews =
       if socket.assigns.link_previews_enabled do
         message_ids = Enum.map(messages, & &1.id)
@@ -1364,6 +1388,7 @@ defmodule SlackexWeb.ChatLive.Index do
     |> assign(:oldest_message_id, oldest_message_id(messages))
     |> assign(:has_more_messages, length(messages) >= @message_page_size)
     |> assign(:link_previews, previews)
+    |> assign(:last_message, List.last(messages))
     |> stream(:messages, messages, reset: true)
   end
 

@@ -77,8 +77,8 @@ defmodule Slackex.Chat.MessageGrouping do
 
   def should_group?(incoming, last) do
     incoming.sender_id == last.sender_id and
-      is_nil(last.deleted_at) and
-      is_nil(incoming.parent_message_id) and
+      is_nil(Map.get(last, :deleted_at)) and
+      is_nil(Map.get(incoming, :parent_message_id)) and
       within_group_window?(incoming.inserted_at, last.inserted_at)
   end
 
