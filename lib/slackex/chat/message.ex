@@ -26,6 +26,11 @@ defmodule Slackex.Chat.Message do
     field :headline, :string, virtual: true
     field :similarity, :float, virtual: true
     field :search_score, :float, virtual: true
+
+    # Message grouping annotations (set by MessageGrouping, not persisted)
+    field :grouped, :boolean, virtual: true, default: false
+    field :show_divider, :boolean, virtual: true, default: false
+    field :divider_label, :string, virtual: true
   end
 
   def changeset(message, attrs) do
