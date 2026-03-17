@@ -38,7 +38,7 @@ defmodule Slackex.Chat.MessageGrouping do
   - `:today` — override the current date (a `Date`) used for divider label generation.
     Defaults to `Date.utc_today/0`. Useful in tests.
   """
-  @spec annotate([Message.t()], keyword()) :: [Message.t()]
+  @spec annotate([map()], keyword()) :: [map()]
   def annotate(messages, opts \\ [])
 
   def annotate([], _opts), do: []
@@ -72,7 +72,7 @@ defmodule Slackex.Chat.MessageGrouping do
 
   Returns `false` when `last_message` is `nil` (i.e. no prior context is available).
   """
-  @spec should_group?(Message.t(), Message.t() | nil) :: boolean()
+  @spec should_group?(map(), map() | nil) :: boolean()
   def should_group?(_incoming, nil), do: false
 
   def should_group?(incoming, last) do
@@ -92,7 +92,7 @@ defmodule Slackex.Chat.MessageGrouping do
   - `:today` — override the current date (`Date`) for label generation. Defaults to
     `Date.utc_today/0`.
   """
-  @spec divider_info(Message.t(), Message.t() | nil, keyword()) :: {boolean(), String.t() | nil}
+  @spec divider_info(map(), map() | nil, keyword()) :: {boolean(), String.t() | nil}
   def divider_info(incoming, last, opts \\ [])
 
   def divider_info(_incoming, nil, _opts), do: {false, nil}
