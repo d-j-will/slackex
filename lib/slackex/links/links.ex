@@ -17,7 +17,7 @@ defmodule Slackex.Links do
   def list_previews_for_messages(message_ids) do
     from(lp in LinkPreview,
       where: lp.message_id in ^message_ids,
-      where: lp.status == "fetched",
+      where: lp.status in ["fetched", "pending"],
       order_by: [asc: lp.id]
     )
     |> Repo.all()
