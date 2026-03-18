@@ -53,7 +53,7 @@ defmodule Slackex.DataCase do
       #    the sandbox connection. terminate/2 does a synchronous DB flush —
       #    if the sandbox is revoked first, the flush fails with an EXIT
       #    and causes intermittent test failures.
-      shutdown_channel_servers()
+      _ = shutdown_channel_servers()
 
       # 2. Drain pipeline listeners — ensures they finish any in-progress
       #    DB queries triggered by ChannelServer's {:messages_persisted, ids}
@@ -89,11 +89,12 @@ defmodule Slackex.DataCase do
     for pid <- pids, Process.alive?(pid) do
       ref = Process.monitor(pid)
 
-      try do
-        Horde.DynamicSupervisor.terminate_child(Slackex.Messaging.ChannelSupervisor, pid)
-      catch
-        :exit, _ -> :ok
-      end
+      _ =
+        try do
+          Horde.DynamicSupervisor.terminate_child(Slackex.Messaging.ChannelSupervisor, pid)
+        catch
+          :exit, _ -> :ok
+        end
 
       receive do
         {:DOWN, ^ref, :process, ^pid, _} -> :ok
