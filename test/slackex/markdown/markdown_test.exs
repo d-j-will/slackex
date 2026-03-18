@@ -170,6 +170,64 @@ defmodule Slackex.MarkdownTest do
     end
   end
 
+  describe "round-trip through strip_tags (real storage pipeline)" do
+    # Messages are stored after HtmlSanitizeEx.strip_tags/1, which encodes
+    # >, <, & as HTML entities. The markdown renderer must unescape these
+    # before parsing so block syntax works.
+
+    test "blockquote survives strip_tags encoding" do
+      stored = HtmlSanitizeEx.strip_tags("> This is a quote")
+      assert stored =~ "&gt;"
+      result = html(stored)
+      assert result =~ "<blockquote>"
+    end
+
+    test "nested blockquote survives strip_tags" do
+      stored = HtmlSanitizeEx.strip_tags(">> nested quote")
+      result = html(stored)
+      assert result =~ "<blockquote>"
+    end
+
+    test "ampersand in text survives round-trip" do
+      stored = HtmlSanitizeEx.strip_tags("Tom & Jerry")
+      result = html(stored)
+      assert result =~ "Tom &amp; Jerry"
+    end
+
+    test "full message through strip_tags pipeline" do
+      input = """
+      # Title
+      ## Subtitle
+      Hello **world**
+      - item a
+      - item b
+      > a quote
+      `code` here
+      [link](https://example.com)
+      """
+
+      stored = HtmlSanitizeEx.strip_tags(input)
+      result = html(stored)
+      assert result =~ "<h1>"
+      assert result =~ "<h2>"
+      assert result =~ "<strong>world</strong>"
+      assert result =~ "<ul>"
+      assert result =~ "<blockquote>"
+      assert result =~ "<code"
+      assert result =~ ~s(href="https://example.com")
+    end
+
+    test "chat-style input (no blank lines) through strip_tags pipeline" do
+      input = "# Heading\nSome text\n- bullet\n> quote\n`code`"
+      stored = HtmlSanitizeEx.strip_tags(input)
+      result = html(stored)
+      assert result =~ "<h1>"
+      assert result =~ "<ul>"
+      assert result =~ "<blockquote>"
+      assert result =~ "<code"
+    end
+  end
+
   describe "XSS sanitization" do
     test "strips script tags" do
       result = html("<script>alert('xss')</script>")
