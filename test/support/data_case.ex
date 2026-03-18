@@ -49,9 +49,15 @@ defmodule Slackex.DataCase do
     :ets.delete_all_objects(:slackex_message_cache)
 
     on_exit(fn ->
-      # Drain pipeline listeners before stopping sandbox — ensures they finish
-      # any in-progress DB queries triggered by ChannelServer's
-      # {:messages_persisted, ids} broadcast via FunWithFlags.
+      # 1. Gracefully shut down all active ChannelServers BEFORE revoking
+      #    the sandbox connection. terminate/2 does a synchronous DB flush —
+      #    if the sandbox is revoked first, the flush fails with an EXIT
+      #    and causes intermittent test failures.
+      shutdown_channel_servers()
+
+      # 2. Drain pipeline listeners — ensures they finish any in-progress
+      #    DB queries triggered by ChannelServer's {:messages_persisted, ids}
+      #    broadcast via FunWithFlags.
       for name <- [Slackex.Links.LinkPreviewListener, Slackex.Embeddings.PersistenceListener],
           listener_pid = Process.whereis(name),
           listener_pid != nil,
@@ -67,6 +73,34 @@ defmodule Slackex.DataCase do
       Ecto.Adapters.SQL.Sandbox.stop_owner(pid)
       Ecto.Adapters.SQL.Sandbox.stop_owner(read_pid)
     end)
+  end
+
+  # Terminates all active ChannelServers and waits for each to finish
+  # shutdown (including the synchronous DB flush in terminate/2).
+  # A 5-second timeout per server catches genuinely stuck processes.
+  defp shutdown_channel_servers do
+    pids =
+      try do
+        Horde.Registry.select(Slackex.Messaging.ChannelRegistry, [{{:_, :"$1", :_}, [], [:"$1"]}])
+      catch
+        :exit, _ -> []
+      end
+
+    for pid <- pids, Process.alive?(pid) do
+      ref = Process.monitor(pid)
+
+      try do
+        Horde.DynamicSupervisor.terminate_child(Slackex.Messaging.ChannelSupervisor, pid)
+      catch
+        :exit, _ -> :ok
+      end
+
+      receive do
+        {:DOWN, ^ref, :process, ^pid, _} -> :ok
+      after
+        5_000 -> :ok
+      end
+    end
   end
 
   @doc """
