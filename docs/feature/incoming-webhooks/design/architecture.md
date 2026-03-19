@@ -146,6 +146,8 @@ A dedicated Phoenix controller for webhook delivery.
 5. Payload validation -- `text` field required and non-empty
 6. Channel existence check -- verify target channel still exists
 
+**Walking skeleton pipeline note:** The walking skeleton implements all steps EXCEPT the rate limit check (step 4). Rate limiting is omitted entirely -- not stubbed -- and is implemented in Release 1 (US-05). The walking skeleton pipeline is: payload size → JSON parsing → token lookup → payload validation → channel existence → send message.
+
 **Error responses (all JSON):**
 
 | Status | Error Code | Condition |
@@ -314,6 +316,8 @@ Confirmation page shows URL with embedded token
 ```
 
 Steps 4-7 should be wrapped in an `Ecto.Multi` transaction so partial creation (e.g., bot user created but webhook insert fails) is rolled back.
+
+**Walking skeleton constraint:** `create_webhook` must validate that the target channel is public (not private or a DM). Private channel webhook support is deferred to Release 2. Reject with a clear error (e.g., `{:error, :private_channel_not_supported}`) if a non-public channel is provided.
 
 ### 6.2 Webhook Delivery Flow
 
@@ -492,8 +496,10 @@ Per the story map, the walking skeleton is the thinnest end-to-end slice:
 1. `is_bot` field on User schema + bot changeset
 2. Webhook schema + context (create webhook via IEx/seed, no UI)
 3. Webhook delivery controller at `/api/webhooks/:token`
-4. BOT badge in message display
-5. CI integration (update `ci-deploy.yml`)
+4. Payload size limit enforcement (16KB via Plug.Parsers `:length`)
+5. BOT badge in message display
+6. CI integration (update `ci-deploy.yml`)
+7. Walking skeleton supports public channels only. Private channel webhook support is deferred to Release 2.
 
-Deferred to Release 1: Webhook management UI, rate limiting, structured error responses
-Deferred to Release 2: Token regeneration, last-used tracking, auto-create channel
+Deferred to Release 1: Rate limiting (US-05), structured error responses, webhook management UI
+Deferred to Release 2: Token regeneration, last-used tracking, auto-create channel, private channel webhook support
