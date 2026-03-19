@@ -28,6 +28,9 @@ defmodule Slackex.Release do
     for repo <- repos() do
       {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
     end
+
+    {:ok, _} = Application.ensure_all_started(@app)
+    decode_html_entities()
   end
 
   def rollback(repo, version) do
