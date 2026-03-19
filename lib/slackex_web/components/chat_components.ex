@@ -203,6 +203,12 @@ defmodule SlackexWeb.ChatComponents do
       <div class="flex-1 min-w-0">
         <div class={["flex items-baseline gap-2", @grouped && "hidden"]}>
           <span class="font-semibold text-sm">{@sender_name}</span>
+          <span
+            :if={Map.get(@sender, :is_bot, false)}
+            class="badge badge-xs badge-primary ml-1 align-middle"
+          >
+            BOT
+          </span>
           <time class="text-xs text-base-content/40">{@time}</time>
         </div>
         <%= if @is_deleted do %>
@@ -405,9 +411,9 @@ defmodule SlackexWeb.ChatComponents do
   defp extract_sender(%{sender: %{username: _} = sender}), do: sender
 
   defp extract_sender(%{sender: %{"username" => u} = s}),
-    do: %{username: u, display_name: s["display_name"]}
+    do: %{username: u, display_name: s["display_name"], is_bot: s["is_bot"] || false}
 
-  defp extract_sender(_), do: %{username: "unknown", display_name: nil}
+  defp extract_sender(_), do: %{username: "unknown", display_name: nil, is_bot: false}
 
   defp sender_name(%{sender: %{username: username}}), do: username
   defp sender_name(%{sender: %{"username" => username}}), do: username

@@ -23,6 +23,16 @@ defmodule Slackex.Accounts do
   end
 
   @doc """
+  Creates a bot user. Bot users have no password or email and are
+  identified by `is_bot: true`.
+  """
+  def create_bot_user(attrs) do
+    %User{}
+    |> User.bot_changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
   Searches users by trigram similarity on username and display_name.
   Returns an empty list for queries shorter than 2 characters.
 

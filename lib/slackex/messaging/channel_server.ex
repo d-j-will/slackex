@@ -534,7 +534,8 @@ defmodule Slackex.Messaging.ChannelServer do
       id: id,
       username: username,
       display_name: Map.get(user, :display_name),
-      avatar_url: Map.get(user, :avatar_url)
+      avatar_url: Map.get(user, :avatar_url),
+      is_bot: Map.get(user, :is_bot, false)
     }
   end
 

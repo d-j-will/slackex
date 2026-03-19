@@ -16,6 +16,7 @@ defmodule Slackex.Accounts.User do
              :avatar_url,
              :status,
              :dm_preference,
+             :is_bot,
              :inserted_at,
              :updated_at
            ]}
@@ -30,6 +31,7 @@ defmodule Slackex.Accounts.User do
     field :avatar_url, :string
     field :status, :string, default: "offline"
     field :dm_preference, :string, default: "anyone"
+    field :is_bot, :boolean, default: false
 
     has_many :subscriptions, Slackex.Chat.Subscription
     has_many :channels, through: [:subscriptions, :channel]
@@ -72,6 +74,20 @@ defmodule Slackex.Accounts.User do
     user
     |> cast(attrs, [:dm_preference])
     |> validate_inclusion(:dm_preference, @valid_dm_preferences)
+  end
+
+  @doc """
+  Changeset for creating a bot user. Bot users have no password or email
+  and are identified by `is_bot: true`.
+  """
+  def bot_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:username, :display_name, :is_bot])
+    |> validate_required([:username, :is_bot])
+    |> validate_length(:username, min: 2, max: 30)
+    |> unique_constraint(:username)
+    |> put_change(:is_bot, true)
+    |> put_change(:hashed_password, "!bot_no_login")
   end
 
   @doc """

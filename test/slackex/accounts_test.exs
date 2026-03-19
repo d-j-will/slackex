@@ -248,6 +248,56 @@ defmodule Slackex.AccountsTest do
     end
   end
 
+  describe "bot_changeset/2" do
+    test "creates a valid changeset for a bot user" do
+      changeset = User.bot_changeset(%User{}, %{username: "webhook-bot"})
+
+      assert changeset.valid?
+      assert get_change(changeset, :username) == "webhook-bot"
+      assert get_change(changeset, :is_bot) == true
+    end
+
+    test "requires username" do
+      changeset = User.bot_changeset(%User{}, %{})
+
+      refute changeset.valid?
+      assert %{username: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "enforces username length between 2 and 30" do
+      short = User.bot_changeset(%User{}, %{username: "a"})
+      refute short.valid?
+      assert %{username: [_]} = errors_on(short)
+
+      long = User.bot_changeset(%User{}, %{username: String.duplicate("b", 31)})
+      refute long.valid?
+      assert %{username: [_]} = errors_on(long)
+    end
+
+    test "always sets is_bot to true even if attrs say false" do
+      changeset = User.bot_changeset(%User{}, %{username: "my-bot", is_bot: false})
+
+      assert changeset.valid?
+      assert get_change(changeset, :is_bot) == true
+    end
+  end
+
+  describe "create_bot_user/1" do
+    test "inserts a bot user with is_bot true" do
+      assert {:ok, bot} = Accounts.create_bot_user(%{username: "webhook-bot"})
+
+      assert bot.is_bot == true
+      assert bot.username == "webhook-bot"
+      refute User.valid_password?(bot, "any_password")
+    end
+
+    test "rejects duplicate bot username" do
+      assert {:ok, _} = Accounts.create_bot_user(%{username: "duplicate-bot"})
+      assert {:error, changeset} = Accounts.create_bot_user(%{username: "duplicate-bot"})
+      assert %{username: ["has already been taken"]} = errors_on(changeset)
+    end
+  end
+
   describe "JWT token lifecycle" do
     test "access token is valid within TTL" do
       user = insert(:user)

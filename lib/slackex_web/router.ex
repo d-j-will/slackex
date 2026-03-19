@@ -34,6 +34,13 @@ defmodule SlackexWeb.Router do
   get "/health", SlackexWeb.HealthController, :index
   get "/ready", SlackexWeb.HealthController, :ready
 
+  # Webhook delivery — token-in-URL authentication, no session/auth pipeline
+  scope "/api/webhooks", SlackexWeb do
+    pipe_through :api
+
+    post "/:token", WebhookController, :deliver
+  end
+
   scope "/", SlackexWeb do
     pipe_through :browser
 

@@ -138,7 +138,8 @@ defmodule Slackex.Notifications.CatchupServer do
     %{
       id: to_string(user.id),
       username: user.username,
-      display_name: user.display_name
+      display_name: user.display_name,
+      is_bot: Map.get(user, :is_bot, false)
     }
   end
 end

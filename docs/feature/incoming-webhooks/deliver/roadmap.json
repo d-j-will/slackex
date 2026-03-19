@@ -1,0 +1,98 @@
+{
+  "feature_id": "incoming-webhooks",
+  "description": "Walking skeleton: bot user + webhook model + POST endpoint + real-time message delivery",
+  "paradigm": "functional",
+  "crafter": "@nw-functional-software-crafter",
+  "validation": { "status": "approved", "date": "2026-03-19" },
+  "phases": [
+    {
+      "id": "walking-skeleton",
+      "name": "Walking Skeleton — End-to-end webhook delivery",
+      "steps": [
+        {
+          "step_id": "01-01",
+          "name": "Add is_bot to User schema + BOT badge display",
+          "description": "Add is_bot boolean to User schema with migration. Update serialize_sender in ChannelServer and CatchupServer to include is_bot. Add BOT badge to message_bubble component. Add bot_changeset/2 to User.",
+          "acceptance_criteria": [
+            "Migration adds is_bot boolean column (default false) to users table",
+            "User schema has is_bot field",
+            "User.bot_changeset/2 creates a bot user (is_bot: true, no password)",
+            "ChannelServer.serialize_sender/1 includes is_bot in output",
+            "CatchupServer.serialize_sender/1 includes is_bot in output",
+            "message_bubble displays [BOT] badge when sender.is_bot is true",
+            "Regular users do not show BOT badge"
+          ],
+          "files_to_modify": [
+            "lib/slackex/accounts/user.ex",
+            "lib/slackex/messaging/channel_server.ex",
+            "lib/slackex_web/components/chat_components.ex"
+          ],
+          "dependencies": [],
+          "estimated_hours": 2
+        },
+        {
+          "step_id": "01-02",
+          "name": "Webhook schema + Integrations.Webhooks context",
+          "description": "Create Webhook Ecto schema, migration, and Integrations.Webhooks context module. Webhook creation uses Ecto.Multi to atomically: generate token, hash it, create bot user, resolve channel, subscribe bot to channel, insert webhook record.",
+          "acceptance_criteria": [
+            "Migration creates webhooks table with token_hash, name, channel_id, bot_user_id, inserted_at",
+            "Webhook schema with token_hash (unique index), name, belongs_to channel and bot_user",
+            "Webhooks.create_webhook/1 generates token, hashes with SHA-256, creates bot user, subscribes to channel, inserts webhook — all in Ecto.Multi transaction",
+            "Webhooks.get_by_token_hash/1 looks up webhook by hashed token (preloads channel and bot_user)",
+            "create_webhook rejects private channels with {:error, :private_channel_not_supported}",
+            "Token is returned plaintext on creation only (not stored)",
+            "All operations are atomic — partial creation is impossible"
+          ],
+          "files_to_modify": [],
+          "files_to_create": [
+            "lib/slackex/integrations/webhook.ex",
+            "lib/slackex/integrations/webhooks.ex"
+          ],
+          "dependencies": ["01-01"],
+          "estimated_hours": 3
+        },
+        {
+          "step_id": "01-03",
+          "name": "WebhookController + router + payload enforcement",
+          "description": "Create POST /api/webhooks/:token endpoint. Validates token, checks feature flag, validates payload (text required, 16KB limit), verifies channel exists, sends message via Messaging.send_message. Route is outside all auth pipelines.",
+          "acceptance_criteria": [
+            "POST /api/webhooks/:token route exists outside auth pipelines",
+            "Invalid token returns 401 with JSON error",
+            "Missing/empty text field returns 400 with JSON error",
+            "Payload over 16KB returns 413",
+            "Deleted/missing channel returns 404",
+            "Valid request sends message through ChannelServer pipeline and returns 200",
+            "Message appears in real-time via PubSub to connected LiveView clients",
+            "Feature flag :incoming_webhooks gates the endpoint (returns 404 when disabled)"
+          ],
+          "files_to_modify": [
+            "lib/slackex_web/router.ex",
+            "lib/slackex_web/endpoint.ex"
+          ],
+          "files_to_create": [
+            "lib/slackex_web/controllers/webhook_controller.ex"
+          ],
+          "dependencies": ["01-02"],
+          "estimated_hours": 3
+        },
+        {
+          "step_id": "01-04",
+          "name": "Integration test + CI webhook setup",
+          "description": "End-to-end test: create webhook, POST to it, verify message appears in channel with BOT badge. Update ci-deploy.yml to POST deploy notifications to Slackex webhook.",
+          "acceptance_criteria": [
+            "Integration test: create_webhook → POST /api/webhooks/:token → message in DB with bot sender",
+            "Integration test: invalid token → 401",
+            "Integration test: missing text → 400",
+            "Integration test: feature flag disabled → 404",
+            "ci-deploy.yml has Slackex webhook POST step (alongside existing Discord)"
+          ],
+          "files_to_create": [
+            "test/slackex_web/controllers/webhook_controller_test.exs"
+          ],
+          "dependencies": ["01-03"],
+          "estimated_hours": 2
+        }
+      ]
+    }
+  ]
+}
