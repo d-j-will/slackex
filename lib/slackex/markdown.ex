@@ -21,7 +21,6 @@ defmodule Slackex.Markdown do
 
   def to_html(markdown) when is_binary(markdown) do
     markdown
-    |> unescape_html()
     |> chat_preprocess()
     |> Earmark.as_html!(compact_output: true)
     |> HtmlSanitizeEx.Scrubber.scrub(Slackex.Markdown.Scrubber)
@@ -73,18 +72,6 @@ defmodule Slackex.Markdown do
     else
       insert_blank_lines(rest, [line | acc])
     end
-  end
-
-  # Message content is stored after HtmlSanitizeEx.strip_tags/1,
-  # which encodes special characters (> → &gt;, < → &lt;, & → &amp;).
-  # Unescape these before markdown parsing so block syntax (>, etc.) works.
-  defp unescape_html(text) do
-    text
-    |> String.replace("&gt;", ">")
-    |> String.replace("&lt;", "<")
-    |> String.replace("&amp;", "&")
-    |> String.replace("&quot;", ~s("))
-    |> String.replace("&#39;", "'")
   end
 
   defp add_link_attributes(html) do

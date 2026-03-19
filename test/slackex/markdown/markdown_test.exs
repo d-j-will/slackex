@@ -170,31 +170,27 @@ defmodule Slackex.MarkdownTest do
     end
   end
 
-  describe "round-trip through strip_tags (real storage pipeline)" do
-    # Messages are stored after HtmlSanitizeEx.strip_tags/1, which encodes
-    # >, <, & as HTML entities. The markdown renderer must unescape these
-    # before parsing so block syntax works.
+  describe "raw content rendering (post-backfill storage)" do
+    # After the backfill migration, messages are stored raw (no strip_tags).
+    # These tests verify that literal markdown characters render correctly.
 
-    test "blockquote survives strip_tags encoding" do
-      stored = HtmlSanitizeEx.strip_tags("> This is a quote")
-      assert stored =~ "&gt;"
-      result = html(stored)
+    test "raw > renders as blockquote" do
+      result = html("> This is a quote")
+      assert result =~ "<blockquote>"
+      assert result =~ "This is a quote"
+    end
+
+    test "raw >> renders as nested blockquote" do
+      result = html(">> nested quote")
       assert result =~ "<blockquote>"
     end
 
-    test "nested blockquote survives strip_tags" do
-      stored = HtmlSanitizeEx.strip_tags(">> nested quote")
-      result = html(stored)
-      assert result =~ "<blockquote>"
-    end
-
-    test "ampersand in text survives round-trip" do
-      stored = HtmlSanitizeEx.strip_tags("Tom & Jerry")
-      result = html(stored)
+    test "raw & in text renders as HTML entity" do
+      result = html("Tom & Jerry")
       assert result =~ "Tom &amp; Jerry"
     end
 
-    test "full message through strip_tags pipeline" do
+    test "full message with raw markdown characters" do
       input = """
       # Title
       ## Subtitle
@@ -206,8 +202,7 @@ defmodule Slackex.MarkdownTest do
       [link](https://example.com)
       """
 
-      stored = HtmlSanitizeEx.strip_tags(input)
-      result = html(stored)
+      result = html(input)
       assert result =~ "<h1>"
       assert result =~ "<h2>"
       assert result =~ "<strong>world</strong>"
@@ -217,10 +212,9 @@ defmodule Slackex.MarkdownTest do
       assert result =~ ~s(href="https://example.com")
     end
 
-    test "chat-style input (no blank lines) through strip_tags pipeline" do
+    test "chat-style input (no blank lines) with raw markdown" do
       input = "# Heading\nSome text\n- bullet\n> quote\n`code`"
-      stored = HtmlSanitizeEx.strip_tags(input)
-      result = html(stored)
+      result = html(input)
       assert result =~ "<h1>"
       assert result =~ "<ul>"
       assert result =~ "<blockquote>"
