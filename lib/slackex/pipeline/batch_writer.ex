@@ -102,6 +102,7 @@ defmodule Slackex.Pipeline.BatchWriter do
     %{
       id: id,
       content: content,
+      search_content: content,
       sender_id: sender_id,
       channel_id: Map.get(message, :channel_id),
       dm_conversation_id: Map.get(message, :dm_conversation_id),
