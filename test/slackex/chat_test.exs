@@ -97,12 +97,14 @@ defmodule Slackex.ChatTest do
       assert {:error, :unauthorized} = Chat.send_message(channel.id, outsider.id, "Intruder!")
     end
 
-    test "message content is sanitized (XSS prevention)", %{alice: alice, channel: channel} do
-      assert {:ok, message} =
-               Chat.send_message(channel.id, alice.id, "<script>alert('xss')</script>Hello")
+    test "message content is stored raw (XSS prevention at render time)", %{
+      alice: alice,
+      channel: channel
+    } do
+      raw = "<script>alert('xss')</script>Hello"
+      assert {:ok, message} = Chat.send_message(channel.id, alice.id, raw)
 
-      refute message.content =~ "<script>"
-      assert message.content =~ "Hello"
+      assert message.content == raw
     end
 
     test "messages use Snowflake IDs (monotonically increasing)", %{

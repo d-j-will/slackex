@@ -1,0 +1,124 @@
+{
+  "feature_id": "markdown-rendering",
+  "description": "Clean markdown rendering pipeline: remove strip_tags from storage, fix thread panel, add security tests",
+  "paradigm": "functional",
+  "crafter": "@nw-functional-software-crafter",
+  "validation": { "status": "approved", "date": "2026-03-19" },
+  "phases": [
+    {
+      "id": "phase-1",
+      "name": "Remove strip_tags + Fix Thread Panel (backward-compatible)",
+      "steps": [
+        {
+          "step_id": "01-01",
+          "name": "Add XSS security tests for render-time sanitization",
+          "description": "Add acceptance tests proving: (1) stored <script> payload is stripped by Scrubber when markdown ON, (2) stored <script> payload is escaped by HEEx when markdown OFF (flag disabled). These tests must pass BEFORE removing strip_tags to prove render-time protection is sufficient.",
+          "acceptance_criteria": [
+            "Test: message containing '<script>alert(1)</script>' renders without <script> tag when markdown_rendering enabled",
+            "Test: message containing '<script>alert(1)</script>' renders as escaped text when markdown_rendering disabled",
+            "Test: message containing '<img onerror=alert(1)>' is stripped by Scrubber",
+            "Test: blockquote with '>' renders correctly through full pipeline (strip_tags → unescape → markdown)"
+          ],
+          "files_to_modify": ["test/slackex/markdown/markdown_test.exs"],
+          "dependencies": [],
+          "estimated_hours": 0.5
+        },
+        {
+          "step_id": "01-02",
+          "name": "Remove strip_tags from all 7 storage paths",
+          "description": "Remove HtmlSanitizeEx.strip_tags/1 from all message storage paths. Content is stored raw — XSS is handled at render time by the Scrubber (markdown ON) or HEEx auto-escaping (markdown OFF). Keep content validation (length, non-empty) but stop mutating content.",
+          "acceptance_criteria": [
+            "strip_tags is not called in messages.ex send_message/3, edit_message/3, send_reply/4",
+            "strip_tags is not called in dms.ex send_dm/3, accept_dm_request/2",
+            "strip_tags is not called in channel_server.ex handle_call(:send_message), validate_content/1",
+            "Content validation (length check, non-empty) still works",
+            "All existing tests pass",
+            "XSS security tests from 01-01 still pass"
+          ],
+          "files_to_modify": [
+            "lib/slackex/chat/messages.ex",
+            "lib/slackex/chat/dms.ex",
+            "lib/slackex/messaging/channel_server.ex"
+          ],
+          "dependencies": ["01-01"],
+          "estimated_hours": 0.5
+        },
+        {
+          "step_id": "01-03",
+          "name": "Fix thread panel markdown_enabled propagation",
+          "description": "Pass markdown_enabled through to ThreadPanelComponent and its message_bubble calls. Currently the thread panel renders markdown as plain text because the flag is never passed.",
+          "acceptance_criteria": [
+            "ThreadPanelComponent accepts markdown_enabled assign",
+            "Parent message bubble (line ~62) receives markdown_enabled",
+            "Reply message bubbles (line ~79) receive markdown_enabled",
+            "Index LiveView passes markdown_enabled to ThreadPanelComponent",
+            "All existing tests pass"
+          ],
+          "files_to_modify": [
+            "lib/slackex_web/live/chat_live/thread_panel_component.ex",
+            "lib/slackex_web/live/chat_live/index.ex"
+          ],
+          "dependencies": [],
+          "estimated_hours": 0.25
+        },
+        {
+          "step_id": "01-04",
+          "name": "Add render path audit and raw() safety check",
+          "description": "Audit all render paths for Message.content to verify markdown_enabled is passed everywhere. Add a test that greps for raw() usage to ensure it only appears in Markdown.to_html/1.",
+          "acceptance_criteria": [
+            "All render paths for message content are documented and verified",
+            "Test verifying raw() is only called within Markdown.to_html/1 pipeline",
+            "No undiscovered render paths exist"
+          ],
+          "files_to_modify": ["test/slackex/markdown/markdown_test.exs"],
+          "dependencies": ["01-02", "01-03"],
+          "estimated_hours": 0.25
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "name": "Backfill Migration (deferred to separate deploy)",
+      "steps": [
+        {
+          "step_id": "02-01",
+          "name": "Create backfill task to decode HTML entities in existing messages",
+          "description": "Release task that iterates messages in batches, decrypting content via Cloak, running unescape_html on it, re-encrypting, and updating both encrypted_content and search_content. Must include sampling checkpoint for Cloak round-trip verification.",
+          "acceptance_criteria": [
+            "Release task decodes HTML entities in batches",
+            "Sampling checkpoint verifies Cloak round-trip integrity before bulk processing",
+            "search_content is updated alongside encrypted content",
+            "Task is idempotent (safe to re-run)",
+            "backfill_embeddings documented as required after content backfill"
+          ],
+          "files_to_modify": ["lib/slackex/release.ex"],
+          "dependencies": ["01-04"],
+          "estimated_hours": 1.0
+        }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "name": "Remove unescape_html shim (after backfill completes)",
+      "steps": [
+        {
+          "step_id": "03-01",
+          "name": "Remove unescape_html from Markdown.to_html/1",
+          "description": "After backfill migration confirms all data is clean, remove the unescape_html/1 function and its call in to_html/1. Remove the pipeline round-trip tests that tested strip_tags → unescape → markdown since strip_tags is gone.",
+          "acceptance_criteria": [
+            "unescape_html/1 removed from Markdown module",
+            "Pipeline tests updated to test raw content → markdown (no strip_tags round-trip)",
+            "All tests pass",
+            "Clean end-to-end pipeline with no compensating hacks"
+          ],
+          "files_to_modify": [
+            "lib/slackex/markdown.ex",
+            "test/slackex/markdown/markdown_test.exs"
+          ],
+          "dependencies": ["02-01"],
+          "estimated_hours": 0.25
+        }
+      ]
+    }
+  ]
+}

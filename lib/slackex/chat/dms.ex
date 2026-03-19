@@ -103,21 +103,20 @@ defmodule Slackex.Chat.DMs do
   # ---------------------------------------------------------------------------
 
   @doc """
-  Sends a DM. Verifies sender is a participant. Sanitizes content. Broadcasts.
+  Sends a DM. Verifies sender is a participant. Broadcasts.
   """
   def send_dm(dm_id, sender_id, content) do
     dm = Repo.get!(DMConversation, dm_id)
 
     with :ok <- verify_dm_participant(dm, sender_id) do
       id = Snowflake.generate()
-      sanitized = HtmlSanitizeEx.strip_tags(content)
 
       Multi.new()
       |> Multi.insert(
         :message,
         Message.changeset(%Message{}, %{
           id: id,
-          content: sanitized,
+          content: content,
           sender_id: sender_id,
           dm_conversation_id: dm_id
         })
@@ -227,9 +226,9 @@ defmodule Slackex.Chat.DMs do
       |> Repo.update()
     end)
     |> Multi.run(:message, fn _repo, %{request: request, dm_conversation: dm} ->
-      sanitized = HtmlSanitizeEx.strip_tags(request.preview_text || "")
+      preview = request.preview_text || ""
 
-      if String.trim(sanitized) == "" do
+      if String.trim(preview) == "" do
         {:ok, nil}
       else
         id = Snowflake.generate()
@@ -237,7 +236,7 @@ defmodule Slackex.Chat.DMs do
         %Message{}
         |> Message.changeset(%{
           id: id,
-          content: sanitized,
+          content: preview,
           sender_id: request.sender_id,
           dm_conversation_id: dm.id
         })

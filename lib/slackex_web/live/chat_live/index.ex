@@ -1879,6 +1879,7 @@ defmodule SlackexWeb.ChatLive.Index do
           id="thread-panel"
           parent_message={@thread_parent}
           current_user={@current_user}
+          markdown_enabled={@markdown_enabled}
         />
       </div>
 

@@ -133,7 +133,6 @@ defmodule Slackex.Messaging.ChannelServer do
            :ok <- check_permission(state.channel_type, state.channel_id, sender_id),
            {:ok, new_limiters} <- update_rate_limiter(state.rate_limiters, sender_id) do
         id = Snowflake.generate()
-        sanitized = HtmlSanitizeEx.strip_tags(content)
         ts_ms = Snowflake.extract_timestamp(id)
         inserted_at = DateTime.from_unix!(ts_ms * 1_000, :microsecond)
 
@@ -142,7 +141,7 @@ defmodule Slackex.Messaging.ChannelServer do
         message =
           %{
             id: id,
-            content: sanitized,
+            content: content,
             sender_id: sender_id,
             inserted_at: inserted_at,
             sender: serialize_sender(sender),
@@ -406,11 +405,9 @@ defmodule Slackex.Messaging.ChannelServer do
   end
 
   defp validate_content(content) do
-    sanitized = HtmlSanitizeEx.strip_tags(content)
-
     cond do
-      String.trim(sanitized) == "" -> {:error, :invalid_content}
-      String.length(sanitized) > 4_000 -> {:error, :invalid_content}
+      String.trim(content) == "" -> {:error, :invalid_content}
+      String.length(content) > 4_000 -> {:error, :invalid_content}
       true -> :ok
     end
   end

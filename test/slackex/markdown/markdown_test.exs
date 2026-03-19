@@ -262,6 +262,81 @@ defmodule Slackex.MarkdownTest do
     end
   end
 
+  describe "XSS defense in depth (render-time only)" do
+    # These tests document the security model: render-time sanitization via
+    # the Scrubber is sufficient for XSS prevention. strip_tags at storage
+    # time is defense-in-depth but not required for safety.
+
+    test "script tag is stripped by Markdown.to_html/1" do
+      result = html("<script>alert(1)</script>")
+
+      refute result =~ "<script>"
+      refute result =~ "<script"
+      refute result =~ "</script>"
+    end
+
+    test "HEEx auto-escaping prevents script execution for raw content" do
+      # When content is NOT processed through Markdown.to_html/1,
+      # Phoenix's HEEx templates auto-escape all interpolated values.
+      # This test simulates what HEEx does with raw user content.
+      malicious_input = "<script>alert(1)</script>"
+
+      {:safe, escaped} = Phoenix.HTML.html_escape(malicious_input)
+      escaped_string = IO.iodata_to_binary(escaped)
+
+      refute escaped_string =~ "<script>"
+      assert escaped_string =~ "&lt;script&gt;"
+      assert escaped_string =~ "&lt;/script&gt;"
+    end
+
+    test "img tag with onerror handler is stripped by Scrubber" do
+      result = html("<img onerror=alert(1)>")
+
+      refute result =~ "<img"
+      refute result =~ "onerror"
+      refute result =~ "alert"
+    end
+
+    test "raw > character renders as blockquote" do
+      result = html("> This should be a blockquote")
+
+      assert result =~ "<blockquote>"
+      assert result =~ "This should be a blockquote"
+    end
+
+    test "Phoenix.HTML.raw/1 is only used in safe sanitization contexts" do
+      # Static analysis: Phoenix.HTML.raw/1 bypasses HEEx auto-escaping,
+      # so it must only be called after proper sanitization. This test
+      # verifies that raw() usage is confined to known-safe locations.
+      lib_path = Path.join(File.cwd!(), "lib")
+
+      raw_usage_files =
+        Path.wildcard(Path.join(lib_path, "**/*.{ex,heex}"))
+        |> Enum.filter(fn path ->
+          content = File.read!(path)
+
+          String.contains?(content, "Phoenix.HTML.raw") or
+            Regex.match?(~r/\|>\s*raw\(\)/, content)
+        end)
+        |> Enum.map(&Path.relative_to(&1, File.cwd!()))
+        |> Enum.sort()
+
+      # Phoenix.HTML.raw/1 must only appear in:
+      # 1. lib/slackex/markdown.ex -- output of full sanitization pipeline
+      # 2. lib/slackex_web/live/chat_live/search_component.ex -- after html_escape + safe mark restoration
+      allowed_files =
+        [
+          "lib/slackex/markdown.ex",
+          "lib/slackex_web/live/chat_live/search_component.ex"
+        ]
+        |> Enum.sort()
+
+      assert raw_usage_files == allowed_files,
+             "Phoenix.HTML.raw/1 found in unexpected files: #{inspect(raw_usage_files -- allowed_files)}. " <>
+               "raw/1 bypasses HEEx auto-escaping and must only be used after sanitization."
+    end
+  end
+
   defp html(markdown) do
     {:safe, result} = Markdown.to_html(markdown)
     result

@@ -36,11 +36,10 @@ defmodule Slackex.Chat.Messages do
     with {:ok, message} <- get_message(message_id),
          :ok <- check_not_deleted(message),
          :ok <- check_is_sender(message, user_id) do
-      sanitized = HtmlSanitizeEx.strip_tags(new_content)
       now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
       message
-      |> Message.edit_changeset(%{content: sanitized, edited_at: now})
+      |> Message.edit_changeset(%{content: new_content, edited_at: now})
       |> Repo.update()
     end
   end
@@ -69,18 +68,17 @@ defmodule Slackex.Chat.Messages do
 
   @doc """
   Sends a message to a channel. Checks sender has write permission,
-  sanitizes HTML, generates Snowflake ID, broadcasts via PubSub.
+  generates Snowflake ID, broadcasts via PubSub.
   """
   def send_message(channel_id, sender_id, content) do
     with role <- Slackex.Chat.Channels.get_role(sender_id, channel_id),
          true <- Permissions.can?(role, :send_message) do
       id = Snowflake.generate()
-      sanitized = HtmlSanitizeEx.strip_tags(content)
 
       %Message{}
       |> Message.changeset(%{
         id: id,
-        content: sanitized,
+        content: content,
         sender_id: sender_id,
         channel_id: channel_id
       })
@@ -243,11 +241,10 @@ defmodule Slackex.Chat.Messages do
 
     if target_matches do
       id = Snowflake.generate()
-      sanitized = HtmlSanitizeEx.strip_tags(content)
 
       attrs = %{
         id: id,
-        content: sanitized,
+        content: content,
         sender_id: sender_id,
         channel_id: parent.channel_id,
         dm_conversation_id: parent.dm_conversation_id,
