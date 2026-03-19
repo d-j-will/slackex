@@ -8,6 +8,7 @@ defmodule Slackex.Release do
       /app/bin/slackex eval "Slackex.Release.rollback(Slackex.Repo, 20240101000000)"
       /app/bin/slackex eval "Slackex.Release.backfill_embeddings()"
       /app/bin/slackex eval "Slackex.Release.backfill_embeddings(force: true)"
+      /app/bin/slackex eval "Slackex.Release.decode_html_entities()"
   """
 
   @app :slackex
@@ -64,6 +65,188 @@ defmodule Slackex.Release do
 
     embed_count = do_generate_embeddings(repo)
     Logger.info("[BackfillEmbeddings] Done — generated #{embed_count} embeddings")
+  end
+
+  @doc """
+  Decodes HTML entities in existing messages stored before v0.5.82.
+
+  Phase 2 of the markdown rendering architecture cleanup. Messages processed
+  through `HtmlSanitizeEx.strip_tags/1` had special characters encoded
+  (`>` to `&gt;`, `<` to `&lt;`, etc.). Now that `strip_tags` is removed,
+  this task reverses those encodings in both the encrypted `content` field
+  and the plaintext `search_content` column.
+
+  Runs a sampling checkpoint (10 random affected messages) before bulk
+  processing to verify correctness. Processes in batches of 100.
+
+  Idempotent: the query filters on `search_content` containing HTML entities,
+  so already-clean messages are skipped. Running `unescape_html/1` on clean
+  content is also a no-op.
+
+  After this task completes, run `backfill_embeddings(force: true)` to
+  regenerate embeddings from the clean `search_content`.
+  """
+  def decode_html_entities do
+    {:ok, _} = Application.ensure_all_started(@app)
+
+    repo = Slackex.Repo
+
+    affected_count = count_affected_messages(repo)
+    Logger.info("[DecodeEntities] Found #{affected_count} messages with HTML entities")
+
+    if affected_count == 0 do
+      Logger.info("[DecodeEntities] No messages need decoding — done")
+    else
+      case run_sampling_checkpoint(repo) do
+        :ok ->
+          do_decode_all(repo)
+
+        {:error, reason} ->
+          Logger.error("[DecodeEntities] Sampling checkpoint failed: #{reason} — aborting")
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # HTML entity decode internals
+  # ---------------------------------------------------------------------------
+
+  @decode_batch_size 100
+
+  defp count_affected_messages(repo) do
+    from(m in Message,
+      where: is_nil(m.deleted_at),
+      where:
+        like(m.search_content, "%&gt;%") or
+          like(m.search_content, "%&lt;%") or
+          like(m.search_content, "%&amp;%")
+    )
+    |> repo.aggregate(:count)
+  end
+
+  defp affected_messages_query do
+    from(m in Message,
+      where: is_nil(m.deleted_at),
+      where:
+        like(m.search_content, "%&gt;%") or
+          like(m.search_content, "%&lt;%") or
+          like(m.search_content, "%&amp;%"),
+      order_by: [asc: m.id]
+    )
+  end
+
+  defp run_sampling_checkpoint(repo) do
+    sample_size = 10
+
+    samples =
+      from(m in Message,
+        where: is_nil(m.deleted_at),
+        where:
+          like(m.search_content, "%&gt;%") or
+            like(m.search_content, "%&lt;%") or
+            like(m.search_content, "%&amp;%"),
+        order_by: fragment("RANDOM()"),
+        limit: ^sample_size
+      )
+      |> repo.all()
+
+    if samples == [] do
+      :ok
+    else
+      verify_samples(repo, samples)
+    end
+  end
+
+  defp verify_samples(repo, samples) do
+    results =
+      Enum.map(samples, fn message ->
+        expected_content = unescape_html(message.content)
+        expected_search = unescape_html(message.search_content)
+
+        # Write the decoded values, reload through Cloak decrypt, verify roundtrip,
+        # then revert so the bulk pass processes all messages in a single clean pass.
+        message
+        |> Ecto.Changeset.change(%{content: expected_content, search_content: expected_search})
+        |> repo.update()
+
+        reloaded = repo.get!(Message, message.id)
+
+        verified =
+          reloaded.content == expected_content and reloaded.search_content == expected_search
+
+        # Always revert — sampling is a verification step, not a processing step.
+        # The bulk pass will handle all messages uniformly.
+        revert_changeset =
+          Ecto.Changeset.change(reloaded, %{
+            content: message.content,
+            search_content: message.search_content
+          })
+
+        repo.update(revert_changeset)
+
+        if verified, do: :ok, else: {:error, message.id}
+      end)
+
+    verified = Enum.count(results, &(&1 == :ok))
+    total = length(samples)
+
+    Logger.info(
+      "[DecodeEntities] Sampling checkpoint: #{verified}/#{total} verified successfully"
+    )
+
+    if verified == total do
+      :ok
+    else
+      failed_ids =
+        results
+        |> Enum.filter(&(&1 != :ok))
+        |> Enum.map(fn {:error, id} -> id end)
+
+      {:error, "#{total - verified} samples failed verification: #{inspect(failed_ids)}"}
+    end
+  end
+
+  defp do_decode_all(repo) do
+    total =
+      affected_messages_query()
+      |> repo.all()
+      |> Enum.chunk_every(@decode_batch_size)
+      |> Enum.reduce(0, fn batch, acc ->
+        decoded = decode_batch(repo, batch)
+        progress = acc + decoded
+        Logger.info("[DecodeEntities]   decoded #{decoded} messages (#{progress} total)")
+        progress
+      end)
+
+    Logger.info("[DecodeEntities] Done — decoded #{total} messages")
+  end
+
+  defp decode_batch(repo, batch) do
+    Enum.each(batch, fn message ->
+      decoded_content = unescape_html(message.content)
+      decoded_search = unescape_html(message.search_content)
+
+      message
+      |> Ecto.Changeset.change(%{content: decoded_content, search_content: decoded_search})
+      |> repo.update()
+    end)
+
+    length(batch)
+  end
+
+  # Reverses the HTML entity encoding applied by HtmlSanitizeEx.strip_tags/1.
+  # Order matters: `&amp;` is replaced LAST so that double-encoded entities
+  # like `&amp;gt;` (from a user who typed literal `&gt;`) remain as `&gt;`
+  # rather than being decoded all the way to `>`.
+  defp unescape_html(nil), do: nil
+
+  defp unescape_html(text) do
+    text
+    |> String.replace("&gt;", ">")
+    |> String.replace("&lt;", "<")
+    |> String.replace("&quot;", ~s("))
+    |> String.replace("&#39;", "'")
+    |> String.replace("&amp;", "&")
   end
 
   # ---------------------------------------------------------------------------
