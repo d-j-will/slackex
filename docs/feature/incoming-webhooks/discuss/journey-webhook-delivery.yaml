@@ -1,0 +1,158 @@
+journey:
+  name: "Webhook Delivery"
+  goal: "External service POSTs to webhook URL, message appears in channel in real-time"
+  persona: "GitHub Actions CI (sender) + Dave Williams (reader)"
+
+  emotional_arc:
+    start: "Unaware -- Dave is doing other work"
+    middle: "Informed -- notification appears in #deploys"
+    end: "Satisfied -- deploy status visible without leaving Slackex"
+
+steps:
+  - id: 1
+    name: "Receive and Validate POST"
+    action: "External service sends HTTP POST to /api/webhooks/:token"
+
+    shared_artifacts:
+      - name: "webhook_token"
+        source: "Extracted from URL path parameter"
+        displayed_as: "${token}"
+        consumers: ["token lookup (hashed comparison)", "rate limit key"]
+
+      - name: "payload_text"
+        source: "JSON body 'text' field from external service"
+        displayed_as: "${payload.text}"
+        consumers: ["message content", "search_content (plaintext)", "markdown rendering"]
+
+      - name: "payload_username"
+        source: "JSON body 'username' field (optional override)"
+        displayed_as: "${payload.username}"
+        consumers: ["message sender display name override"]
+
+    emotional_state:
+      entry: "N/A (machine actor)"
+      exit: "N/A -- HTTP response sent"
+
+    integration_checkpoint: |
+      Token is looked up via hashed comparison (not plaintext storage).
+      Webhook record provides channel_id and bot_user_id.
+      Rate limiting is per-webhook and per-IP.
+      Payload validation: valid JSON, "text" field present, body <= 16KB.
+
+    gherkin: |
+      Scenario: Valid webhook POST delivers message
+        Given a webhook exists for "#deploys" with token "whk_a1b2c3d4e5f6"
+        When an external service POSTs {"text": "Deploy complete"} to /api/webhooks/whk_a1b2c3d4e5f6
+        Then Slackex responds with 200 and {"ok": true}
+        And a message appears in "#deploys" from the bot user
+
+      Scenario: Invalid token returns 401
+        When an external service POSTs to /api/webhooks/whk_invalid_token
+        Then Slackex responds with 401 and {"ok": false, "error": "invalid_token"}
+
+      Scenario: Missing text field returns 400
+        Given a webhook exists with token "whk_a1b2c3d4e5f6"
+        When an external service POSTs {"username": "bot"} to /api/webhooks/whk_a1b2c3d4e5f6
+        Then Slackex responds with 400 and {"ok": false, "error": "missing_text_field"}
+
+      Scenario: Oversized payload returns 413
+        Given a webhook exists with token "whk_a1b2c3d4e5f6"
+        When an external service POSTs a 20KB JSON body to /api/webhooks/whk_a1b2c3d4e5f6
+        Then Slackex responds with 413 and {"ok": false, "error": "payload_too_large"}
+
+      Scenario: Rate-limited webhook returns 429
+        Given a webhook exists with token "whk_a1b2c3d4e5f6"
+        And the webhook has exceeded its rate limit
+        When an external service POSTs to /api/webhooks/whk_a1b2c3d4e5f6
+        Then Slackex responds with 429 and {"ok": false, "error": "rate_limited"}
+        And the response includes a Retry-After header
+
+  - id: 2
+    name: "Create Message from Bot User"
+    action: "Insert message into channel as bot user, broadcast via PubSub"
+
+    shared_artifacts:
+      - name: "message_id"
+        source: "Generated Snowflake ID"
+        displayed_as: "${message_id}"
+        consumers: ["PubSub envelope payload", "database record", "LiveView rendering"]
+
+      - name: "bot_user"
+        source: "Webhook config bot_user_id -> User record with is_bot: true"
+        displayed_as: "${bot_user}"
+        consumers: ["message sender_id", "message display (avatar, name, BOT badge)"]
+
+    emotional_state:
+      entry: "N/A (server-side processing)"
+      exit: "N/A -- message persisted and broadcast"
+
+    integration_checkpoint: |
+      Message is created through the same pipeline as regular messages (Snowflake ID, encrypted content, search_content).
+      PubSub broadcast uses Envelope.wrap("message.new", {:channel, channel_id}, payload).
+      Bot user preloaded on message for display (username, display_name, avatar_url, is_bot).
+
+    gherkin: |
+      Scenario: Webhook message persisted with encryption
+        Given a webhook POST is validated for "#deploys"
+        When the message "Deploy v0.5.80 complete" is created
+        Then the message is stored with encrypted content
+        And the message has a plaintext search_content field
+        And the message sender_id is the webhook's bot user
+
+      Scenario: Webhook message broadcast via PubSub
+        Given Dave is subscribed to the "#deploys" channel PubSub topic
+        When a webhook delivers a message to "#deploys"
+        Then Dave's LiveView receives an envelope with event "message.new"
+        And the envelope payload includes the bot user's display info
+
+  - id: 3
+    name: "Message Appears in Real-Time"
+    action: "LiveView receives PubSub broadcast, renders message with BOT badge and markdown"
+
+    shared_artifacts:
+      - name: "bot_badge"
+        source: "Derived from sender.is_bot flag on User schema"
+        displayed_as: "[BOT]"
+        consumers: ["message component rendering"]
+
+      - name: "rendered_markdown"
+        source: "payload.text processed through Slackex.Markdown.to_html/1"
+        displayed_as: "Formatted HTML in message bubble"
+        consumers: ["message content display"]
+
+    emotional_state:
+      entry: "Unaware -- Dave is working on something else"
+      exit: "Satisfied -- deploy info visible at a glance"
+
+    integration_checkpoint: |
+      Bot messages display with visual distinction (BOT badge).
+      Markdown rendering uses existing Slackex.Markdown pipeline (feature-flagged via :markdown_rendering).
+      Message appears in the same message list as regular user messages.
+      No jarring UX difference -- bot messages feel native.
+
+    gherkin: |
+      Scenario: Bot message displays with BOT badge
+        Given a webhook message from "Deploy Bot" appears in "#deploys"
+        When Dave views the "#deploys" channel
+        Then the message shows a "[BOT]" badge next to "Deploy Bot"
+        And the message content is rendered with markdown formatting
+        And the message has the same layout as regular user messages
+
+      Scenario: Bot message with markdown links
+        Given a webhook delivers a message with "[View logs](https://github.com/...)"
+        When Dave views the message in "#deploys"
+        Then "View logs" is rendered as a clickable link
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "webhook_token"
+      must_match_across: [1]
+      failure_message: "Token extracted from URL must match hashed token in webhook record"
+
+    - artifact: "bot_user"
+      must_match_across: [2, 3]
+      failure_message: "Bot user used for message creation must match bot user displayed in UI"
+
+    - artifact: "payload_text"
+      must_match_across: [1, 2, 3]
+      failure_message: "Text from POST body must flow through to persisted message content to rendered display"
