@@ -96,3 +96,76 @@ if ('serviceWorker' in navigator) {
     .catch(err => console.warn('Service Worker registration failed:', err));
 }
 
+// PWA install prompt — capture the event and show an install banner
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (!sessionStorage.getItem('pwa-dismissed')) showInstallBanner();
+});
+
+function showInstallBanner() {
+  if (document.getElementById('pwa-install-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'pwa-install-banner';
+  Object.assign(banner.style, {
+    position: 'fixed', bottom: '0', left: '0', right: '0', zIndex: '9999',
+    padding: '12px 16px', display: 'flex', alignItems: 'center',
+    justifyContent: 'space-between', gap: '12px', fontFamily: 'system-ui, sans-serif',
+    fontSize: '14px', background: 'var(--color-primary)', color: 'var(--color-primary-content)'
+  });
+
+  const text = document.createElement('span');
+  const strong = document.createElement('strong');
+  strong.textContent = 'Tenun';
+  text.appendChild(strong);
+  text.appendChild(document.createTextNode(' — Install for a native app experience'));
+
+  const btnGroup = document.createElement('div');
+  btnGroup.style.display = 'flex';
+  btnGroup.style.gap = '8px';
+
+  const installBtn = document.createElement('button');
+  installBtn.textContent = 'Install';
+  Object.assign(installBtn.style, {
+    padding: '6px 16px', borderRadius: '6px', border: 'none',
+    background: 'white', color: 'var(--color-primary)', fontWeight: '600', cursor: 'pointer'
+  });
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.textContent = 'Later';
+  Object.assign(dismissBtn.style, {
+    padding: '6px 12px', borderRadius: '6px', border: '1px solid currentColor',
+    background: 'transparent', color: 'inherit', cursor: 'pointer'
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.debug('PWA install:', outcome);
+      deferredPrompt = null;
+    }
+    banner.remove();
+  });
+
+  dismissBtn.addEventListener('click', () => {
+    banner.remove();
+    sessionStorage.setItem('pwa-dismissed', '1');
+  });
+
+  btnGroup.appendChild(installBtn);
+  btnGroup.appendChild(dismissBtn);
+  banner.appendChild(text);
+  banner.appendChild(btnGroup);
+  document.body.appendChild(banner);
+}
+
+window.addEventListener('appinstalled', () => {
+  console.debug('PWA installed');
+  const banner = document.getElementById('pwa-install-banner');
+  if (banner) banner.remove();
+});
+
