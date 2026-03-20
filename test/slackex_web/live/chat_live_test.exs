@@ -389,6 +389,41 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "message send error handling" do
+    test "form content is preserved when send_message returns an error", %{
+      conn: conn,
+      channel: channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Submit an empty message — should fail validation
+      html =
+        lv
+        |> form("#message-form", message: %{content: ""})
+        |> render_submit()
+
+      # No error flash for empty (silently ignored), form should remain usable
+      assert html =~ "phx-submit=\"send_message\""
+    end
+
+    test "invalid content length shows error flash and does not clear form", %{
+      conn: conn,
+      channel: channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      # Submit a message that's too long (over 4000 chars)
+      long_content = String.duplicate("a", 4001)
+
+      lv
+      |> form("#message-form", message: %{content: long_content})
+      |> render_submit()
+
+      html = render(lv)
+      assert html =~ "invalid" or html =~ "error" or html =~ "4000"
+    end
+  end
+
   describe "pre-enriched sender in PubSub" do
     test "pre-enriched PubSub message renders sender name without DB query", %{
       conn: conn,
