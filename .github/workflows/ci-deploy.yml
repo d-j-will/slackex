@@ -411,3 +411,29 @@ jobs:
               }]
             }" \
             "$DISCORD_WEBHOOK_URL"
+
+      - name: Send Tenun notification
+        if: always()
+        env:
+          TENUN_WEBHOOK_URL: ${{ secrets.TENUN_WEBHOOK_URL }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          REF_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        run: |
+          SAFE_MSG=$(echo "$COMMIT_MSG" | head -1 | sed 's/\\/\\\\/g; s/"/\\"/g' | cut -c1-100)
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          if [ "$QUALITY_RESULT" = "failure" ]; then
+            STATUS="CI Failed: Quality"
+          elif [ "$DEPLOY_RESULT" = "failure" ]; then
+            STATUS="CI Failed: Deploy"
+          else
+            STATUS="Deployed"
+          fi
+
+          curl -sf -H "Content-Type: application/json" \
+            -d "{\"text\": \"**${STATUS}: ${REF_NAME}**\n\n**Commit:** ${SHORT_SHA} -- ${SAFE_MSG}\n[View logs](${RUN_URL})\"}" \
+            "$TENUN_WEBHOOK_URL" || true
