@@ -434,6 +434,14 @@ jobs:
             STATUS="Deployed"
           fi
 
-          curl -sf -H "Content-Type: application/json" \
-            -d "{\"text\": \"**${STATUS}: ${REF_NAME}**\n\n**Commit:** ${SHORT_SHA} -- ${SAFE_MSG}\n[View logs](${RUN_URL})\"}" \
-            "$TENUN_WEBHOOK_URL" || true
+          # Retry with delay — app may still be restarting after deploy
+          for i in 1 2 3; do
+            if curl -sf -H "Content-Type: application/json" \
+              -d "{\"text\": \"**${STATUS}: ${REF_NAME}**\n\n**Commit:** ${SHORT_SHA} -- ${SAFE_MSG}\n[View logs](${RUN_URL})\"}" \
+              "$TENUN_WEBHOOK_URL"; then
+              echo "Tenun notification sent"
+              break
+            fi
+            echo "Tenun notification attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
