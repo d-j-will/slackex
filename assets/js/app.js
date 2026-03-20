@@ -89,3 +89,10 @@ if (process.env.NODE_ENV === "development") {
   })
 }
 
+// PWA service worker registration
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/service-worker.js')
+    .then(() => console.debug('Service Worker registered'))
+    .catch(err => console.warn('Service Worker registration failed:', err));
+}
+

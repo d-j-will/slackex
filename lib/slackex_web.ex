@@ -19,7 +19,8 @@ defmodule SlackexWeb do
 
   use Boundary, ignore: true
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths,
+    do: ~w(assets fonts images favicon.ico robots.txt manifest.json service-worker.js)
 
   def router do
     quote do

@@ -1,0 +1,14 @@
+{
+  "name": "Tenun",
+  "short_name": "Tenun",
+  "description": "Where ideas become woven into reality",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2A2640",
+  "theme_color": "#5D4D8F",
+  "icons": [
+    { "src": "/images/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/images/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/images/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
