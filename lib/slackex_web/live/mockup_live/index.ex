@@ -107,7 +107,7 @@ defmodule SlackexWeb.MockupLive.Index do
       <div class="fixed top-0 left-0 right-0 z-50 bg-gray-950/90 backdrop-blur-sm border-b border-white/10">
         <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div>
-            <h1 class="text-lg font-bold text-white/90">Slackex UI Concepts</h1>
+            <h1 class="text-lg font-bold text-white/90">Tenun UI Concepts</h1>
             <p class="text-xs text-white/40">{@mockup.tagline}</p>
           </div>
 

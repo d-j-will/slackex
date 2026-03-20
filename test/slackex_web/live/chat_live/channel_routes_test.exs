@@ -25,7 +25,7 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
     test "resolves to :create_channel action without crashing", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/chat/channels/new")
 
-      assert html =~ "Slackex"
+      assert html =~ "Tenun"
       assert lv |> element("div") |> has_element?()
     end
 
@@ -44,7 +44,7 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
     test "resolves to :browse_channels action without crashing", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/chat/channels/browse")
 
-      assert html =~ "Slackex"
+      assert html =~ "Tenun"
       assert lv |> element("div") |> has_element?()
     end
 
@@ -92,7 +92,7 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
 
       html = render_patch(lv, ~p"/chat/channels/new")
 
-      assert html =~ "Slackex"
+      assert html =~ "Tenun"
     end
 
     test "patch from /chat to /chat/channels/browse", %{conn: conn} do
@@ -100,7 +100,7 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
 
       html = render_patch(lv, ~p"/chat/channels/browse")
 
-      assert html =~ "Slackex"
+      assert html =~ "Tenun"
     end
 
     test "patch from /chat/channels/new back to /chat", %{conn: conn} do

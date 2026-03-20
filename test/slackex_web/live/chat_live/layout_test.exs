@@ -45,7 +45,7 @@ defmodule SlackexWeb.ChatLive.LayoutTest do
     test "shows workspace name in sidebar header", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
-      assert html =~ "Slackex"
+      assert html =~ "Tenun"
     end
 
     test "highlights active channel in sidebar", %{conn: conn, channel: channel} do

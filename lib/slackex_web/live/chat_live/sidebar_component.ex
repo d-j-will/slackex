@@ -65,7 +65,7 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
     <aside class="flex flex-col h-full bg-base-200">
       <%!-- Workspace header --%>
       <div class="p-4 border-b border-base-300 flex items-center justify-between">
-        <h1 class="font-bold text-lg truncate">Slackex</h1>
+        <h1 class="font-bold text-lg truncate">Tenun</h1>
       </div>
 
       <%!-- Scrollable navigation --%>

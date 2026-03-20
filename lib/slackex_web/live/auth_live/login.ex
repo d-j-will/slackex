@@ -16,7 +16,7 @@ defmodule SlackexWeb.AuthLive.Login do
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-sm mt-10">
-      <h1 class="text-2xl font-bold mb-6 text-center">Log in to Slackex</h1>
+      <h1 class="text-2xl font-bold mb-6 text-center">Log in to Tenun</h1>
 
       <.form
         for={@form}

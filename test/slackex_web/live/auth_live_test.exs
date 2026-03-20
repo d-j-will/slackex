@@ -69,7 +69,7 @@ defmodule SlackexWeb.AuthLiveTest do
     test "renders login form", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/log-in")
 
-      assert html =~ "Log in to Slackex"
+      assert html =~ "Log in to Tenun"
       assert html =~ "Email"
       assert html =~ "Password"
     end
