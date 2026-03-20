@@ -70,6 +70,54 @@ defmodule Slackex.AI.Summarizer do
     {system, user}
   end
 
+  @doc """
+  Summarizes a DM conversation's messages since the given timestamp.
+
+  Returns `{:ok, token_stream}` where the stream yields string chunks,
+  or `{:error, reason}`.
+  """
+  @spec summarize_dm(integer(), DateTime.t(), integer(), keyword()) ::
+          {:ok, Enumerable.t()} | {:error, atom()}
+  def summarize_dm(dm_conversation_id, since, _user_id, opts \\ []) do
+    with :ok <- check_configured(),
+         {:ok, messages} <- load_dm_messages(dm_conversation_id, since),
+         {:ok, context} <- format_context(messages) do
+      since_human = Calendar.strftime(since, "%B %d, %Y at %H:%M UTC")
+      {system_prompt, user_prompt} = build_dm_prompt(since_human, context)
+
+      llm_messages = [
+        %{role: "system", content: system_prompt},
+        %{role: "user", content: user_prompt}
+      ]
+
+      LLMClient.stream(llm_messages, opts)
+    end
+  end
+
+  @doc """
+  Builds the system and user prompts for DM summarization.
+  """
+  @spec build_dm_prompt(String.t(), String.t()) :: {String.t(), String.t()}
+  def build_dm_prompt(since_human, context) do
+    system = """
+    You are a concise conversation summarizer for a direct message thread.
+    Summarize the conversation clearly and briefly. Include:
+    - Key topics discussed
+    - Decisions made
+    - Action items (with who owns them, if mentioned)
+    - Notable messages
+    Do not invent information not present in the messages.\
+    """
+
+    user = """
+    Summarize the following direct message conversation since #{since_human}:
+
+    #{context}\
+    """
+
+    {system, user}
+  end
+
   # -- Private --
 
   defp check_configured do
@@ -80,6 +128,24 @@ defmodule Slackex.AI.Summarizer do
     messages =
       from(m in Message,
         where: m.channel_id == ^channel_id,
+        where: m.inserted_at >= ^since,
+        where: is_nil(m.deleted_at),
+        order_by: [asc: m.inserted_at],
+        preload: [:sender],
+        limit: 200
+      )
+      |> Repo.all()
+
+    case messages do
+      [] -> {:error, :no_messages}
+      msgs -> {:ok, msgs}
+    end
+  end
+
+  defp load_dm_messages(dm_conversation_id, since) do
+    messages =
+      from(m in Message,
+        where: m.dm_conversation_id == ^dm_conversation_id,
         where: m.inserted_at >= ^since,
         where: is_nil(m.deleted_at),
         order_by: [asc: m.inserted_at],

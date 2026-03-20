@@ -925,25 +925,35 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_info({:start_summary, range}, socket) do
-    channel = socket.assigns.active_channel
     user = socket.assigns.current_user
     socket = cancel_summary_task(socket)
 
     since = time_range_to_datetime(range)
     live_view_pid = self()
 
-    task =
-      Task.Supervisor.async_nolink(Slackex.TaskSupervisor, fn ->
-        stream_summary(channel.id, since, user.id, live_view_pid)
-      end)
+    summary_target =
+      cond do
+        socket.assigns.active_channel -> {:channel, socket.assigns.active_channel.id}
+        socket.assigns.active_dm -> {:dm, socket.assigns.active_dm.id}
+        true -> nil
+      end
 
-    {:noreply,
-     assign(socket,
-       active_summary_task: task,
-       summary_state: :loading,
-       summary_text: "",
-       show_summary_modal: true
-     )}
+    if summary_target do
+      task =
+        Task.Supervisor.async_nolink(Slackex.TaskSupervisor, fn ->
+          stream_summary(summary_target, since, user.id, live_view_pid)
+        end)
+
+      {:noreply,
+       assign(socket,
+         active_summary_task: task,
+         summary_state: :loading,
+         summary_text: "",
+         show_summary_modal: true
+       )}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -1612,8 +1622,16 @@ defmodule SlackexWeb.ChatLive.Index do
   # Summary helpers
   # ---------------------------------------------------------------------------
 
-  defp stream_summary(channel_id, since, user_id, live_view_pid) do
-    case Summarizer.summarize_channel(channel_id, since, user_id) do
+  defp stream_summary({:channel, channel_id}, since, user_id, live_view_pid) do
+    stream_summary_result(Summarizer.summarize_channel(channel_id, since, user_id), live_view_pid)
+  end
+
+  defp stream_summary({:dm, dm_id}, since, user_id, live_view_pid) do
+    stream_summary_result(Summarizer.summarize_dm(dm_id, since, user_id), live_view_pid)
+  end
+
+  defp stream_summary_result(result, live_view_pid) do
+    case result do
       {:ok, stream} ->
         try do
           token_count =
@@ -1824,6 +1842,24 @@ defmodule SlackexWeb.ChatLive.Index do
                           d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                         />
                       </svg>
+                    </button>
+                  <% end %>
+                  <%= if @summarization_enabled do %>
+                    <button
+                      data-role="summarize-button"
+                      phx-click="open_summary_modal"
+                      class="btn btn-ghost btn-xs gap-1"
+                      aria-label="Summarize conversation"
+                    >
+                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"
+                        />
+                      </svg>
+                      <span class="hidden sm:inline">Summarize</span>
                     </button>
                   <% end %>
                   <%= if @active_dm.user_a_id != @active_dm.user_b_id do %>
