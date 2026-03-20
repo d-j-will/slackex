@@ -276,10 +276,32 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm --no-TTY app1 bin/slackex eval "Slackex.Release.migrate()" < /dev/null 2>&1
             echo "Migrations complete."
 
-            # Recreate app containers with the new image (--remove-orphans cleans up stale containers)
-            echo "Recreating containers..."
-            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build --remove-orphans app1 app2 2>&1
-            echo "Containers started."
+            # Rolling restart — one node at a time so Caddy always has a healthy upstream
+            echo "Rolling restart: app1..."
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build app1 2>&1
+
+            echo "Waiting for app1 health..."
+            for i in $(seq 1 30); do
+              if docker compose -f docker-compose.prod.yml exec -T app1 curl -sf http://localhost:4000/health < /dev/null 2>&1; then
+                echo "app1 healthy after ${i}s"
+                break
+              fi
+              sleep 1
+            done
+
+            echo "Rolling restart: app2..."
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build --remove-orphans app2 2>&1
+
+            echo "Waiting for app2 health..."
+            for i in $(seq 1 30); do
+              if docker compose -f docker-compose.prod.yml exec -T app2 curl -sf http://localhost:4000/health < /dev/null 2>&1; then
+                echo "app2 healthy after ${i}s"
+                break
+              fi
+              sleep 1
+            done
+
+            echo "Both containers started."
 
             # Pre-cache Bumblebee model in the shared Docker volume (best-effort).
             # Downloads on first deploy, no-op when already cached. This ensures
