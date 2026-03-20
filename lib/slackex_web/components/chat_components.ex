@@ -185,10 +185,14 @@ defmodule SlackexWeb.ChatComponents do
       )
 
     ~H"""
-    <div class={[
-      "group relative flex gap-3 px-2 hover:bg-base-200/50 rounded-lg transition-colors",
-      if(@grouped, do: "py-0.5 mt-0.5", else: "py-1 mt-1")
-    ]}>
+    <div
+      phx-hook="LongPress"
+      id={"msg-#{@message.id}"}
+      class={[
+        "group relative flex gap-3 px-2 hover:bg-base-200/50 rounded-lg transition-colors",
+        if(@grouped, do: "py-0.5 mt-0.5", else: "py-1 mt-1")
+      ]}
+    >
       <div class="flex-shrink-0 pt-0.5">
         <%= if @grouped do %>
           <div class="w-10 shrink-0 flex items-center justify-center">

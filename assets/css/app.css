@@ -105,6 +105,14 @@
 /* PWA standalone safe area insets — applied to chat layout, not body,
    because body padding + h-[100dvh] on main causes overflow */
 
+/* Mobile long-press message actions — shows action bar on touch devices */
+[data-actions-open] [data-role="message-actions"] {
+  display: flex !important;
+}
+[data-actions-open] {
+  background-color: var(--color-base-200);
+}
+
 /* Search result match highlighting */
 mark {
   background-color: var(--color-warning);
