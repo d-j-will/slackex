@@ -112,6 +112,12 @@
 [data-actions-open] {
   background-color: var(--color-base-200);
 }
+/* Prevent text selection on long-press for message bubbles */
+[phx-hook="LongPress"] {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 
 /* Search result match highlighting */
 mark {
