@@ -131,6 +131,25 @@ defmodule Slackex.MarkdownTest do
       assert result =~ "<td>"
     end
 
+    test "code fence content is not modified by preprocessor" do
+      input =
+        "some text\n```\n| not | a | table |\n- not a list\n# not a heading\n```\nafter code"
+
+      result = html(input)
+      assert result =~ "<pre>"
+      assert result =~ "not a heading"
+      refute result =~ "<table>"
+      assert result =~ "<p>after code</p>"
+    end
+
+    test "code fence with language tag preserves content" do
+      input = "text\n```elixir\ndef hello, do: :ok\n```\n| A | B |\n|---|---|\n| 1 | 2 |"
+      result = html(input)
+      assert result =~ "<code class=\"elixir\">"
+      assert result =~ "def hello"
+      assert result =~ "<table>"
+    end
+
     test "table rows stay together" do
       result = html("| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |")
       assert result =~ "<table>"

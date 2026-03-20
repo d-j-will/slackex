@@ -35,7 +35,7 @@ defmodule Slackex.Markdown do
   defp chat_preprocess(text) do
     text
     |> String.split("\n")
-    |> insert_blank_lines([])
+    |> insert_blank_lines([], false)
     |> Enum.reverse()
     |> Enum.join("\n")
   end
@@ -44,33 +44,46 @@ defmodule Slackex.Markdown do
 
   defp block_type(line) do
     cond do
+      Regex.match?(~r/^```/, line) -> :code_fence
       Regex.match?(~r/^\#{1,6}\s/, line) -> :heading
       Regex.match?(~r/^[-*+]\s/, line) -> :list
       Regex.match?(~r/^\d+\.\s/, line) -> :list
       Regex.match?(~r/^>\s?/, line) -> :blockquote
-      Regex.match?(~r/^```/, line) -> :code_fence
       Regex.match?(~r/^(---+|\*\*\*+|___+)$/, line) -> :rule
       Regex.match?(~r/^\|.+\|$/, line) -> :table
       true -> :text
     end
   end
 
-  defp insert_blank_lines([], acc), do: acc
-  defp insert_blank_lines([line | rest], []), do: insert_blank_lines(rest, [line])
+  defp insert_blank_lines([], acc, _in_fence), do: acc
 
-  defp insert_blank_lines([line | rest], [prev | _] = acc) do
-    prev_type = block_type(prev)
+  defp insert_blank_lines([line | rest], [], in_fence) do
+    new_in_fence = if block_type(line) == :code_fence, do: !in_fence, else: in_fence
+    insert_blank_lines(rest, [line], new_in_fence)
+  end
+
+  defp insert_blank_lines([line | rest], [prev | _] = acc, in_fence) do
     curr_type = block_type(line)
 
-    needs_blank =
-      prev_type != :blank and curr_type != :blank and
-        prev_type != curr_type and
-        (prev_type != :text or curr_type != :text)
+    # Toggle fence state when we hit a code fence marker
+    new_in_fence = if curr_type == :code_fence, do: !in_fence, else: in_fence
 
-    if needs_blank do
-      insert_blank_lines(rest, [line, "" | acc])
+    # Never insert blank lines inside code fences
+    if in_fence and curr_type != :code_fence do
+      insert_blank_lines(rest, [line | acc], new_in_fence)
     else
-      insert_blank_lines(rest, [line | acc])
+      prev_type = block_type(prev)
+
+      needs_blank =
+        prev_type != :blank and curr_type != :blank and
+          prev_type != curr_type and
+          (prev_type != :text or curr_type != :text)
+
+      if needs_blank do
+        insert_blank_lines(rest, [line, "" | acc], new_in_fence)
+      else
+        insert_blank_lines(rest, [line | acc], new_in_fence)
+      end
     end
   end
 
