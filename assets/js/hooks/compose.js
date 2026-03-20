@@ -9,6 +9,14 @@ const Compose = {
     this.selectedIndex = 0;
     this.matches = [];
 
+    // Restore draft from sessionStorage (survives reconnects/remounts)
+    this.storageKey = `tenun-draft:${window.location.pathname}`;
+    const draft = sessionStorage.getItem(this.storageKey);
+    if (draft) {
+      this.textarea.value = draft;
+      this.autoResize();
+    }
+
     this.textarea.addEventListener("keydown", (e) => {
       // Handle popover navigation when visible
       if (this.popover) {
@@ -54,6 +62,8 @@ const Compose = {
     this.textarea.addEventListener("input", () => {
       this.autoResize();
       this.checkForShortcode();
+      // Save draft on every keystroke
+      sessionStorage.setItem(this.storageKey, this.textarea.value);
     });
 
     this.setupTypingDebounce();
@@ -176,6 +186,8 @@ const Compose = {
     if (this.textarea && this.textarea.value === "") {
       this.textarea.style.height = "auto";
       this.closePopover();
+      // Clear draft on successful send (server clears the form)
+      sessionStorage.removeItem(this.storageKey);
     }
   },
 
