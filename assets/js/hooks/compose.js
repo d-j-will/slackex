@@ -38,8 +38,10 @@ const Compose = {
         }
       }
 
-      // Submit on Enter (without shift)
-      if (e.key === "Enter" && !e.shiftKey) {
+      // Submit on Enter (without shift) — desktop only
+      // On mobile/touch devices, Enter inserts a newline; use the Send button to submit
+      const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      if (e.key === "Enter" && !e.shiftKey && !isTouchDevice) {
         e.preventDefault();
         // Replace any remaining shortcodes before submitting
         this.textarea.value = replaceShortcodes(this.textarea.value);
