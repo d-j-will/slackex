@@ -1864,7 +1864,7 @@ defmodule SlackexWeb.ChatLive.Index do
                   <.sidebar_toggle />
                 </div>
                 <.empty_state
-                  title="Welcome to Slackex"
+                  title="Welcome to Tenun"
                   subtitle="Select a channel from the sidebar to start chatting."
                 />
               </div>

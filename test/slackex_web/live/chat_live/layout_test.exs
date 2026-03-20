@@ -270,7 +270,7 @@ defmodule SlackexWeb.ChatLive.LayoutTest do
 
       # Should not crash
       html = render_hook(lv, "load_more", %{})
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
     end
 
     test "load_more stops when no more messages", %{conn: conn, alice: alice, channel: channel} do
@@ -357,7 +357,7 @@ defmodule SlackexWeb.ChatLive.LayoutTest do
     test "shows welcome when no channel selected", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
       assert html =~ "Select a channel"
     end
 
@@ -366,7 +366,7 @@ defmodule SlackexWeb.ChatLive.LayoutTest do
 
       html = render_patch(lv, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
       refute html =~ "message[content]"
     end
   end

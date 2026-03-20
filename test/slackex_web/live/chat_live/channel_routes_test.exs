@@ -63,7 +63,7 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
     test "/chat still works as :index", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
     end
 
     test "/chat/dm/new still works as :new_dm", %{conn: conn} do
@@ -108,7 +108,7 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
 
       html = render_patch(lv, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
     end
 
     test "patch from /chat/channels/browse back to /chat", %{conn: conn} do
@@ -116,7 +116,7 @@ defmodule SlackexWeb.ChatLive.ChannelRoutesTest do
 
       html = render_patch(lv, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
     end
   end
 end

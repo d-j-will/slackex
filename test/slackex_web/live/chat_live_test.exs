@@ -101,7 +101,7 @@ defmodule SlackexWeb.ChatLiveTest do
       # Navigate to index
       html = render_patch(lv, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
     end
   end
 
@@ -279,7 +279,7 @@ defmodule SlackexWeb.ChatLiveTest do
       html = render_patch(lv, ~p"/chat")
 
       # Should show welcome screen, no typing indicator
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
       refute html =~ "is typing"
     end
   end
@@ -326,7 +326,7 @@ defmodule SlackexWeb.ChatLiveTest do
       html = render_patch(lv, ~p"/chat/dm/#{dm.id}")
 
       # Should now be in the DM view (page title shows other user name)
-      refute html =~ "Welcome to Slackex"
+      refute html =~ "Welcome to Tenun"
     end
   end
 
@@ -1087,7 +1087,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
       # Should navigate to /chat (welcome screen)
       html = render(lv)
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
       # Channel should no longer be in the sidebar channels list
       sidebar_html = lv |> element("aside") |> render()
       refute sidebar_html =~ public_channel.name
@@ -1142,7 +1142,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
       # Should redirect to /chat (welcome screen)
       html = render(lv)
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
 
       # Flash message should confirm the block
       assert render(lv) =~ "has been blocked"
@@ -1249,7 +1249,7 @@ defmodule SlackexWeb.ChatLiveTest do
     test "shows welcome message when no channel selected", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
       assert html =~ "Select a channel"
     end
 
@@ -1265,7 +1265,7 @@ defmodule SlackexWeb.ChatLiveTest do
 
       html = render_patch(lv, ~p"/chat")
 
-      assert html =~ "Welcome to Slackex"
+      assert html =~ "Welcome to Tenun"
       assert html =~ "Select a channel"
       refute html =~ "message[content]"
     end
@@ -1668,7 +1668,7 @@ defmodule SlackexWeb.ChatLiveTest do
       send(lv.pid, {:presence, :online, -1})
 
       # LiveView should still be alive and rendering
-      assert render(lv) =~ "Welcome to Slackex"
+      assert render(lv) =~ "Welcome to Tenun"
     end
 
     test "user connection broadcasts presence online via PubSub", %{
