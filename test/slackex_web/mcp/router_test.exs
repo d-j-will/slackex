@@ -459,6 +459,35 @@ defmodule SlackexWeb.MCP.RouterTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Real-time -- full path integration
+  # ---------------------------------------------------------------------------
+
+  describe "real-time — full path" do
+    test "message sent via Messaging reaches MCP subscriber", ctx do
+      alias SlackexWeb.MCP.Subscriber
+
+      # Start a subscriber as if an MCP session subscribed
+      {:ok, sub} =
+        Subscriber.start_link(%{
+          session_pid: self(),
+          channel_id: ctx.channel.id,
+          event_types: ["new_message"]
+        })
+
+      # Send a real message through the Messaging pipeline (NOT Chat.send_message)
+      # This goes through ChannelServer which broadcasts via PubSub
+      {:ok, _msg} =
+        Slackex.Messaging.send_message(ctx.channel.id, ctx.user.id, "real-time test", [])
+
+      # The subscriber should forward the event to us
+      assert_receive {:mcp_event, %{type: "new_message", payload: payload}}, 5000
+      assert payload.content == "real-time test"
+
+      GenServer.stop(sub)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
 
