@@ -122,7 +122,25 @@ Agents subscribe to `tenun:///channels/:id/messages` for real-time updates. See 
 
 ### Authorization
 
-The bot user must be subscribed to a channel to read its messages. `Chat.list_messages/2` enforces this -- the same authorization path as human users. Attempting to read a channel the bot isn't in returns an error.
+**The MCP router must enforce channel membership before calling read functions.** Neither `Chat.list_messages/2` nor `Chat.list_thread/2` check membership internally — they query by channel/message ID directly. The router handler must verify bot membership before every read:
+
+```elixir
+defp verify_membership(bot_user_id, channel_id) do
+  if Chat.get_role(bot_user_id, channel_id), do: :ok, else: {:error, :unauthorized}
+end
+
+# In resource handler:
+with :ok <- verify_membership(session.assigns.bot_user.id, channel_id),
+     messages <- Chat.list_messages(channel_id, opts) do
+  # ...
+end
+```
+
+For threads, the handler must also verify the parent message belongs to the claimed channel_id in the URI to prevent cross-channel thread access.
+
+### Pagination Limit Enforcement
+
+The router handler enforces `min(limit, 200)` before passing to `Chat.list_messages/2`, since the domain function does not enforce a max.
 
 ### Excluded from v1
 
@@ -136,14 +154,52 @@ Tools are side-effecting actions the agent can perform.
 
 | Tool | Input Schema | Maps To | Description |
 |---|---|---|---|
-| `send_message` | `{channel_id: string, content: string}` | `Messaging.send_message/3` | Post a message as the bot user |
+| `send_message` | `{channel_id: string, content: string}` | `Messaging.send_message/4` | Post a message as the bot user |
 | `reply_to_thread` | `{channel_id: string, parent_message_id: string, content: string}` | `Messaging.send_reply/5` | Reply to a thread as the bot user |
-| `react_to_message` | `{message_id: string, emoji: string}` | `Messaging.toggle_reaction/3` | Add/remove a reaction as the bot user |
+| `react_to_message` | `{channel_id: string, message_id: string, emoji: string}` | `Messaging.toggle_reaction/3` | Add/remove a reaction as the bot user |
 | `search_messages` | `{query: string, mode?: string, channel_id?: string, limit?: integer}` | `Search.search_messages/3` | Search with mode: `text`, `semantic`, or `hybrid` (default). Optional channel scoping. |
+
+### Tool Handler Wiring
+
+Each tool handler injects the bot user from the session and maps to the correct domain function signature:
+
+```elixir
+# send_message: Messaging.send_message(channel_id, sender_id, content, opts)
+def send_message(%{"channel_id" => channel_id, "content" => content}, session) do
+  bot = session.assigns.bot_user
+  case Messaging.send_message(channel_id, bot.id, content, []) do
+    {:ok, msg} -> {:reply, Tool.text(Jason.encode!(Serializer.message(msg))), session}
+    {:error, reason} -> {:reply, Tool.text("Error: #{reason}"), session}
+  end
+end
+
+# reply_to_thread: Messaging.send_reply(channel_id, channel_type, sender_id, parent_id, content)
+# channel_type is hardcoded to :channel since MCP v1 only targets channels (not DMs)
+def reply_to_thread(%{"channel_id" => cid, "parent_message_id" => pid, "content" => content}, session) do
+  bot = session.assigns.bot_user
+  case Messaging.send_reply(cid, :channel, bot.id, pid, content) do
+    {:ok, msg} -> {:reply, Tool.text(Jason.encode!(Serializer.message(msg))), session}
+    {:error, reason} -> {:reply, Tool.text("Error: #{reason}"), session}
+  end
+end
+
+# react_to_message: channel_id included in input for membership verification
+def react_to_message(%{"channel_id" => cid, "message_id" => mid, "emoji" => emoji}, session) do
+  bot = session.assigns.bot_user
+  with :ok <- verify_membership(bot.id, cid) do
+    case Messaging.toggle_reaction(mid, bot.id, emoji) do
+      {:ok, result} -> {:reply, Tool.text("Reaction #{elem(result, 0)}"), session}
+      {:error, reason} -> {:reply, Tool.text("Error: #{reason}"), session}
+    end
+  end
+end
+```
+
+Note: `react_to_message` includes `channel_id` for membership verification. The underlying `Messaging.toggle_reaction/3` looks up the message by ID, which may scan partitions. This is an accepted v1 limitation — the partition scan cost is negligible at current message volumes. Optimize in v2 if agent reaction volume increases.
 
 ### Authorization
 
-Every tool call uses the bot user from the MCP session (loaded during `connect/2`). The bot user's channel subscriptions determine what it can access. `Messaging.send_message/3` checks sender authorization internally -- the same permission model as human users.
+Every tool call uses the bot user from the MCP session (loaded during `connect/2`). `Messaging.send_message/4` checks sender authorization internally via `Permissions.can?/3`. The `react_to_message` handler adds an explicit membership check since `toggle_reaction/3` does not.
 
 ### Search Tool
 
@@ -152,7 +208,7 @@ Exposes the existing hybrid search with all three modes:
 - `semantic` -- pgvector cosine similarity
 - `hybrid` (default) -- parallel FTS + semantic, merged with Reciprocal Rank Fusion (RRF, k=60)
 
-`channel_id` is optional. Omit to search across all channels the bot can see. The `:message_search` feature flag is checked internally by `Search.search_messages/3`.
+`channel_id` is optional. Omit to search across all channels the bot can see. The `:message_search` feature flag is checked internally by `Search.search_messages/3`. The handler passes `bot_user.id` as the first argument — search authorization is handled internally by scoping results to channels the bot has access to.
 
 ### Error Handling
 
@@ -216,17 +272,19 @@ Channel activity          PubSub                 MCP Bridge              Agent (
 
 ### Event Types
 
-| PubSub Event | MCP Event Type | Payload |
+| PubSub Envelope Event | MCP Event Type | Payload |
 |---|---|---|
-| `new_message` | `new_message` | `{id, channel_id, sender_id, sender_username, content, inserted_at}` |
-| `message.edited` | `message.edited` | `{id, content, edited_at}` |
-| `message.deleted` | `message.deleted` | `{id, deleted_at}` |
-| `reaction.toggled` | `reaction.toggled` | `{message_id, emoji, user_id, action}` |
+| `message.new` | `new_message` | `{id, channel_id, sender_id, sender_username, content, inserted_at}` |
+| `message.edited` | `message_edited` | `{id, content, edited_at}` |
+| `message.deleted` | `message_deleted` | `{id, deleted_at}` |
+| `reaction.toggled` | `reaction_toggled` | `{message_id, emoji, user_id, action}` |
 | `typing` | `typing` | `{user_id, username}` |
+
+**Important:** The `McpSubscriber` pattern-matches on the PubSub envelope's `event` field (e.g., `"message.new"`) and maps it to the MCP event type (e.g., `"new_message"`). These are different names — the PubSub events use dot notation, the MCP types use underscores. The mapping is explicit in the `McpSubscriber` module.
 
 ### Default Event Types
 
-If agent doesn't specify `event_types`: `["new_message", "message.edited", "message.deleted"]`. Typing and reactions are opt-in only.
+If agent doesn't specify `event_types`: `["new_message", "message_edited", "message_deleted"]`. Typing and reactions are opt-in only.
 
 ### Multi-Node
 
@@ -257,7 +315,7 @@ MCP tokens are prefixed with `mcp_` to distinguish from webhook tokens (`whk_` p
 
 ### Creation Flow
 
-Mirrors `Integrations.create_webhook/1`:
+Follows the same atomic Multi pattern as `Integrations.create_webhook/1`:
 
 1. Generate cryptographically random token with `mcp_` prefix
 2. Create bot user (`is_bot: true`, username derived from name)
@@ -308,7 +366,7 @@ Bot users must be subscribed to channels to read or post. Token creator manually
 
 | File | Change |
 |---|---|
-| `lib/slackex/integrations/integrations.ex` | Add `create_mcp_token/1`, `get_mcp_token_by_hash/1`, `touch_last_used/1`, `revoke_mcp_token/1` |
+| `lib/slackex/integrations/integrations.ex` | Add `create_mcp_token/1`, `get_mcp_token_by_hash/1`, `touch_last_used/1`, `revoke_mcp_token/1`. Update Boundary exports to include `McpToken`. |
 | `lib/slackex_web/router.ex` | Add `/mcp` scope with `:mcp` pipeline and Phantom.Plug forward |
 | `config/config.exs` | MIME type config for SSE (Phantom requirement) |
 | `mix.exs` | Add `{:phantom_mcp, "~> 0.3.4"}` dependency |
@@ -342,6 +400,8 @@ end
 ```
 
 No `Jason.Encoder` derivation on domain schemas. Explicit field selection per entity.
+
+**Decryption guarantee:** Messages loaded via Ecto queries are automatically decrypted by the Cloak field type (`Slackex.Encrypted.Binary`). The serializer must only receive Ecto-loaded structs, never raw database rows or in-memory ChannelServer maps (which contain plaintext `content` but different struct shapes).
 
 ---
 
@@ -408,6 +468,7 @@ end
 | Resource serialization | Channel/message/user JSON matches exact field set. No encrypted fields or internal metadata. |
 | Tool → domain wiring | `send_message` tool calls `Messaging.send_message/3` with correct bot user ID |
 | Search contract | Search tool results match `Search.search_messages/3` output format |
+| Channel membership enforcement | Bot reads channel it hasn't joined → receives authorization error. Bot reads thread from unjoinned channel → authorization error. |
 | PubSub → SSE bridge | Subscribe → send message via Messaging → SSE notification received with correct event type and payload |
 
 ### Integration Tests (Full Path)
@@ -483,6 +544,7 @@ Same "first message Tenun sends to itself" pattern as the webhook CI dogfood.
 | OAuth2 | For richer multi-user integrations |
 | Webhook management UI | Token lifecycle in the web UI (currently IEx-only) |
 | Resource templates | Dynamic URI templates for parameterized resource discovery |
+| IP allowlisting | Per-token IP restrictions as defense-in-depth alongside bearer auth |
 
 ---
 
