@@ -6,5 +6,5 @@ defmodule Slackex.Integrations do
 
   use Boundary,
     deps: [Slackex.Accounts, Slackex.Chat],
-    exports: [Webhook, Webhooks]
+    exports: [Webhook, Webhooks, McpToken, McpTokens]
 end
