@@ -22,12 +22,31 @@ defmodule SlackexWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :mcp do
+    plug :accepts, ["json", "sse"]
+
+    plug Plug.Parsers,
+      parsers: [{:json, length: 1_000_000}],
+      pass: ["application/json"],
+      json_decoder: Jason
+  end
+
   pipeline :rate_limit_auth do
     plug SlackexWeb.Plugs.RateLimit, max_requests: 10, window_seconds: 60
   end
 
   pipeline :rate_limit_api_auth do
     plug SlackexWeb.Plugs.RateLimit, max_requests: 10, window_seconds: 60
+  end
+
+  # MCP server — bearer token auth, no session/CSRF
+  scope "/mcp" do
+    pipe_through :mcp
+
+    forward "/", Phantom.Plug,
+      router: SlackexWeb.MCP.Router,
+      pubsub: Slackex.PubSub,
+      origins: :all
   end
 
   # Health/readiness endpoints — outside auth pipelines

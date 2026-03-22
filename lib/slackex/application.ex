@@ -30,6 +30,7 @@ defmodule Slackex.Application do
          [Application.get_env(:libcluster, :topologies, []), [name: Slackex.ClusterSupervisor]]},
         Slackex.NodeListener,
         {Phoenix.PubSub, name: Slackex.PubSub},
+        {Phantom.Tracker, [name: Phantom.Tracker, pubsub_server: Slackex.PubSub]},
         SlackexWeb.Presence,
         Slackex.Infrastructure.Snowflake,
         Slackex.Cache.Local,
