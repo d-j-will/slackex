@@ -14,6 +14,7 @@ defmodule SlackexWeb.MCP.Router do
   alias SlackexWeb.MCP.Serializer
 
   require Phantom.Resource, as: Resource
+  require Phantom.Tool, as: Tool
 
   @json "application/json"
 
@@ -177,6 +178,141 @@ defmodule SlackexWeb.MCP.Router do
       user ->
         {:reply, Resource.text(Jason.encode!(Serializer.user(user)), uri: uri, mime_type: @json),
          session}
+    end
+  end
+
+  # -- Tools ----------------------------------------------------------------
+
+  tool(:send_message,
+    description: "Send a message to a channel as your bot user",
+    input_schema: %{
+      required: ["channel_id", "content"],
+      properties: %{
+        "channel_id" => %{type: "string", description: "Channel ID"},
+        "content" => %{type: "string", description: "Message content (supports markdown)"}
+      }
+    }
+  )
+
+  tool(:reply_to_thread,
+    description: "Reply to a thread in a channel as your bot user",
+    input_schema: %{
+      required: ["channel_id", "parent_message_id", "content"],
+      properties: %{
+        "channel_id" => %{type: "string", description: "Channel ID"},
+        "parent_message_id" => %{type: "string", description: "Parent message Snowflake ID"},
+        "content" => %{type: "string", description: "Reply content"}
+      }
+    }
+  )
+
+  tool(:react_to_message,
+    description: "Add or remove a reaction on a message",
+    input_schema: %{
+      required: ["channel_id", "message_id", "emoji"],
+      properties: %{
+        "channel_id" => %{type: "string", description: "Channel ID (for authorization)"},
+        "message_id" => %{type: "string", description: "Message Snowflake ID"},
+        "emoji" => %{type: "string", description: "Emoji name (e.g. thumbsup, heart)"}
+      }
+    }
+  )
+
+  tool(:search_messages,
+    description: "Search message history. Modes: text (FTS), semantic (vector), hybrid (default)",
+    input_schema: %{
+      required: ["query"],
+      properties: %{
+        "query" => %{type: "string", description: "Search query"},
+        "mode" => %{type: "string", description: "text, semantic, or hybrid (default)"},
+        "channel_id" => %{type: "string", description: "Optional: scope to specific channel"},
+        "limit" => %{type: "integer", description: "Max results (default 20)"}
+      }
+    }
+  )
+
+  # Tool handlers
+
+  def send_message(%{"channel_id" => cid, "content" => content}, session) do
+    bot = session.assigns.bot_user
+    channel_id = String.to_integer(cid)
+
+    case Slackex.Messaging.send_message(channel_id, bot.id, content, []) do
+      {:ok, msg} ->
+        {:reply, Tool.text(Jason.encode!(Serializer.message_from_map(msg))), session}
+
+      {:error, reason} ->
+        {:reply, Tool.text("Error: #{inspect(reason)}"), session}
+    end
+  end
+
+  def reply_to_thread(
+        %{"channel_id" => cid, "parent_message_id" => pid, "content" => content},
+        session
+      ) do
+    bot = session.assigns.bot_user
+
+    case Slackex.Messaging.send_reply(
+           String.to_integer(cid),
+           :channel,
+           bot.id,
+           String.to_integer(pid),
+           content
+         ) do
+      {:ok, msg} ->
+        {:reply, Tool.text(Jason.encode!(Serializer.message(msg))), session}
+
+      {:error, reason} ->
+        {:reply, Tool.text("Error: #{inspect(reason)}"), session}
+    end
+  end
+
+  def react_to_message(
+        %{"channel_id" => cid, "message_id" => mid, "emoji" => emoji},
+        session
+      ) do
+    bot = session.assigns.bot_user
+
+    if Chat.get_role(bot.id, String.to_integer(cid)) do
+      case Slackex.Messaging.toggle_reaction(String.to_integer(mid), bot.id, emoji) do
+        {:ok, {:swapped, _, _}} ->
+          {:reply, Tool.text("Reaction swapped"), session}
+
+        {:ok, {action, _}} ->
+          {:reply, Tool.text("Reaction #{action}"), session}
+
+        {:error, reason} ->
+          {:reply, Tool.text("Error: #{inspect(reason)}"), session}
+      end
+    else
+      {:reply, Tool.text("Error: Not a member of this channel"), session}
+    end
+  end
+
+  def search_messages(%{"query" => query} = params, session) do
+    bot = session.assigns.bot_user
+
+    mode =
+      case Map.get(params, "mode", "hybrid") do
+        "text" -> :text
+        "semantic" -> :semantic
+        _ -> :hybrid
+      end
+
+    limit = Map.get(params, "limit", 20)
+    opts = [mode: mode, limit: limit]
+
+    opts =
+      if params["channel_id"],
+        do: [{:channel_id, String.to_integer(params["channel_id"])} | opts],
+        else: opts
+
+    case Slackex.Search.search_messages(bot.id, query, opts) do
+      {:ok, messages} ->
+        {:reply, Tool.text(Jason.encode!(Serializer.messages(messages))), session}
+
+      {:error, reason} ->
+        {:reply, Tool.text("Error: #{inspect(reason)}"), session}
     end
   end
 

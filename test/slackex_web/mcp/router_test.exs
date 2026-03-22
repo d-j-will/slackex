@@ -264,6 +264,134 @@ defmodule SlackexWeb.MCP.RouterTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Tools -- send_message
+  # ---------------------------------------------------------------------------
+
+  describe "send_message/2 tool" do
+    test "bot sends a message to a joined channel", %{channel: channel, bot: bot} do
+      session = build_session_with_bot(bot)
+
+      {:reply, result, _session} =
+        Router.send_message(
+          %{"channel_id" => to_string(channel.id), "content" => "Hello from MCP"},
+          session
+        )
+
+      data = decode_tool_text(result)
+      assert data["content"] == "Hello from MCP"
+      assert data["sender_id"] == to_string(bot.id)
+      assert data["channel_id"] == to_string(channel.id)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Tools -- reply_to_thread
+  # ---------------------------------------------------------------------------
+
+  describe "reply_to_thread/2 tool" do
+    test "bot replies to an existing message", %{channel: channel, user: user, bot: bot} do
+      {:ok, parent} = Chat.send_message(channel.id, user.id, "Parent message")
+
+      session = build_session_with_bot(bot)
+
+      {:reply, result, _session} =
+        Router.reply_to_thread(
+          %{
+            "channel_id" => to_string(channel.id),
+            "parent_message_id" => to_string(parent.id),
+            "content" => "Thread reply from bot"
+          },
+          session
+        )
+
+      data = decode_tool_text(result)
+      assert data["content"] == "Thread reply from bot"
+      assert data["sender_id"] == to_string(bot.id)
+      assert data["parent_message_id"] == to_string(parent.id)
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Tools -- react_to_message
+  # ---------------------------------------------------------------------------
+
+  describe "react_to_message/2 tool" do
+    test "bot reacts to a message in a joined channel", %{
+      channel: channel,
+      user: user,
+      bot: bot
+    } do
+      {:ok, msg} = Chat.send_message(channel.id, user.id, "React to me")
+
+      session = build_session_with_bot(bot)
+
+      {:reply, result, _session} =
+        Router.react_to_message(
+          %{
+            "channel_id" => to_string(channel.id),
+            "message_id" => to_string(msg.id),
+            "emoji" => "thumbsup"
+          },
+          session
+        )
+
+      text = get_tool_text(result)
+      assert text =~ "added"
+    end
+
+    test "returns error for non-member channel", %{bot: bot, user: user} do
+      other_ch = insert(:channel, creator: user)
+      insert(:subscription, user: user, channel: other_ch)
+      {:ok, msg} = Chat.send_message(other_ch.id, user.id, "Private msg")
+
+      session = build_session_with_bot(bot)
+
+      {:reply, result, _session} =
+        Router.react_to_message(
+          %{
+            "channel_id" => to_string(other_ch.id),
+            "message_id" => to_string(msg.id),
+            "emoji" => "thumbsup"
+          },
+          session
+        )
+
+      text = get_tool_text(result)
+      assert text =~ "Not a member"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Tools -- search_messages
+  # ---------------------------------------------------------------------------
+
+  describe "search_messages/2 tool" do
+    test "searches messages or returns feature_disabled", %{
+      channel: channel,
+      user: user,
+      bot: bot
+    } do
+      {:ok, _msg} = Chat.send_message(channel.id, user.id, "searchable content xyz")
+
+      session = build_session_with_bot(bot)
+
+      {:reply, result, _session} =
+        Router.search_messages(%{"query" => "searchable content xyz"}, session)
+
+      text = get_tool_text(result)
+
+      # Feature flag may be off — handle both outcomes
+      case Jason.decode(text) do
+        {:ok, list} when is_list(list) ->
+          assert Enum.any?(list, fn m -> m["content"] =~ "searchable" end)
+
+        _ ->
+          assert text =~ "feature_disabled"
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
 
@@ -278,4 +406,8 @@ defmodule SlackexWeb.MCP.RouterTest do
 
   defp decode_resource_text(%{text: text}), do: Jason.decode!(text)
   defp decode_resource_text(text) when is_binary(text), do: Jason.decode!(text)
+
+  defp decode_tool_text(%{content: [%{type: "text", text: text}]}), do: Jason.decode!(text)
+
+  defp get_tool_text(%{content: [%{type: "text", text: text}]}), do: text
 end
