@@ -466,9 +466,9 @@ end
 | MCP initialize handshake | Phantom responds with correct protocol version, capabilities include tools + resources + prompts |
 | Token auth | Valid bearer → `{:ok, session}` with bot user. Invalid/missing → 401. Revoked → 401. |
 | Resource serialization | Channel/message/user JSON matches exact field set. No encrypted fields or internal metadata. |
-| Tool → domain wiring | `send_message` tool calls `Messaging.send_message/3` with correct bot user ID |
+| Tool → domain wiring | `send_message` tool calls `Messaging.send_message/4` with correct bot user ID |
 | Search contract | Search tool results match `Search.search_messages/3` output format |
-| Channel membership enforcement | Bot reads channel it hasn't joined → receives authorization error. Bot reads thread from unjoinned channel → authorization error. |
+| Channel membership enforcement | Bot reads channel it hasn't joined → receives authorization error. Bot reads thread from unjoined channel → authorization error. |
 | PubSub → SSE bridge | Subscribe → send message via Messaging → SSE notification received with correct event type and payload |
 
 ### Integration Tests (Full Path)
