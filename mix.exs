@@ -144,6 +144,9 @@ defmodule Slackex.MixProject do
       {:req, "~> 0.5"},
       {:floki, "~> 0.37"},
 
+      # MCP server
+      {:phantom_mcp, "~> 0.3.4"},
+
       # Dev & Test
       {:tidewave, "~> 0.5", only: :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

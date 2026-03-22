@@ -59,6 +59,10 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :mime, :types, %{
+  "text/event-stream" => ["sse"]
+}
+
 config :slackex, Oban,
   repo: Slackex.Repo,
   queues: [default: 10, notifications: 20, embeddings: 5, link_previews: 5],
