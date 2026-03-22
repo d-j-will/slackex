@@ -8,8 +8,8 @@ defmodule SlackexWeb.MCP.Router do
     Use the bot user identity associated with your token.
     """
 
-  alias Slackex.Chat
   alias Slackex.Accounts
+  alias Slackex.Chat
   alias Slackex.Integrations.McpTokens
   alias SlackexWeb.MCP.Serializer
 

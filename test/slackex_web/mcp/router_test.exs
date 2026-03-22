@@ -1,8 +1,8 @@
 defmodule SlackexWeb.MCP.RouterTest do
   use SlackexWeb.ConnCase, async: false
 
-  alias Slackex.Integrations.McpTokens
   alias Slackex.Chat
+  alias Slackex.Integrations.McpTokens
   alias SlackexWeb.MCP.Router
 
   # ---------------------------------------------------------------------------

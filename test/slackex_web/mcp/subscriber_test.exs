@@ -1,8 +1,8 @@
 defmodule SlackexWeb.MCP.SubscriberTest do
   use Slackex.DataCase, async: false
 
-  alias SlackexWeb.MCP.Subscriber
   alias Slackex.Messaging.Envelope
+  alias SlackexWeb.MCP.Subscriber
 
   describe "event filtering" do
     test "forwards matching events, drops non-matching" do
