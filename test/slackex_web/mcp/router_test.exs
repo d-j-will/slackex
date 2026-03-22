@@ -392,6 +392,73 @@ defmodule SlackexWeb.MCP.RouterTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Prompts -- summarize_channel
+  # ---------------------------------------------------------------------------
+
+  describe "summarize_channel/2 prompt" do
+    test "returns messages with channel summarization guidance", %{channel: channel} do
+      session = build_session()
+
+      {:reply, result, _session} =
+        Router.summarize_channel(%{"channel_id" => to_string(channel.id)}, session)
+
+      assert %{messages: [_ | _] = messages, description: description} = result
+      assert description =~ "Summarize"
+      [%{role: :user, content: %{type: :text, text: text}}] = messages
+      assert text =~ to_string(channel.id)
+      assert text =~ "Key Topics"
+      assert text =~ "Action Items"
+    end
+
+    test "includes since clause when since argument provided", %{channel: channel} do
+      session = build_session()
+
+      {:reply, result, _session} =
+        Router.summarize_channel(
+          %{"channel_id" => to_string(channel.id), "since" => "2026-01-01T00:00:00Z"},
+          session
+        )
+
+      [%{content: %{text: text}}] = result.messages
+      assert text =~ "2026-01-01T00:00:00Z"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Prompts -- draft_spec
+  # ---------------------------------------------------------------------------
+
+  describe "draft_spec/2 prompt" do
+    test "returns messages with spec drafting guidance", %{channel: channel} do
+      session = build_session()
+
+      {:reply, result, _session} =
+        Router.draft_spec(%{"channel_id" => to_string(channel.id)}, session)
+
+      assert %{messages: [_ | _] = messages, description: description} = result
+      assert description =~ "spec"
+      [%{role: :user, content: %{type: :text, text: text}}] = messages
+      assert text =~ to_string(channel.id)
+      assert text =~ "Acceptance Criteria"
+      assert text =~ "Problem Statement"
+    end
+
+    test "includes thread clause when thread_id argument provided", %{channel: channel} do
+      session = build_session()
+
+      {:reply, result, _session} =
+        Router.draft_spec(
+          %{"channel_id" => to_string(channel.id), "thread_id" => "123456789"},
+          session
+        )
+
+      [%{content: %{text: text}}] = result.messages
+      assert text =~ "123456789"
+      assert text =~ "read_thread"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
 

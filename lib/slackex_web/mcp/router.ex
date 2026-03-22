@@ -15,6 +15,7 @@ defmodule SlackexWeb.MCP.Router do
 
   require Phantom.Resource, as: Resource
   require Phantom.Tool, as: Tool
+  require Phantom.Prompt, as: Prompt
 
   @json "application/json"
 
@@ -314,6 +315,82 @@ defmodule SlackexWeb.MCP.Router do
       {:error, reason} ->
         {:reply, Tool.text("Error: #{inspect(reason)}"), session}
     end
+  end
+
+  # -- Prompts ---------------------------------------------------------------
+
+  prompt(:summarize_channel,
+    description:
+      "Summarize recent activity in a channel. Fetches messages and guides you to produce a structured summary.",
+    arguments: [
+      %{name: "channel_id", description: "Channel ID to summarize", required: true},
+      %{
+        name: "since",
+        description: "ISO 8601 timestamp — only summarize messages after this time (optional)"
+      }
+    ]
+  )
+
+  prompt(:draft_spec,
+    description:
+      "Draft a feature spec from a channel discussion. Reads the conversation and guides you to produce a structured spec with acceptance criteria.",
+    arguments: [
+      %{name: "channel_id", description: "Channel ID containing the discussion", required: true},
+      %{
+        name: "thread_id",
+        description: "Optional: specific thread message ID to focus on"
+      }
+    ]
+  )
+
+  def summarize_channel(%{"channel_id" => channel_id} = args, session) do
+    since_clause =
+      case Map.get(args, "since") do
+        nil -> ""
+        since -> " Only include messages after #{since}."
+      end
+
+    text = """
+    Use the `read_messages` resource to fetch recent messages from channel #{channel_id}.#{since_clause}
+
+    Then produce a structured summary with the following sections:
+    - **Key Topics**: The main subjects discussed
+    - **Decisions**: Any conclusions or agreements reached
+    - **Action Items**: Tasks or next steps mentioned
+    - **Open Questions**: Unresolved topics or questions raised
+    """
+
+    {:reply,
+     %{
+       description: "Summarize recent activity in a channel",
+       messages: [%{role: :user, content: Prompt.text(String.trim(text))}]
+     }, session}
+  end
+
+  def draft_spec(%{"channel_id" => channel_id} = args, session) do
+    thread_clause =
+      case Map.get(args, "thread_id") do
+        nil -> ""
+        thread_id -> " Focus on the thread starting at message #{thread_id} using `read_thread`."
+      end
+
+    text = """
+    Use the `read_messages` resource to read the discussion in channel #{channel_id}.#{thread_clause}
+
+    Then produce a structured feature spec with the following sections:
+    - **Title**: A concise name for the feature
+    - **Problem Statement**: What problem this solves and for whom
+    - **Proposed Solution**: High-level description of the solution
+    - **Acceptance Criteria**: Use Given/When/Then format for each scenario
+    - **Constraints**: Technical or product constraints to keep in mind
+    - **Open Questions**: Unresolved questions that need answers before implementation
+    """
+
+    {:reply,
+     %{
+       description: "Draft a feature spec from a channel discussion",
+       messages: [%{role: :user, content: Prompt.text(String.trim(text))}]
+     }, session}
   end
 
   # -- Private ---------------------------------------------------------------
