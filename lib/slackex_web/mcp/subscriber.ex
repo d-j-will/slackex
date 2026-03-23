@@ -25,7 +25,7 @@ defmodule SlackexWeb.MCP.Subscriber do
   @impl true
   def init(%{session_pid: session_pid, channel_id: channel_id, event_types: event_types}) do
     types = event_types || @default_event_types
-    Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel_id}")
+    :ok = Phoenix.PubSub.subscribe(Slackex.PubSub, "channel:#{channel_id}")
 
     {:ok,
      %{

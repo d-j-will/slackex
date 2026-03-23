@@ -42,7 +42,8 @@ defmodule Slackex.MixProject do
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/project.plt"},
         plt_add_apps: [:mix, :ex_unit],
-        flags: [:unmatched_returns, :error_handling, :no_opaque]
+        flags: [:unmatched_returns, :error_handling, :no_opaque],
+        ignore_warnings: ".dialyzer_ignore.exs"
       ]
     ]
   end
