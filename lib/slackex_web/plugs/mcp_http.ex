@@ -24,9 +24,7 @@ defmodule SlackexWeb.Plugs.McpHttp do
   @session_store :mcp_http_sessions
 
   def init(opts) do
-    unless :ets.whereis(@session_store) != :undefined do
-      :ets.new(@session_store, [:named_table, :public, :set])
-    end
+    _ = ensure_session_store()
 
     %{
       phantom_opts: Phantom.Plug.init(opts),
@@ -151,6 +149,13 @@ defmodule SlackexWeb.Plugs.McpHttp do
     conn
     |> get_req_header("accept")
     |> Enum.any?(&String.contains?(&1, "text/event-stream"))
+  end
+
+  defp ensure_session_store do
+    case :ets.whereis(@session_store) do
+      :undefined -> :ets.new(@session_store, [:named_table, :public, :set])
+      ref -> ref
+    end
   end
 
   defp put_cors_headers(conn) do
