@@ -48,3 +48,4 @@ npm-debug.log
 
 # Production secrets
 .env
+.mcp.json

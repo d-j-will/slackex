@@ -39,14 +39,17 @@ services:
     container_name: slackex-app-1
     hostname: app1
     labels:
-      caddy: chat.davewil.dev
-      caddy.tls.dns: cloudflare {env.CF_API_TOKEN}
-      caddy.reverse_proxy: "{{upstreams 4000}}"
-      caddy.reverse_proxy.health_uri: /health
-      caddy.reverse_proxy.health_interval: 5s
-      caddy.reverse_proxy.health_timeout: 3s
-      caddy.reverse_proxy.fail_duration: 15s
-      caddy.reverse_proxy.health_headers.X-Forwarded-Proto: https
+      caddy_0: chat.davewil.dev
+      caddy_0.tls.dns: cloudflare {env.CF_API_TOKEN}
+      caddy_0.reverse_proxy: "{{upstreams 4000}}"
+      caddy_0.reverse_proxy.health_uri: /health
+      caddy_0.reverse_proxy.health_interval: 5s
+      caddy_0.reverse_proxy.health_timeout: 3s
+      caddy_0.reverse_proxy.fail_duration: 15s
+      caddy_0.reverse_proxy.health_headers.X-Forwarded-Proto: https
+      caddy_1: mcp.davewil.dev
+      caddy_1.tls.dns: cloudflare {env.CF_API_TOKEN}
+      caddy_1.reverse_proxy: "{{upstreams 4000}}"
     networks:
       default:
       proxy:
@@ -61,8 +64,10 @@ services:
     container_name: slackex-app-2
     hostname: app2
     labels:
-      caddy: chat.davewil.dev
-      caddy.reverse_proxy: "{{upstreams 4000}}"
+      caddy_0: chat.davewil.dev
+      caddy_0.reverse_proxy: "{{upstreams 4000}}"
+      caddy_1: mcp.davewil.dev
+      caddy_1.reverse_proxy: "{{upstreams 4000}}"
     networks:
       default:
       proxy:
