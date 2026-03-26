@@ -43,7 +43,7 @@ defmodule SlackexWeb.Router do
   scope "/mcp" do
     pipe_through :mcp
 
-    forward "/", Phantom.Plug,
+    forward "/", SlackexWeb.Plugs.McpHttp,
       router: SlackexWeb.MCP.Router,
       pubsub: Slackex.PubSub,
       origins: :all
