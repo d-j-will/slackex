@@ -245,12 +245,18 @@ defmodule SlackexWeb.ChatComponents do
             </div>
           <% else %>
             <%= if @markdown_enabled do %>
-              <div class="text-sm text-base-content/90 break-words prose prose-sm max-w-none">
+              <div
+                data-message-content
+                class="text-sm text-base-content/90 break-words prose prose-sm max-w-none"
+              >
                 {@rendered_content}
                 <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
               </div>
             <% else %>
-              <p class="text-sm text-base-content/90 break-words whitespace-pre-wrap">
+              <p
+                data-message-content
+                class="text-sm text-base-content/90 break-words whitespace-pre-wrap"
+              >
                 {@rendered_content}<span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
               </p>
             <% end %>
@@ -331,6 +337,14 @@ defmodule SlackexWeb.ChatComponents do
           title="Pin message"
         >
           <span class="hero-bookmark size-4" />
+        </button>
+        <button
+          id={"copy-msg-#{@message.id}"}
+          phx-hook="CopyMessage"
+          class="btn btn-ghost btn-xs btn-circle"
+          title="Copy message"
+        >
+          <span class="hero-clipboard-document size-4" />
         </button>
         <button
           :if={@is_own_message}
