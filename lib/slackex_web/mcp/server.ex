@@ -57,7 +57,16 @@ defmodule SlackexWeb.MCP.Server do
     # Request (has id) — needs auth + response
     case authenticate(conn) do
       {:ok, session} ->
-        response = dispatch(body, session)
+        response =
+          try do
+            dispatch(body, session)
+          rescue
+            e ->
+              require Logger
+              Logger.error("MCP dispatch error: #{Exception.message(e)}")
+              error_response(body["id"], -32_603, Exception.message(e))
+          end
+
         conn |> put_session_header(session) |> json_resp(200, response)
 
       {:error, challenge} ->
