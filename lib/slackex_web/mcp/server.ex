@@ -197,8 +197,56 @@ defmodule SlackexWeb.MCP.Server do
             "limit" => %{type: "integer", description: "Max results (default 20)"}
           }
         }
+      },
+      %{
+        name: "find_user",
+        description: "Find a user by username search (minimum 2 characters)",
+        inputSchema: %{
+          type: "object",
+          required: ["query"],
+          properties: %{
+            "query" => %{type: "string", description: "Username to search for (min 2 chars)"}
+          }
+        }
+      },
+      %{
+        name: "send_dm",
+        description: "Send a direct message to a user. Creates the DM conversation if needed.",
+        inputSchema: %{
+          type: "object",
+          required: ["user_id", "content"],
+          properties: %{
+            "user_id" => %{type: "string", description: "Recipient user ID"},
+            "content" => %{type: "string", description: "Message content"}
+          }
+        }
       }
     ]
+  end
+
+  defp call_tool("find_user", %{"query" => query}, _session) do
+    users = Slackex.Accounts.search_users(query)
+    data = Enum.map(users, &Serializer.user/1)
+    {:ok, [%{type: "text", text: Jason.encode!(data)}]}
+  end
+
+  defp call_tool("send_dm", %{"user_id" => uid, "content" => content}, session) do
+    recipient_id = String.to_integer(uid)
+    bot_id = session.bot_user.id
+
+    case Slackex.Chat.DMs.find_or_create_dm(bot_id, recipient_id) do
+      {:ok, dm} ->
+        case Slackex.Chat.DMs.send_dm(dm.id, bot_id, content) do
+          {:ok, msg} ->
+            {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(msg))}]}
+
+          {:error, reason} ->
+            {:error, inspect(reason)}
+        end
+
+      {:error, reason} ->
+        {:error, inspect(reason)}
+    end
   end
 
   defp call_tool("send_message", %{"channel_id" => cid, "content" => content}, session) do
