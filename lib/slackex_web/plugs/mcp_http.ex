@@ -33,12 +33,8 @@ defmodule SlackexWeb.Plugs.McpHttp do
     }
   end
 
-  def call(%{method: "POST"} = conn, %{phantom_opts: phantom_opts} = opts) do
-    if accepts_sse?(conn) do
-      Phantom.Plug.call(conn, phantom_opts)
-    else
-      handle_json(conn, opts)
-    end
+  def call(%{method: "POST"} = conn, opts) do
+    handle_json(conn, opts)
   end
 
   def call(conn, %{phantom_opts: phantom_opts}) do
@@ -145,12 +141,6 @@ defmodule SlackexWeb.Plugs.McpHttp do
   end
 
   # -- Helpers ----------------------------------------------------------------
-
-  defp accepts_sse?(conn) do
-    conn
-    |> get_req_header("accept")
-    |> Enum.any?(&String.contains?(&1, "text/event-stream"))
-  end
 
   defp ensure_session_store do
     case :ets.whereis(@session_store) do
