@@ -43,10 +43,7 @@ defmodule SlackexWeb.Router do
   scope "/mcp" do
     pipe_through :mcp
 
-    forward "/", SlackexWeb.Plugs.McpHttp,
-      router: SlackexWeb.MCP.Router,
-      pubsub: Slackex.PubSub,
-      origins: :all
+    forward "/", SlackexWeb.MCP.Server
   end
 
   # Health/readiness endpoints — outside auth pipelines
