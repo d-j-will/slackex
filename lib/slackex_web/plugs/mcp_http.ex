@@ -25,6 +25,7 @@ defmodule SlackexWeb.Plugs.McpHttp do
 
   def init(opts) do
     _ = ensure_session_store()
+    Phantom.Cache.register(opts[:router])
 
     %{
       phantom_opts: Phantom.Plug.init(opts),
