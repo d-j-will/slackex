@@ -117,6 +117,30 @@ defmodule SlackexWeb.Plugs.McpHttp do
     end
   end
 
+  # Handle initialize directly — Phantom's validate_protocol rejects newer
+  # protocol versions that Claude Code sends. Per MCP spec, the server responds
+  # with the latest version it supports and the client adapts.
+  defp dispatch(%{"jsonrpc" => "2.0", "method" => "initialize"} = body, session) do
+    capabilities =
+      %{}
+      |> Phantom.Router.tool_capability(McpRouter, session)
+      |> Phantom.Router.resource_capability(McpRouter, session)
+      |> Phantom.Router.prompt_capability(McpRouter, session)
+      |> Phantom.Router.logging_capability(McpRouter, session)
+
+    result = %{
+      protocolVersion: "2025-03-26",
+      capabilities: capabilities,
+      serverInfo: %{name: "Tenun", version: "1.0.0"},
+      instructions:
+        "Tenun is a messaging platform. You can read channels, send messages, " <>
+          "search message history, and subscribe to real-time channel events. " <>
+          "Use the bot user identity associated with your token."
+    }
+
+    {:ok, %{jsonrpc: "2.0", id: body["id"], result: result}, session}
+  end
+
   defp dispatch(%{"jsonrpc" => "2.0", "method" => method} = body, session) do
     request = Request.build(body)
     params = Map.get(body, "params", %{})
