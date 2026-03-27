@@ -1,18 +1,17 @@
 defmodule SlackexWeb.Plugs.McpHttp do
   @moduledoc """
-  MCP Streamable HTTP transport adapter.
+  MCP Streamable HTTP transport adapter (spec 2025-03-26).
 
   Phantom MCP 0.3.4 hardcodes `text/event-stream` chunked responses for all
-  POST requests. Claude Code's `type: "http"` transport expects plain JSON.
+  POST requests. This Plug implements the MCP Streamable HTTP spec directly,
+  calling Phantom.Router.dispatch_method/4 and returning proper JSON responses.
 
-  This Plug sits alongside Phantom.Plug and serves JSON responses for HTTP
-  clients while letting SSE clients through to Phantom for streaming.
-
-  Implements the MCP Streamable HTTP spec:
-  - POST with Accept including text/event-stream → delegate to Phantom.Plug (SSE)
-  - POST without → process via Router.dispatch_method, return application/json
-  - GET → delegate to Phantom.Plug (SSE notification stream)
-  - DELETE → delegate to Phantom.Plug (session termination)
+  Key spec requirements:
+  - Requests (have `id`) → respond with `application/json` or `text/event-stream`
+  - Notifications/responses (no `id`) → respond with `202 Accepted`, no body
+  - Session ID via `Mcp-Session-Id` header
+  - GET → delegate to Phantom.Plug for SSE notification stream
+  - DELETE → terminate session
   """
 
   import Plug.Conn
@@ -34,18 +33,68 @@ defmodule SlackexWeb.Plugs.McpHttp do
   end
 
   def call(%{method: "POST"} = conn, opts) do
-    handle_json(conn, opts)
+    handle_post(conn, opts)
   end
 
   def call(conn, %{phantom_opts: phantom_opts}) do
     Phantom.Plug.call(conn, phantom_opts)
   end
 
-  # -- JSON transport ---------------------------------------------------------
+  # -- POST handling ----------------------------------------------------------
 
-  defp handle_json(conn, opts) do
-    with {:ok, body} <- parse_body(conn),
-         {:ok, session} <- get_or_create_session(conn, opts),
+  defp handle_post(conn, opts) do
+    case parse_body(conn) do
+      {:ok, body} ->
+        if notification?(body) do
+          handle_notification(conn, body, opts)
+        else
+          handle_request(conn, body, opts)
+        end
+
+      {:error, error} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(400, Jason.encode!(%{jsonrpc: "2.0", error: error}))
+    end
+  end
+
+  # Notifications have method but no id
+  defp notification?(%{"method" => _, "id" => _}), do: false
+  defp notification?(%{"method" => _}), do: true
+  # Responses have result/error but no method
+  defp notification?(%{"result" => _}), do: true
+  defp notification?(%{"error" => _}), do: true
+  defp notification?(_), do: false
+
+  defp handle_notification(conn, body, opts) do
+    # Dispatch notification for side effects (e.g., initialized sets up session)
+    case get_or_create_session(conn, opts) do
+      {:ok, session} ->
+        method = Map.get(body, "method", "")
+
+        if String.starts_with?(method, "notification") or method == "initialized" do
+          request = Request.build(body)
+          params = Map.get(body, "params", %{})
+          session = %{session | request: request}
+          {_, session} = McpRouter.dispatch_method(method, params, request, session)
+          save_session(session)
+        end
+
+        # Spec: notifications MUST return 202 Accepted with no body
+        conn
+        |> put_resp_header("mcp-session-id", session.id)
+        |> put_cors_headers()
+        |> send_resp(202, "")
+
+      {:unauthorized, challenge} ->
+        conn
+        |> put_resp_header("www-authenticate", challenge)
+        |> send_resp(401, "")
+    end
+  end
+
+  defp handle_request(conn, body, opts) do
+    with {:ok, session} <- get_or_create_session(conn, opts),
          {:ok, response, session} <- dispatch(body, session) do
       save_session(session)
 
@@ -64,9 +113,11 @@ defmodule SlackexWeb.Plugs.McpHttp do
       {:error, error} ->
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(400, Jason.encode!(error))
+        |> send_resp(400, Jason.encode!(%{jsonrpc: "2.0", id: body["id"], error: error}))
     end
   end
+
+  # -- Dispatch ---------------------------------------------------------------
 
   defp parse_body(conn) do
     case conn.body_params do
@@ -84,22 +135,10 @@ defmodule SlackexWeb.Plugs.McpHttp do
 
     case McpRouter.dispatch_method(method, params, request, session) do
       {:reply, result, session} ->
-        response = %{
-          jsonrpc: "2.0",
-          id: body["id"],
-          result: result
-        }
-
-        {:ok, response, session}
+        {:ok, %{jsonrpc: "2.0", id: body["id"], result: result}, session}
 
       {:error, error, session} ->
-        response = %{
-          jsonrpc: "2.0",
-          id: body["id"],
-          error: error
-        }
-
-        {:ok, response, session}
+        {:ok, %{jsonrpc: "2.0", id: body["id"], error: error}, session}
 
       {:noreply, session} ->
         {:ok, %{jsonrpc: "2.0", id: body["id"], result: %{}}, session}
