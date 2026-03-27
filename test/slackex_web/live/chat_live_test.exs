@@ -1275,6 +1275,112 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ "bob"
     end
 
+    test "new message from different sender shows sender info (not grouped)", %{
+      conn: conn,
+      alice: alice,
+      bob: bob,
+      channel: channel
+    } do
+      # Alice sends a message first (via DB, so it's loaded on mount)
+      {:ok, _} = Chat.send_message(channel.id, alice.id, "Alice's message")
+
+      {:ok, lv, html} = live(conn, ~p"/chat/#{channel.slug}")
+      assert html =~ "Alice&#39;s message"
+
+      # Bob sends a message via PubSub (exactly as ChannelServer would)
+      bob_msg_id = System.unique_integer([:positive])
+
+      envelope =
+        Envelope.wrap("message.new", {:channel, channel.id}, %{
+          id: bob_msg_id,
+          content: "Bob's reply here",
+          sender_id: bob.id,
+          channel_id: channel.id,
+          inserted_at: DateTime.utc_now(),
+          sender: %{
+            id: bob.id,
+            username: bob.username,
+            display_name: bob.display_name,
+            avatar_url: bob.avatar_url,
+            is_bot: false
+          }
+        })
+
+      Phoenix.PubSub.broadcast(Slackex.PubSub, "channel:#{channel.id}", {:envelope, envelope})
+
+      html = render(lv)
+
+      # Bob's message should appear
+      assert html =~ "Bob&#39;s reply here"
+
+      # Bob's message should NOT be grouped (different sender than Alice)
+      # The sender name row has class "hidden" when grouped — verify it's visible
+      msg_element =
+        Floki.parse_document!(html)
+        |> Floki.find("[id$='#{bob_msg_id}']")
+        |> List.first()
+
+      # Find the sender name row within this message
+      sender_row = Floki.find(msg_element || {"div", [], []}, ".font-semibold")
+
+      assert sender_row != [],
+             "Bob's message should show sender name (not grouped with Alice)"
+    end
+
+    test "sender's own message shows their sender info after another user's message", %{
+      conn: conn,
+      alice: _alice,
+      bob: bob,
+      channel: channel
+    } do
+      # Bob sent the last message (loaded from DB on mount)
+      {:ok, _} = Chat.send_message(channel.id, bob.id, "Bob was here")
+
+      {:ok, lv, html} = live(conn, ~p"/chat/#{channel.slug}")
+      assert html =~ "Bob was here"
+
+      # Alice (the logged-in user) sends a message via the form
+      lv
+      |> form("#message-form", message: %{content: "Alice replies"})
+      |> render_submit()
+
+      # Wait for PubSub to deliver the message back
+      Process.sleep(200)
+      html = render(lv)
+
+      # Alice's message should appear with sender info (different sender than Bob)
+      assert html =~ "Alice replies"
+
+      # Find Alice's message element and check sender name is visible
+      doc = Floki.parse_document!(html)
+
+      # Get all message bubbles that contain "Alice replies"
+      messages = Floki.find(doc, "[id^='msg-']")
+
+      alice_msg =
+        Enum.find(messages, fn el ->
+          Floki.text(el) =~ "Alice replies"
+        end)
+
+      assert alice_msg != nil, "Alice's message should appear in the stream"
+
+      # The sender info row should NOT have the "hidden" class
+      sender_rows = Floki.find(alice_msg, ".font-semibold")
+      assert sender_rows != [], "Alice's message should show sender name"
+
+      # Check that the parent div containing sender name is not hidden
+      info_divs = Floki.find(alice_msg, "div.flex.items-baseline")
+
+      visible_info =
+        Enum.any?(info_divs, fn div ->
+          classes = Floki.attribute(div, "class") |> List.first() || ""
+          not String.contains?(classes, "hidden")
+        end)
+
+      assert visible_info,
+             "Alice's sender info div should be visible (not grouped with Bob's message)"
+    end
+
     test "unauthenticated user is redirected to login", %{conn: _conn} do
       # Build a fresh conn without auth
       conn = Phoenix.ConnTest.build_conn()

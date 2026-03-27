@@ -1292,7 +1292,15 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
-    _ = if connected?(socket), do: Messaging.subscribe_channel(channel.id)
+    # Unsubscribe first to prevent double subscription — mount's
+    # subscribe_all_conversations already subscribes to all channels for
+    # unread count tracking. Without this, the LiveView receives each
+    # PubSub message twice, causing the second delivery to overwrite the
+    # first with incorrect grouping (grouped: true against itself).
+    if connected?(socket) do
+      Messaging.unsubscribe_channel(channel.id)
+      Messaging.subscribe_channel(channel.id)
+    end
 
     messages = fetch_messages_for_entry({:channel, channel.id}, target_message_id)
     reactions = messages |> Enum.map(& &1.id) |> Chat.list_reactions()
@@ -1315,7 +1323,10 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
     socket = leave_conversation(socket)
 
-    _ = if connected?(socket), do: Messaging.subscribe_dm(dm.id)
+    if connected?(socket) do
+      Messaging.unsubscribe_dm(dm.id)
+      Messaging.subscribe_dm(dm.id)
+    end
 
     other_user = dm_other_user(dm, user.id)
     messages = fetch_messages_for_entry({:dm, dm.id}, target_message_id)
