@@ -68,8 +68,16 @@ defmodule SlackexWeb.MCP.Server do
   end
 
   defp handle_post(conn, %{"method" => _method} = _body) do
-    # Notification (no id) — 202, no body
-    conn |> put_cors_headers() |> send_resp(202, "")
+    # Notification (no id) — 202, no body. Still require valid auth.
+    case authenticate(conn) do
+      {:ok, _session} ->
+        conn |> put_cors_headers() |> send_resp(202, "")
+
+      {:error, challenge} ->
+        conn
+        |> put_resp_header("www-authenticate", challenge)
+        |> json_resp(401, error_response(nil, -32_000, "Unauthorized"))
+    end
   end
 
   defp handle_post(conn, _body) do
@@ -241,33 +249,24 @@ defmodule SlackexWeb.MCP.Server do
   end
 
   defp call_tool("send_dm", %{"user_id" => uid, "content" => content}, session) do
-    recipient_id = String.to_integer(uid)
     bot_id = session.bot_user.id
 
-    case Slackex.Chat.DMs.find_or_create_dm(bot_id, recipient_id) do
-      {:ok, dm} ->
-        case Slackex.Chat.DMs.send_dm(dm.id, bot_id, content) do
-          {:ok, msg} ->
-            {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(msg))}]}
-
-          {:error, reason} ->
-            {:error, inspect(reason)}
-        end
-
-      {:error, reason} ->
-        {:error, inspect(reason)}
+    with {:ok, recipient_id} <- parse_id(uid),
+         {:ok, dm} <- Slackex.Chat.DMs.find_or_create_dm(bot_id, recipient_id),
+         {:ok, msg} <- Slackex.Chat.DMs.send_dm(dm.id, bot_id, content) do
+      {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(msg))}]}
+    else
+      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
   defp call_tool("send_message", %{"channel_id" => cid, "content" => content}, session) do
-    channel_id = String.to_integer(cid)
-
-    case Slackex.Messaging.send_message(channel_id, session.bot_user.id, content, []) do
-      {:ok, msg} ->
-        {:ok, [%{type: "text", text: Jason.encode!(Serializer.message_from_map(msg))}]}
-
-      {:error, reason} ->
-        {:error, inspect(reason)}
+    with {:ok, channel_id} <- parse_id(cid),
+         {:ok, msg} <-
+           Slackex.Messaging.send_message(channel_id, session.bot_user.id, content, []) do
+      {:ok, [%{type: "text", text: Jason.encode!(Serializer.message_from_map(msg))}]}
+    else
+      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
@@ -276,18 +275,21 @@ defmodule SlackexWeb.MCP.Server do
          %{"channel_id" => cid, "parent_message_id" => pid, "content" => content},
          session
        ) do
-    case Slackex.Messaging.send_reply(
-           String.to_integer(cid),
-           :channel,
-           session.bot_user.id,
-           String.to_integer(pid),
-           content
-         ) do
-      {:ok, msg} ->
-        {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(msg))}]}
-
-      {:error, reason} ->
-        {:error, inspect(reason)}
+    with {:ok, channel_id} <- parse_id(cid),
+         {:ok, parent_id} <- parse_id(pid),
+         :member <- check_membership(session.bot_user.id, channel_id),
+         {:ok, msg} <-
+           Slackex.Messaging.send_reply(
+             channel_id,
+             :channel,
+             session.bot_user.id,
+             parent_id,
+             content
+           ) do
+      {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(msg))}]}
+    else
+      :not_member -> {:error, "Not a member of this channel"}
+      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
@@ -296,14 +298,17 @@ defmodule SlackexWeb.MCP.Server do
          %{"channel_id" => cid, "message_id" => mid, "emoji" => emoji},
          session
        ) do
-    if Slackex.Chat.get_role(session.bot_user.id, String.to_integer(cid)) do
-      case Slackex.Messaging.toggle_reaction(String.to_integer(mid), session.bot_user.id, emoji) do
+    with {:ok, channel_id} <- parse_id(cid),
+         {:ok, message_id} <- parse_id(mid),
+         :member <- check_membership(session.bot_user.id, channel_id) do
+      case Slackex.Messaging.toggle_reaction(message_id, session.bot_user.id, emoji) do
         {:ok, {:swapped, _, _}} -> {:ok, [%{type: "text", text: "Reaction swapped"}]}
         {:ok, {action, _}} -> {:ok, [%{type: "text", text: "Reaction #{action}"}]}
         {:error, reason} -> {:error, inspect(reason)}
       end
     else
-      {:error, "Not a member of this channel"}
+      :not_member -> {:error, "Not a member of this channel"}
+      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
@@ -315,13 +320,8 @@ defmodule SlackexWeb.MCP.Server do
         _ -> :hybrid
       end
 
-    limit = Map.get(params, "limit", 20)
-    opts = [mode: mode, limit: limit]
-
-    opts =
-      if params["channel_id"],
-        do: [{:channel_id, String.to_integer(params["channel_id"])} | opts],
-        else: opts
+    limit = params |> Map.get("limit", 20) |> min(100) |> max(1)
+    opts = [mode: mode, limit: limit] ++ parse_channel_filter(params)
 
     case Slackex.Search.search_messages(session.bot_user.id, query, opts) do
       {:ok, messages} ->
@@ -365,20 +365,20 @@ defmodule SlackexWeb.MCP.Server do
     {:ok, [%{uri: "tenun:///channels", mimeType: "application/json", text: Jason.encode!(data)}]}
   end
 
-  defp read_resource("tenun:///users/" <> id, _session) do
-    case Slackex.Accounts.get_user(String.to_integer(id)) do
-      nil ->
-        {:error, "User not found"}
-
-      user ->
-        {:ok,
-         [
-           %{
-             uri: "tenun:///users/#{id}",
-             mimeType: "application/json",
-             text: Jason.encode!(Serializer.user(user))
-           }
-         ]}
+  defp read_resource("tenun:///users/" <> id_str, _session) do
+    with {:ok, id} <- parse_id(id_str),
+         %{} = user <- Slackex.Accounts.get_user(id) do
+      {:ok,
+       [
+         %{
+           uri: "tenun:///users/#{id}",
+           mimeType: "application/json",
+           text: Jason.encode!(Serializer.user(user))
+         }
+       ]}
+    else
+      {:error, msg} -> {:error, msg}
+      nil -> {:error, "User not found"}
     end
   end
 
@@ -503,6 +503,28 @@ defmodule SlackexWeb.MCP.Server do
     )
     |> put_resp_header("access-control-expose-headers", "mcp-session-id")
   end
+
+  defp check_membership(user_id, channel_id) do
+    if Slackex.Chat.get_role(user_id, channel_id), do: :member, else: :not_member
+  end
+
+  defp parse_channel_filter(%{"channel_id" => cid}) do
+    case parse_id(cid) do
+      {:ok, id} -> [channel_id: id]
+      {:error, _} -> []
+    end
+  end
+
+  defp parse_channel_filter(_), do: []
+
+  defp parse_id(str) when is_binary(str) do
+    case Integer.parse(str) do
+      {int, ""} -> {:ok, int}
+      _ -> {:error, "Invalid ID: #{str}"}
+    end
+  end
+
+  defp parse_id(_), do: {:error, "Invalid ID"}
 
   defp parse_body(conn) do
     case conn.body_params do
