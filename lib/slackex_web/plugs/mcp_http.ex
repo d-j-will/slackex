@@ -66,20 +66,9 @@ defmodule SlackexWeb.Plugs.McpHttp do
   defp notification?(%{"error" => _}), do: true
   defp notification?(_), do: false
 
-  defp handle_notification(conn, body, opts) do
-    # Dispatch notification for side effects (e.g., initialized sets up session)
+  defp handle_notification(conn, _body, opts) do
     case get_or_create_session(conn, opts) do
       {:ok, session} ->
-        method = Map.get(body, "method", "")
-
-        if String.starts_with?(method, "notification") or method == "initialized" do
-          request = Request.build(body)
-          params = Map.get(body, "params", %{})
-          session = %{session | request: request}
-          {_, session} = McpRouter.dispatch_method(method, params, request, session)
-          save_session(session)
-        end
-
         # Spec: notifications MUST return 202 Accepted with no body
         conn
         |> put_resp_header("mcp-session-id", session.id)
