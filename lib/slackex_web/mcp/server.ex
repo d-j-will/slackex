@@ -226,7 +226,17 @@ defmodule SlackexWeb.MCP.Server do
 
   defp call_tool("find_user", %{"query" => query}, _session) do
     users = Slackex.Accounts.search_users(query)
-    data = Enum.map(users, &Serializer.user/1)
+
+    data =
+      Enum.map(users, fn u ->
+        %{
+          id: to_string(u.id),
+          username: u.username,
+          display_name: u.display_name,
+          avatar_url: u.avatar_url
+        }
+      end)
+
     {:ok, [%{type: "text", text: Jason.encode!(data)}]}
   end
 
