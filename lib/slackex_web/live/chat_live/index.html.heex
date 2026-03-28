@@ -1,0 +1,328 @@
+<div class="flex h-full" id="chat-container" phx-hook="QuickSwitcher">
+  <%!-- Mobile backdrop --%>
+  <div
+    :if={@sidebar_open}
+    class="md:hidden fixed inset-0 z-30 bg-black/50"
+    phx-click="toggle_sidebar"
+  />
+
+  <%!-- Sidebar --%>
+  <div class={[
+    "w-72 md:w-64 border-r border-base-300 flex-shrink-0",
+    "fixed inset-y-0 left-0 z-40 transform transition-transform duration-200",
+    "md:static md:translate-x-0",
+    !@sidebar_open && "-translate-x-full"
+  ]}>
+    <.live_component
+      module={SidebarComponent}
+      id="sidebar"
+      channels={@channels}
+      active_channel={@active_channel}
+      dm_conversations={@dm_conversations}
+      active_dm={@active_dm}
+      current_user={@current_user}
+      dm_requests={@dm_requests}
+      dm_request_count={@dm_request_count}
+      unread_counts={@unread_counts}
+      online_user_ids={@online_user_ids}
+      show_node={@show_node}
+      node_name={@node_name}
+    />
+  </div>
+
+  <%!-- Main chat area + thread panel --%>
+  <div class="flex-1 flex min-w-0">
+    <div class={[
+      "flex-1 flex flex-col min-w-0 overflow-hidden",
+      (@threads_enabled and @thread_parent) && "hidden md:flex"
+    ]}>
+      <%= if @active_channel do %>
+        <.conversation_header
+          title={"##{@active_channel.name}"}
+          subtitle={@active_channel.description}
+        >
+          <:actions>
+            <%= if @summarization_enabled do %>
+              <button
+                data-role="summarize-button"
+                phx-click="open_summary_modal"
+                class="btn btn-ghost btn-xs gap-1"
+                aria-label="Summarize channel"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"
+                  />
+                </svg>
+                <span class="hidden sm:inline">Summarize</span>
+              </button>
+            <% end %>
+            <%= if @channel_management_enabled do %>
+              <.link
+                patch={~p"/chat/#{@active_channel.slug}/members"}
+                class="btn btn-ghost btn-xs gap-1"
+                aria-label="View members"
+              >
+                <span class="hero-user-group size-4" />
+                <span class="text-xs">{@member_count}</span>
+              </.link>
+              <.link
+                patch={~p"/chat/#{@active_channel.slug}/pins"}
+                class="btn btn-ghost btn-xs gap-1"
+                aria-label="View pinned messages"
+              >
+                <span class="hero-bookmark size-4" />
+                <span :if={@pin_count > 0} class="text-xs">{@pin_count}</span>
+              </.link>
+              <.link
+                :if={@user_role in ["owner", "admin"]}
+                patch={~p"/chat/#{@active_channel.slug}/invite"}
+                class="btn btn-ghost btn-xs gap-1"
+                aria-label="Invite people"
+              >
+                <span class="hero-link size-4" />
+                <span class="hidden sm:inline text-xs">Invite</span>
+              </.link>
+            <% end %>
+            <%= if @search_enabled do %>
+              <button
+                phx-click="toggle_search"
+                class={["btn btn-ghost btn-xs btn-square", @search_open && "btn-active"]}
+                aria-label="Search messages"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </button>
+            <% end %>
+            <%= if @user_role == nil and not @active_channel.is_private do %>
+              <button phx-click="join_channel" class="btn btn-primary btn-xs">
+                Join Channel
+              </button>
+            <% end %>
+            <%= if @user_role != nil and @user_role != "owner" do %>
+              <button phx-click="leave_channel" class="btn btn-ghost btn-xs text-base-content/60">
+                Leave Channel
+              </button>
+            <% end %>
+          </:actions>
+        </.conversation_header>
+        <.message_stream
+          streams={@streams}
+          current_user_id={@current_user.id}
+          editing_message_id={@editing_message_id}
+          current_user_role={@user_role}
+          reactions={@reactions}
+          reactions_enabled={@reactions_enabled}
+          threads_enabled={@threads_enabled}
+          channel_management_enabled={@channel_management_enabled}
+          link_previews={@link_previews}
+          link_previews_enabled={@link_previews_enabled}
+          markdown_enabled={@markdown_enabled}
+        />
+        <.typing_indicator users={MapSet.to_list(@typing_users)} />
+
+        <%= if @can_send do %>
+          <.compose_area
+            message_form={@message_form}
+            placeholder={"Message ##{@active_channel.name}"}
+          />
+        <% else %>
+          <div class="p-3 border-t border-base-300 bg-base-100 text-center text-sm text-base-content/50">
+            Join this channel to send messages.
+          </div>
+        <% end %>
+      <% else %>
+        <%= if @active_dm do %>
+          <.conversation_header title={@page_title}>
+            <:actions>
+              <%= if @search_enabled do %>
+                <button
+                  phx-click="toggle_search"
+                  class={["btn btn-ghost btn-xs btn-square", @search_open && "btn-active"]}
+                  aria-label="Search messages"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </button>
+              <% end %>
+              <%= if @summarization_enabled do %>
+                <button
+                  data-role="summarize-button"
+                  phx-click="open_summary_modal"
+                  class="btn btn-ghost btn-xs gap-1"
+                  aria-label="Summarize conversation"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"
+                    />
+                  </svg>
+                  <span class="hidden sm:inline">Summarize</span>
+                </button>
+              <% end %>
+              <%= if @active_dm.user_a_id != @active_dm.user_b_id do %>
+                <button
+                  phx-click="open_report_modal"
+                  class="btn btn-ghost btn-xs text-warning"
+                >
+                  Report
+                </button>
+                <button
+                  phx-click="block_user"
+                  data-confirm="Are you sure you want to block this user? You will no longer receive messages from them."
+                  class="btn btn-ghost btn-xs text-error"
+                >
+                  Block
+                </button>
+              <% end %>
+            </:actions>
+          </.conversation_header>
+          <.message_stream
+            streams={@streams}
+            current_user_id={@current_user.id}
+            in_dm={true}
+            editing_message_id={@editing_message_id}
+            reactions={@reactions}
+            reactions_enabled={@reactions_enabled}
+            threads_enabled={@threads_enabled}
+            link_previews={@link_previews}
+            link_previews_enabled={@link_previews_enabled}
+            markdown_enabled={@markdown_enabled}
+          />
+          <.typing_indicator users={MapSet.to_list(@typing_users)} />
+          <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
+        <% else %>
+          <%!-- No conversation selected --%>
+          <div class="flex-1 flex flex-col">
+            <div class="px-4 py-3 border-b border-base-300 bg-base-100 md:hidden">
+              <.sidebar_toggle />
+            </div>
+            <.empty_state
+              title="Welcome to Tenun"
+              subtitle="Select a channel from the sidebar to start chatting."
+            />
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+
+    <%!-- Thread panel --%>
+    <.live_component
+      :if={@threads_enabled and @thread_parent}
+      module={ThreadPanelComponent}
+      id="thread-panel"
+      parent_message={@thread_parent}
+      current_user={@current_user}
+      markdown_enabled={@markdown_enabled}
+    />
+  </div>
+
+  <%!-- Search panel --%>
+  <.live_component
+    :if={@search_open and @search_enabled}
+    module={SearchComponent}
+    id="search"
+    current_user={@current_user}
+  />
+</div>
+
+<.live_component
+  :if={@live_action == :new_dm}
+  module={NewDmModal}
+  id="new-dm-modal"
+  current_user={@current_user}
+/>
+
+<.live_component
+  :if={@live_action == :create_channel}
+  module={CreateChannelModal}
+  id="create-channel-modal"
+  current_user={@current_user}
+/>
+
+<.live_component
+  :if={@live_action == :browse_channels}
+  module={BrowseChannelsModal}
+  id="browse-channels-modal"
+  current_user={@current_user}
+/>
+
+<.live_component
+  :if={@channel_management_enabled and @live_action == :members and @active_channel}
+  module={ChannelMembersModal}
+  id="channel-members-modal"
+  channel={@active_channel}
+  current_user={@current_user}
+/>
+
+<.live_component
+  :if={@channel_management_enabled and @live_action == :pinned and @active_channel}
+  module={PinnedMessagesModal}
+  id="pinned-messages-modal"
+  channel={@active_channel}
+  current_user={@current_user}
+/>
+
+<.live_component
+  :if={@channel_management_enabled and @live_action == :invite and @active_channel}
+  module={InviteLinkModal}
+  id="invite-link-modal"
+  channel={@active_channel}
+  current_user={@current_user}
+/>
+
+<.report_modal
+  show={@show_report_modal}
+  report_form={@report_form}
+  report_message_id={@report_message_id}
+/>
+
+<.user_profile_card
+  :if={@profile_user}
+  user={@profile_user}
+  online={MapSet.member?(@online_user_ids, @profile_user.id)}
+  show_send_message={@profile_user.id != @current_user.id}
+/>
+
+<.edit_profile_modal
+  show={@show_edit_profile}
+  form={@edit_profile_form}
+  current_user={@current_user}
+/>
+
+<.live_component
+  :if={@show_summary_modal}
+  module={SummaryModal}
+  id="summary-modal"
+  summary_text={@summary_text}
+  summary_state={@summary_state}
+  summary_error={@summary_error}
+  markdown_enabled={@markdown_enabled}
+/>
+
+<.live_component
+  :if={@quick_switcher_enabled and @show_quick_switcher}
+  module={QuickSwitcherModal}
+  id="quick-switcher"
+  channels={@channels}
+  dm_conversations={@dm_conversations}
+  current_user={@current_user}
+/> """
