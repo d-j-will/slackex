@@ -3,6 +3,20 @@
 #
 # Install: ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 
+# Fail if tracked files have unstaged changes — prevents committing
+# a partial rename/refactor where some files were modified on disk
+# but never staged. CI sees only what git tracks, not the working tree.
+UNSTAGED=$(git diff --name-only -- '*.ex' '*.exs')
+if [ -n "$UNSTAGED" ]; then
+  echo ""
+  echo "Pre-commit: ERROR — unstaged changes to tracked Elixir files:"
+  echo "$UNSTAGED"
+  echo ""
+  echo "Stage them (git add) or stash them before committing."
+  echo "This prevents CI failures from partial renames or refactors."
+  exit 1
+fi
+
 STAGED_YML=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ya?ml$')
 STAGED_EX=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ex|exs)$')
 
