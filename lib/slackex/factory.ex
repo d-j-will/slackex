@@ -30,8 +30,12 @@ defmodule Slackex.Factory do
     end)
     |> Repo.transaction()
     |> case do
-      {:ok, %{run: run}} -> {:ok, run}
-      {:error, :run, changeset, _} -> {:error, changeset}
+      {:ok, %{run: run}} ->
+        broadcast_update(run)
+        {:ok, run}
+
+      {:error, :run, changeset, _} ->
+        {:error, changeset}
     end
   end
 
@@ -82,27 +86,38 @@ defmodule Slackex.Factory do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
     token = generate_claim_token()
 
-    result =
-      from(r in Run, where: r.id == ^run_id and r.status == "queued")
-      |> Repo.update_all(
-        set: [
-          status: "implementing",
-          spec_commit_sha: sha,
-          claim_token: token,
-          claimed_at: now,
-          last_heartbeat_at: now,
-          updated_at: now
-        ]
-      )
+    txn_result =
+      Repo.transaction(fn ->
+        result =
+          from(r in Run, where: r.id == ^run_id and r.status == "queued")
+          |> Repo.update_all(
+            set: [
+              status: "implementing",
+              spec_commit_sha: sha,
+              claim_token: token,
+              claimed_at: now,
+              last_heartbeat_at: now,
+              updated_at: now
+            ]
+          )
 
-    case result do
-      {1, _} ->
-        run = Repo.get!(Run, run_id)
-        append_event(run, "queued", "implementing", "Run claimed")
+        case result do
+          {1, _} ->
+            run = Repo.get!(Run, run_id)
+            append_event(run, "queued", "implementing", "Run claimed")
+            run
+
+          {0, _} ->
+            Repo.rollback(:already_claimed)
+        end
+      end)
+
+    case txn_result do
+      {:ok, run} ->
         broadcast_update(run)
         {:ok, run}
 
-      {0, _} ->
+      {:error, :already_claimed} ->
         {:error, :already_claimed}
     end
   end
@@ -110,7 +125,8 @@ defmodule Slackex.Factory do
   # -- Heartbeat -------------------------------------------------------------
 
   def heartbeat(run_id, claim_token, message \\ nil) do
-    with {:ok, run} <- get_and_validate_token(run_id, claim_token) do
+    with {:ok, run} <- get_and_validate_token(run_id, claim_token),
+         :ok <- validate_active(run) do
       now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
       {:ok, run} =
@@ -130,24 +146,24 @@ defmodule Slackex.Factory do
   # -- Submit Result ---------------------------------------------------------
 
   def submit_result(run_id, %{claim_token: token, success: success} = params) do
-    with {:ok, run} <- get_and_validate_token(run_id, token) do
-      if success do
-        submit_success(run, params)
-      else
-        submit_failure(run, params)
-      end
+    case get_and_validate_token(run_id, token) do
+      {:ok, %Run{status: "implementing"} = run} ->
+        if success, do: submit_success(run, params), else: submit_failure(run, params)
+
+      {:ok, %Run{}} ->
+        {:error, :invalid_status}
+
+      error ->
+        error
     end
   end
 
   defp submit_success(run, params) do
-    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
-
     run
     |> Ecto.Changeset.change(
       status: "awaiting_verification",
       branch_name: params.branch_name,
-      tier1_result: params.summary,
-      completed_at: now
+      tier1_result: params.summary
     )
     |> Repo.update()
     |> case do
@@ -161,6 +177,9 @@ defmodule Slackex.Factory do
 
         broadcast_update(run)
         {:ok, run}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -184,6 +203,9 @@ defmodule Slackex.Factory do
 
           broadcast_update(run)
           {:ok, run}
+
+        {:error, changeset} ->
+          {:error, changeset}
       end
     else
       run
@@ -203,6 +225,9 @@ defmodule Slackex.Factory do
 
           broadcast_update(run)
           {:ok, run}
+
+        {:error, changeset} ->
+          {:error, changeset}
       end
     end
   end
@@ -249,33 +274,51 @@ defmodule Slackex.Factory do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
     token = generate_claim_token()
 
-    result =
-      from(r in Run, where: r.id == ^run_id and r.status == "awaiting_verification")
-      |> Repo.update_all(
-        set: [
-          status: "verifying_tier2",
-          claim_token: token,
-          claimed_at: now,
-          last_heartbeat_at: now,
-          updated_at: now
-        ]
-      )
+    txn_result =
+      Repo.transaction(fn ->
+        result =
+          from(r in Run, where: r.id == ^run_id and r.status == "awaiting_verification")
+          |> Repo.update_all(
+            set: [
+              status: "verifying_tier2",
+              claim_token: token,
+              claimed_at: now,
+              last_heartbeat_at: now,
+              updated_at: now
+            ]
+          )
 
-    case result do
-      {1, _} ->
-        run = Repo.get!(Run, run_id)
-        append_event(run, "awaiting_verification", "verifying_tier2", "Verification started")
+        case result do
+          {1, _} ->
+            run = Repo.get!(Run, run_id)
+            append_event(run, "awaiting_verification", "verifying_tier2", "Verification started")
+            run
+
+          {0, _} ->
+            Repo.rollback(:already_claimed)
+        end
+      end)
+
+    case txn_result do
+      {:ok, run} ->
         broadcast_update(run)
         {:ok, run}
 
-      {0, _} ->
+      {:error, :already_claimed} ->
         {:error, :already_claimed}
     end
   end
 
   def submit_verification(run_id, %{claim_token: token, passed: passed} = params) do
-    with {:ok, run} <- get_and_validate_token(run_id, token) do
-      do_submit_verification(run, passed, params)
+    case get_and_validate_token(run_id, token) do
+      {:ok, %Run{status: "verifying_tier2"} = run} ->
+        do_submit_verification(run, passed, params)
+
+      {:ok, %Run{}} ->
+        {:error, :invalid_status}
+
+      error ->
+        error
     end
   end
 
@@ -304,6 +347,9 @@ defmodule Slackex.Factory do
         append_event(run, "verifying_tier2", new_status, message, tier2_result)
         broadcast_update(run)
         {:ok, run}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 
@@ -327,8 +373,8 @@ defmodule Slackex.Factory do
     now = DateTime.utc_now()
     truncated_now = DateTime.truncate(now, :microsecond)
 
-    # Release stale implementing runs -> queued
-    implementing_released =
+    # Find stale implementing runs, then release them individually for event/broadcast
+    stale_implementing =
       from(r in Run,
         where: r.status == "implementing",
         where:
@@ -339,19 +385,31 @@ defmodule Slackex.Factory do
             ^now
           )
       )
-      |> Repo.update_all(
-        set: [
-          status: "queued",
-          claim_token: nil,
-          claimed_at: nil,
-          last_heartbeat_at: nil,
-          branch_name: nil,
-          updated_at: truncated_now
-        ]
-      )
+      |> Repo.all()
 
-    # Release stale verifying_tier2 runs -> awaiting_verification
-    verifying_released =
+    implementing_count =
+      Enum.count(stale_implementing, fn run ->
+        {1, _} =
+          from(r in Run, where: r.id == ^run.id and r.status == "implementing")
+          |> Repo.update_all(
+            set: [
+              status: "queued",
+              claim_token: nil,
+              claimed_at: nil,
+              last_heartbeat_at: nil,
+              branch_name: nil,
+              updated_at: truncated_now
+            ]
+          )
+
+        released = Repo.get!(Run, run.id)
+        append_event(released, "implementing", "queued", "Claim released — heartbeat timeout")
+        broadcast_update(released)
+        true
+      end)
+
+    # Find stale verifying_tier2 runs, then release them individually
+    stale_verifying =
       from(r in Run,
         where: r.status == "verifying_tier2",
         where:
@@ -362,20 +420,42 @@ defmodule Slackex.Factory do
             ^now
           )
       )
-      |> Repo.update_all(
-        set: [
-          status: "awaiting_verification",
-          claim_token: nil,
-          claimed_at: nil,
-          last_heartbeat_at: nil,
-          updated_at: truncated_now
-        ]
-      )
+      |> Repo.all()
 
-    {elem(implementing_released, 0) + elem(verifying_released, 0), nil}
+    verifying_count =
+      Enum.count(stale_verifying, fn run ->
+        {1, _} =
+          from(r in Run, where: r.id == ^run.id and r.status == "verifying_tier2")
+          |> Repo.update_all(
+            set: [
+              status: "awaiting_verification",
+              claim_token: nil,
+              claimed_at: nil,
+              last_heartbeat_at: nil,
+              updated_at: truncated_now
+            ]
+          )
+
+        released = Repo.get!(Run, run.id)
+
+        append_event(
+          released,
+          "verifying_tier2",
+          "awaiting_verification",
+          "Verification claim released — heartbeat timeout"
+        )
+
+        broadcast_update(released)
+        true
+      end)
+
+    {implementing_count + verifying_count, nil}
   end
 
   # -- Internal helpers -------------------------------------------------------
+
+  defp validate_active(%Run{status: s}) when s in ~w(implementing verifying_tier2), do: :ok
+  defp validate_active(_), do: {:error, :not_active}
 
   defp get_and_validate_token(run_id, token) do
     case Repo.get(Run, run_id) do
