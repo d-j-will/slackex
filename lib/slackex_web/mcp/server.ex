@@ -104,11 +104,30 @@ defmodule SlackexWeb.MCP.Server do
   end
 
   defp dispatch(%{"method" => "tools/list"} = req, _session) do
-    ok_response(req["id"], %{tools: tools()})
+    all_tools =
+      if FunWithFlags.enabled?(:dark_factory),
+        do: tools() ++ SlackexWeb.MCP.FactoryTools.tools(),
+        else: tools()
+
+    ok_response(req["id"], %{tools: all_tools})
   end
 
   defp dispatch(%{"method" => "tools/call", "params" => params} = req, session) do
-    case call_tool(params["name"], params["arguments"] || %{}, session) do
+    name = params["name"]
+    args = params["arguments"] || %{}
+
+    result =
+      if factory_tool?(name) do
+        if FunWithFlags.enabled?(:dark_factory) do
+          SlackexWeb.MCP.FactoryTools.call_tool(name, args, session)
+        else
+          {:error, "Dark factory is not enabled"}
+        end
+      else
+        call_tool(name, args, session)
+      end
+
+    case result do
       {:ok, content} ->
         ok_response(req["id"], %{content: content})
 
@@ -262,10 +281,12 @@ defmodule SlackexWeb.MCP.Server do
 
   defp call_tool("send_message", %{"channel_id" => cid, "content" => content}, session) do
     with {:ok, channel_id} <- parse_id(cid),
+         :member <- check_membership(session.bot_user.id, channel_id),
          {:ok, msg} <-
            Slackex.Messaging.send_message(channel_id, session.bot_user.id, content, []) do
       {:ok, [%{type: "text", text: Jason.encode!(Serializer.message_from_map(msg))}]}
     else
+      :not_member -> {:error, "Not a member of this channel"}
       {:error, reason} -> {:error, inspect(reason)}
     end
   end
@@ -427,7 +448,7 @@ defmodule SlackexWeb.MCP.Server do
            content: %{
              type: "text",
              text:
-               "Use the `read_messages` resource to fetch recent messages from channel #{channel_id}.#{since}\n\nThen produce a structured summary with: Key Topics, Decisions, Action Items, Open Questions."
+               "Use the `search_messages` tool to fetch recent messages from channel #{channel_id}.#{since}\n\nThen produce a structured summary with: Key Topics, Decisions, Action Items, Open Questions."
            }
          }
        ]
@@ -450,7 +471,7 @@ defmodule SlackexWeb.MCP.Server do
            content: %{
              type: "text",
              text:
-               "Use the `read_messages` resource to read the discussion in channel #{channel_id}.#{thread}\n\nThen produce a structured feature spec with: Title, Problem Statement, Proposed Solution, Acceptance Criteria (Given/When/Then), Constraints, Open Questions."
+               "Use the `search_messages` tool to find messages in channel #{channel_id}.#{thread}\n\nThen produce a structured feature spec with: Title, Problem Statement, Proposed Solution, Acceptance Criteria (Given/When/Then), Constraints, Open Questions."
            }
          }
        ]
@@ -525,6 +546,18 @@ defmodule SlackexWeb.MCP.Server do
   end
 
   defp parse_id(_), do: {:error, "Invalid ID"}
+
+  defp factory_tool?(name) do
+    String.starts_with?(name, "queue_factory") or
+      String.starts_with?(name, "list_factory") or
+      String.starts_with?(name, "claim_factory") or
+      String.starts_with?(name, "factory_") or
+      String.starts_with?(name, "submit_factory") or
+      String.starts_with?(name, "list_verification") or
+      String.starts_with?(name, "claim_verification") or
+      String.starts_with?(name, "submit_verification") or
+      String.starts_with?(name, "cancel_factory")
+  end
 
   defp parse_body(conn) do
     case conn.body_params do
