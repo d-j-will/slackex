@@ -155,4 +155,156 @@ defmodule Slackex.FactoryTest do
       assert claim_event.to_status == "implementing"
     end
   end
+
+  describe "heartbeat/2" do
+    setup %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      {:ok, run} = Factory.claim_run(run.id, %{commit_sha: "abc"})
+      %{run: run}
+    end
+
+    test "updates last_heartbeat_at with valid token", %{run: run} do
+      old_heartbeat = run.last_heartbeat_at
+      Process.sleep(10)
+      assert {:ok, updated} = Factory.heartbeat(run.id, run.claim_token)
+      assert DateTime.compare(updated.last_heartbeat_at, old_heartbeat) == :gt
+    end
+
+    test "rejects invalid claim token", %{run: run} do
+      assert {:error, :invalid_token} = Factory.heartbeat(run.id, "wrong-token")
+    end
+
+    test "appends progress event when message provided", %{run: run} do
+      {:ok, _} = Factory.heartbeat(run.id, run.claim_token, "Working on step 2")
+      events = Factory.list_events(run.id)
+      progress = Enum.find(events, &(&1.event_type == "progress"))
+      assert progress.message == "Working on step 2"
+    end
+  end
+
+  describe "submit_result/2" do
+    setup %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      {:ok, run} = Factory.claim_run(run.id, %{commit_sha: "abc"})
+      %{run: run}
+    end
+
+    test "success transitions to awaiting_verification", %{run: run} do
+      assert {:ok, updated} =
+               Factory.submit_result(run.id, %{
+                 claim_token: run.claim_token,
+                 success: true,
+                 branch_name: "factory/run-1",
+                 summary: %{tests: 42, failures: 0}
+               })
+
+      assert updated.status == "awaiting_verification"
+      assert updated.branch_name == "factory/run-1"
+      assert updated.tier1_result == %{tests: 42, failures: 0}
+    end
+
+    test "failure with attempts remaining stays implementing", %{run: run} do
+      assert {:ok, updated} =
+               Factory.submit_result(run.id, %{
+                 claim_token: run.claim_token,
+                 success: false,
+                 summary: %{error: "test failures"}
+               })
+
+      assert updated.status == "implementing"
+      assert updated.attempt == 2
+    end
+
+    test "failure with no attempts remaining transitions to needs_review", %{
+      bot: bot,
+      channel: channel
+    } do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/b/",
+          queued_by_id: bot.id,
+          channel_id: channel.id,
+          max_attempts: 1
+        })
+
+      {:ok, run} = Factory.claim_run(run.id, %{commit_sha: "abc"})
+
+      assert {:ok, updated} =
+               Factory.submit_result(run.id, %{
+                 claim_token: run.claim_token,
+                 success: false,
+                 summary: %{error: "test failures"}
+               })
+
+      assert updated.status == "needs_review"
+    end
+
+    test "rejects invalid claim token", %{run: run} do
+      assert {:error, :invalid_token} =
+               Factory.submit_result(run.id, %{
+                 claim_token: "wrong",
+                 success: true,
+                 branch_name: "factory/run-1",
+                 summary: %{}
+               })
+    end
+  end
+
+  describe "cancel_run/2" do
+    test "cancels by claim token", %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      {:ok, run} = Factory.claim_run(run.id, %{commit_sha: "abc"})
+
+      assert {:ok, cancelled} =
+               Factory.cancel_run(run.id, %{claim_token: run.claim_token})
+
+      assert cancelled.status == "cancelled"
+    end
+
+    test "cancels by owner (no claim token needed)", %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      assert {:ok, cancelled} =
+               Factory.cancel_run(run.id, %{bot_user_id: bot.id})
+
+      assert cancelled.status == "cancelled"
+    end
+
+    test "rejects cancel on terminal state", %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      {:ok, _} = Factory.cancel_run(run.id, %{bot_user_id: bot.id})
+
+      assert {:error, :already_terminal} =
+               Factory.cancel_run(run.id, %{bot_user_id: bot.id})
+    end
+  end
 end
