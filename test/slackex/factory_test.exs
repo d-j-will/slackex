@@ -307,4 +307,116 @@ defmodule Slackex.FactoryTest do
                Factory.cancel_run(run.id, %{bot_user_id: bot.id})
     end
   end
+
+  describe "claim_verification/1" do
+    setup %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      {:ok, run} = Factory.claim_run(run.id, %{commit_sha: "abc"})
+
+      {:ok, run} =
+        Factory.submit_result(run.id, %{
+          claim_token: run.claim_token,
+          success: true,
+          branch_name: "factory/run-1",
+          summary: %{tests: 10}
+        })
+
+      %{run: run}
+    end
+
+    test "transitions awaiting_verification -> verifying_tier2", %{run: run} do
+      assert {:ok, claimed} = Factory.claim_verification(run.id)
+
+      assert claimed.status == "verifying_tier2"
+      assert claimed.claim_token != nil
+      assert claimed.claimed_at != nil
+    end
+
+    test "returns error when already claimed", %{run: run} do
+      {:ok, _} = Factory.claim_verification(run.id)
+      assert {:error, :already_claimed} = Factory.claim_verification(run.id)
+    end
+  end
+
+  describe "submit_verification/2" do
+    setup %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      {:ok, run} = Factory.claim_run(run.id, %{commit_sha: "abc"})
+
+      {:ok, run} =
+        Factory.submit_result(run.id, %{
+          claim_token: run.claim_token,
+          success: true,
+          branch_name: "factory/run-1",
+          summary: %{tests: 10}
+        })
+
+      {:ok, run} = Factory.claim_verification(run.id)
+      %{run: run}
+    end
+
+    test "pass transitions to completed", %{run: run} do
+      assert {:ok, completed} =
+               Factory.submit_verification(run.id, %{
+                 claim_token: run.claim_token,
+                 passed: true,
+                 scenarios_run: 5,
+                 scenarios_passed: 5,
+                 details: %{}
+               })
+
+      assert completed.status == "completed"
+      assert completed.completed_at != nil
+      assert completed.tier2_result.scenarios_run == 5
+    end
+
+    test "fail transitions to needs_review", %{run: run} do
+      assert {:ok, review} =
+               Factory.submit_verification(run.id, %{
+                 claim_token: run.claim_token,
+                 passed: false,
+                 scenarios_run: 5,
+                 scenarios_passed: 3,
+                 details: %{failed: ["scenario_1", "scenario_2"]}
+               })
+
+      assert review.status == "needs_review"
+    end
+  end
+
+  describe "list_pending_verification/1" do
+    test "returns awaiting_verification runs", %{bot: bot, channel: channel} do
+      {:ok, run} =
+        Factory.queue_run(%{
+          spec_path: "docs/feature/a/",
+          queued_by_id: bot.id,
+          channel_id: channel.id
+        })
+
+      {:ok, run} = Factory.claim_run(run.id, %{commit_sha: "abc"})
+
+      {:ok, _} =
+        Factory.submit_result(run.id, %{
+          claim_token: run.claim_token,
+          success: true,
+          branch_name: "factory/run-1",
+          summary: %{}
+        })
+
+      assert [pending] = Factory.list_pending_verification(bot.id)
+      assert pending.status == "awaiting_verification"
+    end
+  end
 end

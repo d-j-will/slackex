@@ -243,6 +243,76 @@ defmodule Slackex.Factory do
     end
   end
 
+  # -- Verification ----------------------------------------------------------
+
+  def claim_verification(run_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    token = generate_claim_token()
+
+    result =
+      from(r in Run, where: r.id == ^run_id and r.status == "awaiting_verification")
+      |> Repo.update_all(
+        set: [
+          status: "verifying_tier2",
+          claim_token: token,
+          claimed_at: now,
+          last_heartbeat_at: now,
+          updated_at: now
+        ]
+      )
+
+    case result do
+      {1, _} ->
+        run = Repo.get!(Run, run_id)
+        append_event(run, "awaiting_verification", "verifying_tier2", "Verification started")
+        broadcast_update(run)
+        {:ok, run}
+
+      {0, _} ->
+        {:error, :already_claimed}
+    end
+  end
+
+  def submit_verification(run_id, %{claim_token: token, passed: passed} = params) do
+    with {:ok, run} <- get_and_validate_token(run_id, token) do
+      do_submit_verification(run, passed, params)
+    end
+  end
+
+  defp do_submit_verification(run, passed, params) do
+    tier2_result = %{
+      scenarios_run: params.scenarios_run,
+      scenarios_passed: params.scenarios_passed,
+      details: params[:details]
+    }
+
+    new_status = if passed, do: "completed", else: "needs_review"
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    completed_at = if passed, do: now, else: run.completed_at
+
+    message = verification_message(passed, params)
+
+    run
+    |> Ecto.Changeset.change(
+      status: new_status,
+      tier2_result: tier2_result,
+      completed_at: completed_at
+    )
+    |> Repo.update()
+    |> case do
+      {:ok, run} ->
+        append_event(run, "verifying_tier2", new_status, message, tier2_result)
+        broadcast_update(run)
+        {:ok, run}
+    end
+  end
+
+  defp verification_message(true, params),
+    do: "Tier 2 passed (#{params.scenarios_passed}/#{params.scenarios_run}) — ready for review"
+
+  defp verification_message(false, params),
+    do: "Tier 2 failed (#{params.scenarios_passed}/#{params.scenarios_run}) — needs review"
+
   # -- Internal helpers -------------------------------------------------------
 
   defp get_and_validate_token(run_id, token) do
