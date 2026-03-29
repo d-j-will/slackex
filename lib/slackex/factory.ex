@@ -313,6 +313,68 @@ defmodule Slackex.Factory do
   defp verification_message(false, params),
     do: "Tier 2 failed (#{params.scenarios_passed}/#{params.scenarios_run}) — needs review"
 
+  # -- Lifecycle -------------------------------------------------------------
+
+  @doc """
+  Finds runs where `last_heartbeat_at + heartbeat_timeout_minutes < now` and
+  releases them:
+  - `implementing` -> `queued` (clears claim fields, preserves attempt)
+  - `verifying_tier2` -> `awaiting_verification` (clears claim fields)
+
+  Called by `LifecycleWorker` every 2 minutes via Oban cron.
+  """
+  def release_stale_claims do
+    now = DateTime.utc_now()
+    truncated_now = DateTime.truncate(now, :microsecond)
+
+    # Release stale implementing runs -> queued
+    implementing_released =
+      from(r in Run,
+        where: r.status == "implementing",
+        where:
+          fragment(
+            "? + make_interval(mins => ?) < ?",
+            r.last_heartbeat_at,
+            r.heartbeat_timeout_minutes,
+            ^now
+          )
+      )
+      |> Repo.update_all(
+        set: [
+          status: "queued",
+          claim_token: nil,
+          claimed_at: nil,
+          last_heartbeat_at: nil,
+          branch_name: nil,
+          updated_at: truncated_now
+        ]
+      )
+
+    # Release stale verifying_tier2 runs -> awaiting_verification
+    verifying_released =
+      from(r in Run,
+        where: r.status == "verifying_tier2",
+        where:
+          fragment(
+            "? + make_interval(mins => ?) < ?",
+            r.last_heartbeat_at,
+            r.heartbeat_timeout_minutes,
+            ^now
+          )
+      )
+      |> Repo.update_all(
+        set: [
+          status: "awaiting_verification",
+          claim_token: nil,
+          claimed_at: nil,
+          last_heartbeat_at: nil,
+          updated_at: truncated_now
+        ]
+      )
+
+    {elem(implementing_released, 0) + elem(verifying_released, 0), nil}
+  end
+
   # -- Internal helpers -------------------------------------------------------
 
   defp get_and_validate_token(run_id, token) do
