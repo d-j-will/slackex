@@ -53,7 +53,21 @@ defmodule Slackex.Integrations.McpTokens do
     |> Repo.update()
   end
 
-  def touch_last_used(%McpToken{} = token) do
+  @touch_debounce_seconds 300
+
+  def touch_last_used(%McpToken{last_used_at: nil} = token) do
+    do_touch(token)
+  end
+
+  def touch_last_used(%McpToken{last_used_at: last} = token) do
+    if DateTime.diff(DateTime.utc_now(), last, :second) >= @touch_debounce_seconds do
+      do_touch(token)
+    else
+      :debounced
+    end
+  end
+
+  defp do_touch(token) do
     token
     |> Ecto.Changeset.change(last_used_at: DateTime.utc_now())
     |> Repo.update()

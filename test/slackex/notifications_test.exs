@@ -1,7 +1,7 @@
 defmodule Slackex.NotificationsTest do
   use Slackex.DataCase, async: false
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   alias Slackex.Chat
   alias Slackex.Notifications.{DeviceToken, OnlineTracker, PushWorker}

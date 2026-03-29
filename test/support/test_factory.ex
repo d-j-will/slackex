@@ -1,4 +1,4 @@
-defmodule Slackex.Factory do
+defmodule Slackex.TestFactory do
   @moduledoc false
 
   use ExMachina.Ecto, repo: Slackex.Repo

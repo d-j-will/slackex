@@ -3,7 +3,7 @@ defmodule Slackex.Chat.ThreadsTest do
 
   alias Slackex.Chat
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   setup do
     user = insert(:user)

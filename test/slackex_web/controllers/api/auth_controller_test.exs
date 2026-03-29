@@ -1,7 +1,7 @@
 defmodule SlackexWeb.API.AuthControllerTest do
   use SlackexWeb.ConnCase, async: true
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   alias Slackex.Accounts.Auth
 

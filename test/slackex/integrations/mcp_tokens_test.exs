@@ -64,13 +64,34 @@ defmodule Slackex.Integrations.McpTokensTest do
   end
 
   describe "touch_last_used/1" do
-    test "updates last_used_at timestamp" do
+    test "updates last_used_at timestamp when nil" do
       {:ok, %{mcp_token: token}} =
         McpTokens.create_mcp_token(%{name: "Touch Test"})
 
       assert token.last_used_at == nil
       assert {:ok, touched} = McpTokens.touch_last_used(token)
       assert touched.last_used_at != nil
+    end
+
+    test "skips update when last_used_at is recent (within 5 minutes)" do
+      {:ok, %{mcp_token: token}} =
+        McpTokens.create_mcp_token(%{name: "Debounce Test"})
+
+      recent = DateTime.utc_now() |> DateTime.add(-60, :second)
+      {:ok, token} = token |> Ecto.Changeset.change(last_used_at: recent) |> Slackex.Repo.update()
+
+      assert :debounced = McpTokens.touch_last_used(token)
+    end
+
+    test "updates when last_used_at is older than 5 minutes" do
+      {:ok, %{mcp_token: token}} =
+        McpTokens.create_mcp_token(%{name: "Stale Test"})
+
+      stale = DateTime.utc_now() |> DateTime.add(-400, :second)
+      {:ok, token} = token |> Ecto.Changeset.change(last_used_at: stale) |> Slackex.Repo.update()
+
+      assert {:ok, updated} = McpTokens.touch_last_used(token)
+      assert DateTime.diff(updated.last_used_at, stale) > 300
     end
   end
 end

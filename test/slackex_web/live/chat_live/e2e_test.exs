@@ -8,7 +8,7 @@ defmodule SlackexWeb.ChatLive.E2ETest do
   use SlackexWeb.ConnCase, async: false
   use Oban.Testing, repo: Slackex.Repo
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   alias Slackex.Chat
   alias Slackex.Links.LinkPreview

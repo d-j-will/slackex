@@ -25,7 +25,7 @@ defmodule Slackex.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Slackex.DataCase
-      import Slackex.Factory
+      import Slackex.TestFactory
       import Slackex.EmbeddingHelpers
     end
   end

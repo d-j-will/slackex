@@ -4,7 +4,7 @@ defmodule Slackex.Chat.PinsTest do
   alias Slackex.Chat
   alias Slackex.Chat.Pins
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   setup do
     owner = insert(:user)

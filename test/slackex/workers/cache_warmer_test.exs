@@ -1,7 +1,7 @@
 defmodule Slackex.Workers.CacheWarmerTest do
   use Slackex.DataCase, async: false
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   alias Slackex.Chat
   alias Slackex.Messaging.ChannelSupervisor

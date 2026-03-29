@@ -4,7 +4,7 @@ defmodule Slackex.Chat.MembersTest do
   alias Slackex.Chat
   alias Slackex.Chat.Members
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   setup do
     owner = insert(:user)

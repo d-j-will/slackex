@@ -7,7 +7,7 @@ defmodule Slackex.EmbeddingHelpers do
   """
 
   import Ecto.Query
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   alias Slackex.Chat
   alias Slackex.Chat.Message

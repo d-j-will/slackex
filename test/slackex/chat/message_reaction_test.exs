@@ -3,7 +3,7 @@ defmodule Slackex.Chat.MessageReactionTest do
 
   alias Slackex.Chat.MessageReaction
 
-  import Slackex.Factory
+  import Slackex.TestFactory
 
   describe "changeset/2" do
     test "valid with all required fields" do

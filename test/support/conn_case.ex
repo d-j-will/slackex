@@ -29,7 +29,7 @@ defmodule SlackexWeb.ConnCase do
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
       import SlackexWeb.ConnCase
-      import Slackex.Factory
+      import Slackex.TestFactory
     end
   end
 
@@ -57,7 +57,7 @@ defmodule SlackexWeb.ConnCase do
   the updated conn and user.
   """
   def register_and_log_in_user(%{conn: conn}) do
-    user = Slackex.Factory.insert(:user)
+    user = Slackex.TestFactory.insert(:user)
     %{conn: log_in_user(conn, user), user: user}
   end
 end

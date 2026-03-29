@@ -9,7 +9,7 @@ defmodule SlackexWeb.ChannelCase do
   using do
     quote do
       import Phoenix.ChannelTest
-      import Slackex.Factory
+      import Slackex.TestFactory
 
       @endpoint SlackexWeb.Endpoint
     end
