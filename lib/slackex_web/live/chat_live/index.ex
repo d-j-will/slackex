@@ -116,7 +116,7 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_params(%{"dm_id" => dm_id} = params, _uri, socket) do
+  def handle_params(%{"dm_id" => dm_id} = params, _uri, %{assigns: %{live_action: :dm}} = socket) do
     user = socket.assigns.current_user
     dm = Chat.get_dm_conversation!(dm_id)
 
