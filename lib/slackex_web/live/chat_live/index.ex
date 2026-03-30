@@ -710,22 +710,32 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("pin_message", %{"message-id" => msg_id}, socket) do
-    message_id = Helpers.safe_to_integer(msg_id)
     channel = socket.assigns.active_channel
 
-    case Chat.Pins.pin_message(channel.id, socket.assigns.current_user.id, message_id) do
-      {:ok, _} -> {:noreply, assign(socket, :pin_count, socket.assigns.pin_count + 1)}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not pin message.")}
+    if channel do
+      message_id = Helpers.safe_to_integer(msg_id)
+
+      case Chat.Pins.pin_message(channel.id, socket.assigns.current_user.id, message_id) do
+        {:ok, _} -> {:noreply, assign(socket, :pin_count, socket.assigns.pin_count + 1)}
+        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not pin message.")}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
   def handle_event("unpin_message", %{"message-id" => msg_id}, socket) do
-    message_id = Helpers.safe_to_integer(msg_id)
     channel = socket.assigns.active_channel
 
-    case Chat.Pins.unpin_message(channel.id, socket.assigns.current_user.id, message_id) do
-      :ok -> {:noreply, assign(socket, :pin_count, max(socket.assigns.pin_count - 1, 0))}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not unpin message.")}
+    if channel do
+      message_id = Helpers.safe_to_integer(msg_id)
+
+      case Chat.Pins.unpin_message(channel.id, socket.assigns.current_user.id, message_id) do
+        :ok -> {:noreply, assign(socket, :pin_count, max(socket.assigns.pin_count - 1, 0))}
+        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not unpin message.")}
+      end
+    else
+      {:noreply, socket}
     end
   end
 
