@@ -111,7 +111,15 @@ defmodule SlackexWeb.ChatComponents do
         >
           <.avatar user={@dm.other_user} size="sm" online={@online} />
         </span>
-        <span class="truncate flex-1">{@display}</span>
+        <span class="flex-1 min-w-0">
+          <span class="truncate block">{@display}</span>
+          <span
+            :if={Map.get(@dm.other_user, :status, "") != ""}
+            class="truncate block text-xs text-base-content/50 leading-tight"
+          >
+            {Map.get(@dm.other_user, :status)}
+          </span>
+        </span>
         <.unread_badge :if={@unread_count > 0} count={@unread_count} />
       </.link>
     </li>

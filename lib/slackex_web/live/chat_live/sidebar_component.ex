@@ -259,8 +259,16 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
         >
           <.avatar user={@current_user} size="sm" online={true} />
         </span>
-        <span class="text-sm font-medium truncate flex-1">
-          {@current_user.display_name || @current_user.username}
+        <span class="text-sm min-w-0 flex-1">
+          <span class="font-medium truncate block">
+            {@current_user.display_name || @current_user.username}
+          </span>
+          <span
+            :if={@current_user.status && @current_user.status != ""}
+            class="truncate block text-xs text-base-content/50 leading-tight"
+          >
+            {@current_user.status}
+          </span>
         </span>
         <span
           :if={@show_node}
