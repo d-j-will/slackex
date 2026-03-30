@@ -62,6 +62,7 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
           message={@parent_message}
           current_user_id={@current_user.id}
           markdown_enabled={assigns[:markdown_enabled] || false}
+          id_prefix="thread-"
         />
       </div>
 

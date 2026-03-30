@@ -161,6 +161,11 @@ defmodule SlackexWeb.ChatComponents do
   attr :link_previews, :list, default: []
   attr :link_previews_enabled, :boolean, default: false
   attr :markdown_enabled, :boolean, default: false
+  # Optional prefix for all DOM element IDs rendered by this component. Pass a
+  # unique prefix (e.g. "thread-") when the same message is rendered in two
+  # places simultaneously (e.g. both the message stream and the thread panel
+  # header) to prevent duplicate-ID errors.
+  attr :id_prefix, :string, default: ""
 
   def message_bubble(assigns) do
     message = assigns.message
@@ -187,7 +192,7 @@ defmodule SlackexWeb.ChatComponents do
     ~H"""
     <div
       phx-hook="LongPress"
-      id={"msg-#{@message.id}"}
+      id={"#{@id_prefix}msg-#{@message.id}"}
       class={[
         "group relative flex gap-3 px-2 hover:bg-base-200/50 rounded-lg transition-colors",
         if(@grouped, do: "py-0.5 mt-0.5", else: "py-1 mt-1")
@@ -221,7 +226,7 @@ defmodule SlackexWeb.ChatComponents do
           <%= if @is_editing do %>
             <div class="mt-1">
               <textarea
-                id={"edit-input-#{@message.id}"}
+                id={"#{@id_prefix}edit-input-#{@message.id}"}
                 class="textarea textarea-bordered textarea-sm w-full"
                 maxlength="4000"
                 phx-hook="EditMessage"
@@ -231,7 +236,7 @@ defmodule SlackexWeb.ChatComponents do
                   phx-click="save_edit"
                   phx-value-msg-id={@message.id}
                   class="btn btn-primary btn-xs"
-                  id={"save-edit-#{@message.id}"}
+                  id={"#{@id_prefix}save-edit-#{@message.id}"}
                 >
                   Save
                 </button>
@@ -303,14 +308,14 @@ defmodule SlackexWeb.ChatComponents do
         </button>
         <div
           :if={@reactions_enabled}
-          id={"emoji-picker-#{@message.id}"}
+          id={"#{@id_prefix}emoji-picker-#{@message.id}"}
           phx-hook="EmojiPicker"
           class="relative"
         >
           <button
             data-emoji-trigger
             data-message-id={@message.id}
-            phx-click={JS.dispatch("emoji:open", to: "#emoji-picker-#{@message.id}")}
+            phx-click={JS.dispatch("emoji:open", to: "##{@id_prefix}emoji-picker-#{@message.id}")}
             class="btn btn-ghost btn-xs btn-circle"
             title="More reactions"
           >
@@ -339,7 +344,7 @@ defmodule SlackexWeb.ChatComponents do
           <span class="hero-bookmark size-4" />
         </button>
         <button
-          id={"copy-msg-#{@message.id}"}
+          id={"#{@id_prefix}copy-msg-#{@message.id}"}
           phx-hook="CopyMessage"
           class="btn btn-ghost btn-xs btn-circle"
           title="Copy message"
