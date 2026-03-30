@@ -136,6 +136,38 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_params(
+        %{"dm_id" => dm_id, "message_id" => message_id},
+        _uri,
+        %{assigns: %{live_action: :dm_thread}} = socket
+      ) do
+    user = socket.assigns.current_user
+    dm = Chat.get_dm_conversation!(dm_id)
+
+    if user.id in [dm.user_a_id, dm.user_b_id] do
+      parent =
+        Chat.get_message!(String.to_integer(message_id))
+        |> Slackex.Repo.preload(:sender)
+
+      _ =
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(Slackex.PubSub, "thread:#{parent.id}")
+        end
+
+      socket =
+        if socket.assigns.active_dm == nil || socket.assigns.active_dm.id != dm.id do
+          Conversations.enter_dm(socket, dm, nil)
+        else
+          socket
+        end
+
+      {:noreply, assign(socket, :thread_parent, parent)}
+    else
+      {:noreply, socket |> put_flash(:error, "Not found.") |> redirect(to: ~p"/chat")}
+    end
+  end
+
+  @impl true
+  def handle_params(
         %{"slug" => slug, "message_id" => message_id},
         _uri,
         %{assigns: %{live_action: :thread}} = socket
@@ -698,8 +730,16 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("open_thread", %{"message-id" => msg_id}, socket) do
-    slug = socket.assigns.active_channel.slug
-    {:noreply, push_patch(socket, to: ~p"/chat/#{slug}/thread/#{msg_id}")}
+    path =
+      if socket.assigns.active_dm do
+        dm_id = socket.assigns.active_dm.id
+        ~p"/chat/dm/#{dm_id}/thread/#{msg_id}"
+      else
+        slug = socket.assigns.active_channel.slug
+        ~p"/chat/#{slug}/thread/#{msg_id}"
+      end
+
+    {:noreply, push_patch(socket, to: path)}
   end
 
   def handle_event("close_thread", _params, socket) do
@@ -711,8 +751,16 @@ defmodule SlackexWeb.ChatLive.Index do
         )
     end
 
-    slug = socket.assigns.active_channel.slug
-    {:noreply, socket |> assign(:thread_parent, nil) |> push_patch(to: ~p"/chat/#{slug}")}
+    path =
+      if socket.assigns.active_dm do
+        dm_id = socket.assigns.active_dm.id
+        ~p"/chat/dm/#{dm_id}"
+      else
+        slug = socket.assigns.active_channel.slug
+        ~p"/chat/#{slug}"
+      end
+
+    {:noreply, socket |> assign(:thread_parent, nil) |> push_patch(to: path)}
   end
 
   # ---------------------------------------------------------------------------
@@ -825,10 +873,16 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def handle_info({:send_thread_reply, parent_id, content}, socket) do
     user = socket.assigns.current_user
-    channel = socket.assigns.active_channel
 
-    if channel do
-      case Messaging.send_reply(channel.id, :channel, user.id, parent_id, content) do
+    {target_id, target_type} =
+      cond do
+        socket.assigns.active_channel -> {socket.assigns.active_channel.id, :channel}
+        socket.assigns.active_dm -> {socket.assigns.active_dm.id, :dm}
+        true -> {nil, nil}
+      end
+
+    if target_id do
+      case Messaging.send_reply(target_id, target_type, user.id, parent_id, content) do
         {:ok, _reply} -> {:noreply, socket}
         {:error, _} -> {:noreply, put_flash(socket, :error, "Could not send reply.")}
       end
