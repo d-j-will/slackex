@@ -300,7 +300,7 @@ defmodule SlackexWeb.ChatComponents do
       </div>
       <div
         :if={not @is_deleted and not @is_editing}
-        class="hidden group-hover:flex absolute right-2 top-1 items-center gap-1"
+        class="hidden group-hover:flex absolute right-2 -top-2 items-center gap-1 bg-base-100 border border-base-300 rounded-lg shadow-sm px-1"
         data-role="message-actions"
       >
         <button

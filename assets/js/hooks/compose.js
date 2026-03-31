@@ -66,6 +66,14 @@ const Compose = {
       sessionStorage.setItem(this.storageKey, this.textarea.value);
     });
 
+    // Clear textarea after form submit (LiveView captures the value first)
+    this.el.addEventListener("submit", () => {
+      this.textarea.value = "";
+      this.autoResize();
+      this.closePopover();
+      sessionStorage.removeItem(this.storageKey);
+    });
+
     this.setupTypingDebounce();
   },
 
