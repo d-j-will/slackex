@@ -648,7 +648,7 @@ defmodule SlackexWeb.ChatComponents do
           autocomplete="off"
           phx-debounce="100"
         >{@message_form[:content].value}</textarea>
-        <button type="submit" class="btn btn-primary btn-sm">Send</button>
+        <button type="submit" class="btn btn-primary btn-sm h-[2.5rem]">Send</button>
       </.form>
     </div>
     """
