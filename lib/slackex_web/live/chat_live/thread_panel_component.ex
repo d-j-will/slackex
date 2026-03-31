@@ -90,7 +90,7 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
           phx-submit="send_reply"
           phx-target={@myself}
         >
-          <div class="flex gap-2">
+          <div class="flex gap-2 items-end">
             <textarea
               name="reply[content]"
               value={@reply_form[:content].value}
@@ -100,7 +100,7 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
               phx-hook="Compose"
               id={"thread-compose-#{@parent_message.id}"}
             />
-            <button type="submit" class="btn btn-primary btn-sm self-end">
+            <button type="submit" class="btn btn-primary btn-sm h-[36px]">
               <span class="hero-paper-airplane size-4" />
             </button>
           </div>
