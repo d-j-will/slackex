@@ -18,6 +18,7 @@ defmodule Slackex.TestFactory do
     Subscription
   }
 
+  alias Slackex.Analytics.Event, as: AnalyticsEvent
   alias Slackex.Notifications.DeviceToken
   alias Slackex.Repo
 
@@ -185,6 +186,18 @@ defmodule Slackex.TestFactory do
     )
 
     %{report | inserted_at: past}
+  end
+
+  def analytics_event_factory do
+    %AnalyticsEvent{
+      id: unique_bigint_id(),
+      event_type: "page_view",
+      event_category: "product",
+      event_name: sequence(:event_name, &"event_#{&1}"),
+      session_id: Ecto.UUID.generate(),
+      metadata: %{"path" => "/chat/general"},
+      inserted_at: DateTime.utc_now() |> DateTime.truncate(:microsecond)
+    }
   end
 
   # Generates a large monotonic integer suitable as a bigint ID.
