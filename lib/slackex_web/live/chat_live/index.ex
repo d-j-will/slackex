@@ -1284,7 +1284,7 @@ defmodule SlackexWeb.ChatLive.Index do
   # Private helpers
   # ---------------------------------------------------------------------------
 
-  defp track_feature(socket, feature, metadata \\ %{}) do
+  defp track_feature(socket, feature, metadata) do
     user = socket.assigns.current_user
 
     _ =
