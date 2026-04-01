@@ -377,11 +377,15 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("toggle_search", _params, socket) do
-    {:noreply, assign(socket, :search_open, !socket.assigns.search_open)}
+    socket = assign(socket, :search_open, !socket.assigns.search_open)
+    _ = if socket.assigns.search_open, do: track_feature(socket, "search", %{action: "open"})
+    {:noreply, socket}
   end
 
   def handle_event("open_summary_modal", _params, socket) do
-    {:noreply, assign(socket, show_summary_modal: true, summary_state: :idle, summary_text: "")}
+    socket = assign(socket, show_summary_modal: true, summary_state: :idle, summary_text: "")
+    _ = track_feature(socket, "summarization", %{action: "open"})
+    {:noreply, socket}
   end
 
   def handle_event("close_summary_modal", _params, socket) do
@@ -700,13 +704,23 @@ defmodule SlackexWeb.ChatLive.Index do
     user_id = socket.assigns.current_user.id
 
     case Messaging.toggle_reaction(message_id, user_id, emoji) do
-      {:ok, _} -> {:noreply, socket}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not react.")}
+      {:ok, _} ->
+        _ = track_feature(socket, "reactions", %{action: "toggle", emoji: emoji})
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not react.")}
     end
   end
 
   def handle_event("toggle_quick_switcher", _params, socket) do
-    {:noreply, assign(socket, :show_quick_switcher, !socket.assigns.show_quick_switcher)}
+    socket = assign(socket, :show_quick_switcher, !socket.assigns.show_quick_switcher)
+
+    _ =
+      if socket.assigns.show_quick_switcher,
+        do: track_feature(socket, "quick_switcher", %{action: "open"})
+
+    {:noreply, socket}
   end
 
   def handle_event("pin_message", %{"message-id" => msg_id}, socket) do
@@ -716,8 +730,13 @@ defmodule SlackexWeb.ChatLive.Index do
       message_id = Helpers.safe_to_integer(msg_id)
 
       case Chat.Pins.pin_message(channel.id, socket.assigns.current_user.id, message_id) do
-        {:ok, _} -> {:noreply, assign(socket, :pin_count, socket.assigns.pin_count + 1)}
-        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not pin message.")}
+        {:ok, _} ->
+          socket = assign(socket, :pin_count, socket.assigns.pin_count + 1)
+          _ = track_feature(socket, "pins", %{action: "pin"})
+          {:noreply, socket}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not pin message.")}
       end
     else
       {:noreply, socket}
@@ -749,6 +768,7 @@ defmodule SlackexWeb.ChatLive.Index do
         ~p"/chat/#{slug}/thread/#{msg_id}"
       end
 
+    _ = track_feature(socket, "threads", %{action: "open"})
     {:noreply, push_patch(socket, to: path)}
   end
 
@@ -1258,5 +1278,24 @@ defmodule SlackexWeb.ChatLive.Index do
       end
 
     :ok
+  end
+
+  # ---------------------------------------------------------------------------
+  # Private helpers
+  # ---------------------------------------------------------------------------
+
+  defp track_feature(socket, feature, metadata \\ %{}) do
+    user = socket.assigns.current_user
+
+    _ =
+      Slackex.Analytics.track(
+        %{
+          user_id: user.id,
+          session_id: socket.assigns[:analytics_session_id],
+          user: user
+        },
+        "feature_used",
+        Map.put(metadata, :feature, feature)
+      )
   end
 end
