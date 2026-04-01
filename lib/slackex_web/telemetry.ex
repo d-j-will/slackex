@@ -8,6 +8,8 @@ defmodule SlackexWeb.Telemetry do
 
   @impl true
   def init(_arg) do
+    :ok = Slackex.Analytics.TelemetryHandler.attach()
+
     children = [
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000},
       {TelemetryMetricsPrometheus.Core, metrics: metrics(), name: :slackex_metrics}
