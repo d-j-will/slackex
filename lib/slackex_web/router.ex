@@ -87,7 +87,7 @@ defmodule SlackexWeb.Router do
     pipe_through :browser
 
     live_session :chat,
-      on_mount: [{SlackexWeb.UserAuth, :ensure_authenticated}],
+      on_mount: [{SlackexWeb.UserAuth, :ensure_authenticated}, SlackexWeb.AnalyticsTracker],
       layout: {SlackexWeb.Layouts, :chat} do
       live "/chat", ChatLive.Index, :index
       live "/chat/channels/new", ChatLive.Index, :create_channel
