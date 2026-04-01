@@ -1,0 +1,173 @@
+<div class="min-h-screen bg-base-200 p-6">
+  <h1 class="text-2xl font-bold mb-6">Analytics</h1>
+
+  <%= if not @enabled do %>
+    <div class="alert alert-warning">
+      Analytics disabled. Enable the <code>:website_analytics</code>
+      feature flag to start collecting data.
+    </div>
+  <% else %>
+    <%!-- Tab navigation --%>
+    <div class="tabs tabs-boxed mb-6">
+      <%= for {action, label, path} <- @tabs do %>
+        <.link navigate={path} class={"tab #{if @live_action == action, do: "tab-active"}"}>
+          {label}
+        </.link>
+      <% end %>
+    </div>
+
+    <%!-- Period selector --%>
+    <form phx-change="change_period" class="flex justify-end mb-4">
+      <select name="period" class="select select-sm select-bordered">
+        <option value="last_24_hours" selected={@period == :last_24_hours}>Last 24 hours</option>
+        <option value="last_7_days" selected={@period == :last_7_days}>Last 7 days</option>
+        <option value="last_30_days" selected={@period == :last_30_days}>Last 30 days</option>
+        <option value="last_90_days" selected={@period == :last_90_days}>Last 90 days</option>
+      </select>
+    </form>
+
+    <%!-- Tab content --%>
+    <%= case @live_action do %>
+      <% :overview -> %>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div class="stat bg-base-100 rounded-lg shadow">
+            <div class="stat-title">Active Users (24h)</div>
+            <div class="stat-value">{@active_today}</div>
+          </div>
+          <div class="stat bg-base-100 rounded-lg shadow">
+            <div class="stat-title">Active Users (7d)</div>
+            <div class="stat-value">{@active_7d}</div>
+          </div>
+          <div class="stat bg-base-100 rounded-lg shadow">
+            <div class="stat-title">Active Users (30d)</div>
+            <div class="stat-value">{@active_30d}</div>
+          </div>
+          <div class="stat bg-base-100 rounded-lg shadow">
+            <div class="stat-title">Errors</div>
+            <div class="stat-value text-error">{@error_count}</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-base-100 rounded-lg shadow p-4">
+            <h3 class="font-semibold mb-3">Top Pages</h3>
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Path</th>
+                  <th>Views</th>
+                  <th>Users</th>
+                </tr>
+              </thead>
+              <tbody>
+                <%= for pv <- @page_views do %>
+                  <tr>
+                    <td class="font-mono text-sm">{pv.path}</td>
+                    <td>{pv.count}</td>
+                    <td>{pv.unique_users}</td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+          <div class="bg-base-100 rounded-lg shadow p-4">
+            <h3 class="font-semibold mb-3">Top Features</h3>
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>Uses</th>
+                  <th>Users</th>
+                </tr>
+              </thead>
+              <tbody>
+                <%= for f <- @top_features do %>
+                  <tr>
+                    <td>{f.feature}</td>
+                    <td>{f.count}</td>
+                    <td>{f.unique_users}</td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <% :hotspots -> %>
+        <div class="bg-base-100 rounded-lg shadow p-4">
+          <h3 class="font-semibold mb-3">Page Hotspots</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Visits</th>
+                <th>Avg Load (ms)</th>
+                <th>Errors</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for h <- @hotspots do %>
+                <tr>
+                  <td class="font-mono text-sm">{h.path}</td>
+                  <td>{h.visit_count}</td>
+                  <td>{round(h.avg_duration_ms)}</td>
+                  <td class={if h.error_count > 0, do: "text-error font-bold"}>
+                    {h.error_count}
+                  </td>
+                  <td>{h.score}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% :errors -> %>
+        <div class="bg-base-100 rounded-lg shadow p-4">
+          <h3 class="font-semibold mb-3">Errors</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Message</th>
+                <th>Type</th>
+                <th>Count</th>
+                <th>Last Seen</th>
+                <th>Users</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for e <- @errors_list do %>
+                <tr>
+                  <td class="font-mono text-sm max-w-md truncate">{e.message}</td>
+                  <td><span class="badge badge-sm">{e.event_type}</span></td>
+                  <td class="font-bold">{e.count}</td>
+                  <td>{if e.last_seen, do: Calendar.strftime(e.last_seen, "%Y-%m-%d %H:%M")}</td>
+                  <td>{e.affected_users}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% :features -> %>
+        <div class="bg-base-100 rounded-lg shadow p-4">
+          <h3 class="font-semibold mb-3">Feature Adoption</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Total Uses</th>
+                <th>Unique Users</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for f <- @features do %>
+                <tr>
+                  <td>{f.feature}</td>
+                  <td>{f.count}</td>
+                  <td>{f.unique_users}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+    <% end %>
+  <% end %>
+</div>

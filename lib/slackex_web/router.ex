@@ -131,6 +131,17 @@ defmodule SlackexWeb.Router do
     forward "/", FunWithFlags.UI.Router, namespace: "admin/flags"
   end
 
+  scope "/admin/analytics" do
+    pipe_through [:browser, :admin_flags_auth]
+
+    live_session :admin_analytics do
+      live "/", SlackexWeb.AdminLive.Analytics, :overview
+      live "/hotspots", SlackexWeb.AdminLive.Analytics, :hotspots
+      live "/errors", SlackexWeb.AdminLive.Analytics, :errors
+      live "/features", SlackexWeb.AdminLive.Analytics, :features
+    end
+  end
+
   defp flags_basic_auth(conn, _opts) do
     config = Application.fetch_env!(:slackex, :flags_admin_auth)
     Plug.BasicAuth.basic_auth(conn, username: config[:username], password: config[:password])
