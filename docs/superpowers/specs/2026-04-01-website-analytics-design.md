@@ -30,7 +30,7 @@ Data surfaces in two places:
 | `event_category` | `string` | `product`, `error`, `performance` |
 | `event_name` | `string` | Specific event, e.g. `search_opened`, `unhandled_exception`, `slow_mount` |
 | `user_id` | `bigint, nullable` | FK to `users`. Null for unauthenticated events |
-| `session_id` | `string` | UUID generated client-side in `sessionStorage`, correlates events within a browsing session |
+| `session_id` | `string` | Unique identifier correlating events within a user's browsing session (see Session ID Scope below) |
 | `metadata` | `jsonb` | Flexible payload per event type (see below) |
 | `inserted_at` | `utc_datetime_usec` | |
 
@@ -43,14 +43,56 @@ Data surfaces in two places:
 
 ### Metadata Shapes by Event Type
 
+Descriptions use observable behavior, not implementation details:
+
 ```
-page_view:     %{path, live_action, referrer, duration_ms, mount_type}
-feature_used:  %{feature, action, channel_id, context}
-js_error:      %{message, stack, url, line, column, user_agent}
-server_error:  %{kind, reason, stacktrace, plug_status, path, trace_id}
-oban_error:    %{worker, queue, args, error, attempt, trace_id}
-performance:   %{metric, value, path, live_view}
-click:         %{target, context, path}
+page_view:
+  path         — page URL path
+  live_action  — which LiveView action was active
+  referrer     — HTTP Referer header (initial load only)
+  duration_ms  — elapsed time from request start to LiveView mount completion
+  is_reconnect — true if this mount followed a WebSocket reconnect (not a fresh navigation)
+
+feature_used:
+  feature      — feature name (e.g. "search", "reactions", "threads")
+  action       — specific action within the feature (e.g. "add", "remove", "open")
+  channel_id   — channel context (if applicable)
+  context      — UI location where the feature was used
+
+js_error:
+  message      — error message string
+  stack        — stack trace
+  url          — page URL where the error occurred
+  line         — source line number
+  column       — source column number
+  user_agent   — browser user agent string
+
+server_error:
+  kind         — error kind (:error, :exit, :throw)
+  reason       — error reason/message
+  stacktrace   — Elixir stacktrace
+  plug_status  — HTTP status code (e.g. 500)
+  path         — request path
+  trace_id     — OTEL trace ID for Grafana/Tempo drill-through
+
+oban_error:
+  worker       — Oban worker module name
+  queue        — queue name
+  args         — job arguments
+  error        — error reason/message
+  attempt      — which attempt failed
+  trace_id     — OTEL trace ID for Grafana/Tempo drill-through
+
+performance:
+  metric       — metric name (e.g. "lcp", "fid", "long_task")
+  value        — measured value in milliseconds
+  path         — page URL path
+  live_view    — LiveView module name
+
+click:
+  target       — tracked element identifier (from data-track attribute)
+  context      — UI context (from data-track-context attribute)
+  path         — page URL path
 ```
 
 ## Event Collection — Server Side
@@ -63,7 +105,7 @@ A Plug in the endpoint pipeline that handles the HTTP request layer:
 - Sets/reads `session_id` from the session (generated if missing)
 - Catches HTTP-level errors (500s) with path, user, and params context
 - **Excludes bot users** — checks `user.is_bot` and skips tracking
-- **Excludes admin/dev traffic** — configurable list of excluded user IDs or an `:exclude_from_analytics` user flag
+- **Excludes admin/dev traffic** — checks `:exclude_from_analytics` per-user FunWithFlags flag
 - No-op when `:website_analytics` flag is disabled
 
 ### Analytics.LiveViewTracker (WebSocket Boundary)
@@ -77,7 +119,7 @@ live_session :authenticated, on_mount: [...existing..., Analytics.LiveViewTracke
 Captures:
 - **LiveView navigations** — `attach_hook(:handle_params)` fires on every `live_patch`/`live_navigate`, recording path, live_action, and timing
 - **Mount duration** — measures initial mount time, flags slow mounts (>500ms)
-- **Reconnect detection** — distinguishes initial mounts from WebSocket reconnects using `connected?(socket)`. Reconnects are tagged with `mount_type: :reconnect` to avoid inflating page view counts during deploys
+- **Reconnect detection** — distinguishes initial mounts from WebSocket reconnects. Reconnects are tagged with `is_reconnect: true` to avoid inflating page view counts during deploys
 - **OTEL trace correlation** — reads the current `trace_id` from the OpenTelemetry span context and includes it in error event metadata, enabling click-through from admin UI to Grafana/Tempo traces
 
 ### Telemetry Listeners
@@ -180,12 +222,39 @@ Oban cron job running nightly. Deletes events older than 90 days (configurable v
 
 Periodic task (every 60s) that queries aggregate counts and pushes Prometheus gauges:
 
-- `tenun.analytics.page_views.count` (by path)
-- `tenun.analytics.errors.count` (by category)
-- `tenun.analytics.feature_usage.count` (by feature)
-- `tenun.analytics.active_users.count`
+- `tenun.analytics.page_views` — gauge (by path)
+- `tenun.analytics.errors` — gauge (by category)
+- `tenun.analytics.feature_usage` — gauge (by feature)
+- `tenun.analytics.active_users` — gauge
 
-Feeds the existing `/metrics` endpoint and Prometheus scrape pipeline. Runs on a single node via Oban cron to avoid duplicate gauge emission in multi-node.
+Metric names follow existing conventions (`slackex.oban.queue_depth.running`, `slackex.presence.connected_users.count`) — no redundant `.count` suffix on names that are already clearly gauges.
+
+**Important:** Exact metric names as exported by TelemetryMetricsPrometheus.Core must be verified against library documentation during implementation. The names above are logical names — the actual Prometheus export format (e.g., underscores vs dots, namespace prefixing) depends on the library. Contract tests must assert on the real exported names.
+
+**Multi-node execution:** Runs as an Oban cron job with `unique: [period: 55]` to ensure only one node executes per cycle. If a node has already inserted the job within the uniqueness window, other nodes' cron insertions are no-ops. This is Oban's built-in mechanism for distributed cron deduplication — no Horde or custom leader election needed.
+
+Feeds the existing `/metrics` endpoint and Prometheus scrape pipeline.
+
+## Routing & Access Control
+
+The admin analytics UI lives at `/admin/analytics`, protected by the same basic auth pattern as the existing `/admin/flags` route:
+
+```elixir
+scope "/admin/analytics" do
+  pipe_through [:browser, :admin_flags_auth]
+
+  live_session :admin_analytics, on_mount: [Analytics.LiveViewTracker] do
+    live "/", AdminLive.Analytics, :overview
+    live "/hotspots", AdminLive.Analytics, :hotspots
+    live "/errors", AdminLive.Analytics, :errors
+    live "/features", AdminLive.Analytics, :features
+  end
+end
+```
+
+Access is gated by the existing `flags_basic_auth` plug (username/password from `config :slackex, :flags_admin_auth`). No new user schema changes needed — this reuses the same admin auth that protects FunWithFlags UI.
+
+The analytics LiveView tracker is included in the admin live session so admin page views are tracked (useful for verifying the pipeline), but admin users with `:exclude_from_analytics` flag set will have their events filtered from product analytics queries.
 
 ## Admin UI — `/admin/analytics`
 
@@ -234,7 +303,7 @@ Data source: Prometheus metrics from `Analytics.MetricsBridge`. No direct Postgr
 
 ### Alerting
 
-Grafana alert rule: if `tenun.analytics.errors.count` in the last 15 minutes exceeds threshold (default: 10), fire notification. Routes to configured alert channel (email, webhook, Discord). Uses existing Grafana alerting — no new infrastructure.
+Grafana alert rule: if `tenun.analytics.errors` in the last 15 minutes exceeds threshold (default: 10), fire notification. Routes to configured alert channel (email, webhook, Discord). Uses existing Grafana alerting — no new infrastructure.
 
 ## Data Hygiene
 
@@ -245,7 +314,16 @@ Both `Analytics.Plug` and `Analytics.LiveViewTracker` check `user.is_bot` and sk
 Exclusion via `:exclude_from_analytics` per-user flag in FunWithFlags. Consistent with existing per-user feature flag pattern. Enable this flag for admin/developer accounts whose activity would skew product analytics data. Dev environment events are collected by default (useful for testing the pipeline) but can be excluded via `config :slackex, Analytics, exclude_dev: true`.
 
 ### Reconnect Deduplication
-LiveView reconnects (network blips, deploys) tagged with `mount_type: :reconnect`. Query functions exclude reconnects from page view counts by default, with an option to include them for debugging.
+LiveView reconnects (network blips, deploys) tagged with `is_reconnect: true`. Query functions exclude reconnects from page view counts by default, with an option to include them for debugging.
+
+### Session ID Scope
+
+`session_id` is a UUID generated client-side and persisted in the browser's session storage. This means:
+- Each browser tab gets a distinct `session_id`
+- Events are split across multiple "sessions" if a user opens multiple tabs
+- Clearing browser storage resets the `session_id`
+
+At ~50 users this is acceptable. Session counts will be higher than actual distinct users (due to tab splits), but trends remain valid. For per-user activity analysis, use `user_id` directly (available on all authenticated events).
 
 ### Client-Side Rate Limiting
 JS error events deduplicated by message — same error reported at most once per 60 seconds. Prevents event floods from errors in rendering loops.
@@ -254,7 +332,11 @@ JS error events deduplicated by message — same error reported at most once per
 
 Gated behind `:website_analytics` FunWithFlags flag:
 
-- **Flag off** — Plug, hook, and JS hook are no-ops. No events collected, no Oban jobs queued. Admin UI shows "Analytics disabled."
+- **Flag off** — All collection modules are no-ops. No events collected, no Oban jobs queued. Admin UI shows "Analytics disabled." The flag check happens at the entry point of each module:
+  - `Analytics.Plug` — checked in `call/2` before any processing
+  - `Analytics.LiveViewTracker` — checked in `on_mount` before attaching hooks
+  - `analytics.js` hook — checks a `data-analytics-enabled` attribute on the root element (set server-side based on the flag)
+  - `Analytics.TelemetryHandler` — checked before inserting Oban job
 - **Flag on** — Full collection and UI
 - **Per-user gating** — Enable for specific users first for validation before global rollout
 
@@ -277,8 +359,15 @@ No faking the upstream — the test calls `Analytics.track/3` and asserts on the
 - `Analytics.LiveViewTracker` reconnect detection
 - Client-side rate limiting logic
 
+### Client-Side Rate Limiting Test
+LiveView integration test that verifies JS error deduplication:
+1. Trigger a JS error event via the analytics hook
+2. Immediately trigger the same error again
+3. Assert only 1 event recorded in `analytics_events`
+4. The 60-second window is a client-side concern — server-side tests verify that duplicate events received within a short window are both persisted (rate limiting is enforced in JS, not the server)
+
 ### Contract Tests
-- Prometheus metric names emitted by `MetricsBridge` match Grafana dashboard PromQL queries
+- Prometheus metric names emitted by `MetricsBridge` match Grafana dashboard PromQL queries (exact export format verified against TelemetryMetricsPrometheus.Core docs)
 - Event metadata shapes match what query functions expect
 
 ## Module Summary
