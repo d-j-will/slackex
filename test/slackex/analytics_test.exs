@@ -119,4 +119,219 @@ defmodule Slackex.AnalyticsTest do
       FunWithFlags.disable(:exclude_from_analytics, for_actor: user)
     end
   end
+
+  describe "page_views/1" do
+    test "returns page views grouped by path with counts" do
+      user = insert(:user)
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        user_id: user.id,
+        metadata: %{"path" => "/chat/general"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        user_id: user.id,
+        metadata: %{"path" => "/chat/general"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        user_id: user.id,
+        metadata: %{"path" => "/chat/random"},
+        inserted_at: now
+      )
+
+      results = Slackex.Analytics.page_views(period: :last_7_days)
+      general = Enum.find(results, &(&1.path == "/chat/general"))
+      assert general.count == 2
+      assert general.unique_users == 1
+    end
+
+    test "excludes reconnect events by default" do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        metadata: %{"path" => "/chat", "is_reconnect" => "true"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        metadata: %{"path" => "/chat", "is_reconnect" => "false"},
+        inserted_at: now
+      )
+
+      results = Slackex.Analytics.page_views(period: :last_7_days)
+      chat = Enum.find(results, &(&1.path == "/chat"))
+      assert chat.count == 1
+    end
+  end
+
+  describe "feature_usage/1" do
+    test "returns feature usage grouped by feature name" do
+      user1 = insert(:user)
+      user2 = insert(:user)
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      insert(:analytics_event,
+        event_type: "feature_used",
+        event_name: "feature_used",
+        event_category: "product",
+        user_id: user1.id,
+        metadata: %{"feature" => "search"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "feature_used",
+        event_name: "feature_used",
+        event_category: "product",
+        user_id: user2.id,
+        metadata: %{"feature" => "search"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "feature_used",
+        event_name: "feature_used",
+        event_category: "product",
+        user_id: user1.id,
+        metadata: %{"feature" => "reactions"},
+        inserted_at: now
+      )
+
+      results = Slackex.Analytics.feature_usage(period: :last_30_days)
+      search = Enum.find(results, &(&1.feature == "search"))
+      assert search.count == 2
+      assert search.unique_users == 2
+    end
+  end
+
+  describe "errors/1" do
+    test "returns errors grouped by message with counts" do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      insert(:analytics_event,
+        event_type: "js_error",
+        event_category: "error",
+        event_name: "js_error",
+        metadata: %{"message" => "TypeError: null"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "js_error",
+        event_category: "error",
+        event_name: "js_error",
+        metadata: %{"message" => "TypeError: null"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "server_error",
+        event_category: "error",
+        event_name: "server_error",
+        metadata: %{"message" => "500 error"},
+        inserted_at: now
+      )
+
+      results = Slackex.Analytics.errors(period: :last_24_hours)
+      type_error = Enum.find(results, &(&1.message == "TypeError: null"))
+      assert type_error.count == 2
+
+      js_only = Slackex.Analytics.errors(period: :last_24_hours, category: "js_error")
+      assert length(js_only) == 1
+    end
+  end
+
+  describe "slow_pages/1" do
+    test "returns pages exceeding the duration threshold" do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        metadata: %{"path" => "/chat/general", "duration_ms" => 600},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        metadata: %{"path" => "/chat/general", "duration_ms" => 700},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        metadata: %{"path" => "/chat/random", "duration_ms" => 100},
+        inserted_at: now
+      )
+
+      results = Slackex.Analytics.slow_pages(threshold_ms: 500, period: :last_7_days)
+      assert length(results) == 1
+      assert hd(results).path == "/chat/general"
+      assert hd(results).avg_duration_ms == 650.0
+    end
+  end
+
+  describe "hotspots/1" do
+    test "returns pages ranked by composite score" do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      for _ <- 1..10 do
+        insert(:analytics_event,
+          event_type: "page_view",
+          event_name: "page_view",
+          metadata: %{"path" => "/chat/general", "duration_ms" => 200},
+          inserted_at: now
+        )
+      end
+
+      insert(:analytics_event,
+        event_type: "js_error",
+        event_category: "error",
+        event_name: "js_error",
+        metadata: %{"url" => "/chat/general"},
+        inserted_at: now
+      )
+
+      insert(:analytics_event,
+        event_type: "page_view",
+        event_name: "page_view",
+        metadata: %{"path" => "/chat/random", "duration_ms" => 100},
+        inserted_at: now
+      )
+
+      results = Slackex.Analytics.hotspots(period: :last_7_days)
+      assert results != []
+      assert hd(results).path == "/chat/general"
+    end
+  end
+
+  describe "active_user_count/1" do
+    test "returns count of distinct active users" do
+      user1 = insert(:user)
+      user2 = insert(:user)
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      insert(:analytics_event, user_id: user1.id, inserted_at: now)
+      insert(:analytics_event, user_id: user1.id, inserted_at: now)
+      insert(:analytics_event, user_id: user2.id, inserted_at: now)
+
+      assert Slackex.Analytics.active_user_count(period: :last_24_hours) == 2
+    end
+  end
 end
