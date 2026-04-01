@@ -57,5 +57,6 @@ defmodule SlackexWeb.Endpoint do
   plug Plug.Head
   plug SlackexWeb.Plugs.MetricsExporter
   plug Plug.Session, @session_options
+  plug SlackexWeb.Plugs.AnalyticsPlug
   plug SlackexWeb.Router
 end
