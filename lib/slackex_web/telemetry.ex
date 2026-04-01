@@ -97,7 +97,13 @@ defmodule SlackexWeb.Telemetry do
 
       # Application Metrics
       last_value("slackex.oban.queue_depth.running", tags: [:queue]),
-      last_value("slackex.presence.connected_users.count")
+      last_value("slackex.presence.connected_users.count"),
+
+      # Analytics Metrics
+      last_value("tenun.analytics.page_views.count", tags: [:path]),
+      last_value("tenun.analytics.errors.count", tags: [:category]),
+      last_value("tenun.analytics.feature_usage.count", tags: [:feature]),
+      last_value("tenun.analytics.active_users.count")
     ]
   end
 

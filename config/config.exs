@@ -72,7 +72,9 @@ config :slackex, Oban,
      crontab: [
        {"0 * * * *", Slackex.Workers.CacheWarmer},
        {"*/15 * * * *", Slackex.Embeddings.ReconciliationWorker},
-       {"*/2 * * * *", Slackex.Factory.LifecycleWorker}
+       {"*/2 * * * *", Slackex.Factory.LifecycleWorker},
+       {"0 3 * * *", Slackex.Analytics.PruneWorker},
+       {"* * * * *", Slackex.Analytics.MetricsBridge}
      ]}
   ]
 
