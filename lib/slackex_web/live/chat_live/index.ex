@@ -752,6 +752,24 @@ defmodule SlackexWeb.ChatLive.Index do
     {:noreply, push_patch(socket, to: path)}
   end
 
+  @impl true
+  def handle_event("analytics:" <> event_type, params, socket) do
+    user = socket.assigns.current_user
+
+    context = %{
+      user_id: user.id,
+      session_id: socket.assigns[:analytics_session_id],
+      is_bot: Map.get(user, :is_bot, false),
+      user: user
+    }
+
+    metadata = Map.drop(params, ["_target"])
+    _ = Slackex.Analytics.track(context, event_type, metadata)
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("close_thread", _params, socket) do
     if socket.assigns.thread_parent do
       _ =
