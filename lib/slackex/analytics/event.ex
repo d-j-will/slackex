@@ -22,7 +22,7 @@ defmodule Slackex.Analytics.Event do
     field :inserted_at, :utc_datetime_usec
   end
 
-  def changeset(event \\ %__MODULE__{}, attrs) do
+  def changeset(event, attrs) do
     event
     |> cast(attrs, [:event_type, :event_category, :event_name, :user_id, :session_id, :metadata])
     |> validate_required([:event_type, :event_category, :event_name])
