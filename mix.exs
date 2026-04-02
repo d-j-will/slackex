@@ -75,6 +75,7 @@ defmodule Slackex.MixProject do
       {:phoenix_live_view, "~> 1.1.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:jason, "~> 1.4"},
+      {:web_push_elixir, "~> 0.5"},
       {:bandit, "~> 1.5"},
       {:dns_cluster, "~> 0.2.0"},
       {:gettext, "~> 0.26"},
