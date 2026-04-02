@@ -108,6 +108,17 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:summary_error, nil)
      |> assign(:active_summary_task, nil)
      |> assign(:last_message, nil)
+     |> assign(:push_notifications_enabled, FunWithFlags.enabled?(:push_notifications))
+     |> assign(:push_permission, "default")
+     |> assign(:push_subscribed, false)
+     |> assign(
+       :notification_level,
+       if FunWithFlags.enabled?(:push_notifications) do
+         Slackex.Notifications.Preference.resolve_level(user.id, nil)
+       else
+         "all"
+       end
+     )
      |> stream(:messages, [])}
   end
 
@@ -598,6 +609,8 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_event("edit_profile", _params, socket) do
     user = socket.assigns.current_user
 
+    socket = push_event(socket, "push:check_status", %{})
+
     {:noreply,
      socket
      |> assign(:show_edit_profile, true)
@@ -809,6 +822,81 @@ defmodule SlackexWeb.ChatLive.Index do
       end
 
     {:noreply, socket |> assign(:thread_parent, nil) |> push_patch(to: path)}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Push notification handlers
+  # ---------------------------------------------------------------------------
+
+  def handle_event(
+        "push:status",
+        %{"permission" => permission, "subscribed" => subscribed},
+        socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(:push_permission, permission)
+     |> assign(:push_subscribed, subscribed)}
+  end
+
+  def handle_event("enable_push", _params, socket) do
+    {:noreply, push_event(socket, "push:subscribe", %{})}
+  end
+
+  def handle_event("disable_push", _params, socket) do
+    {:noreply, push_event(socket, "push:unsubscribe", %{})}
+  end
+
+  def handle_event("push:register_subscription", %{"subscription" => subscription_json}, socket) do
+    user = socket.assigns.current_user
+
+    attrs = %{
+      "user_id" => user.id,
+      "token" => subscription_json,
+      "platform" => "web_push",
+      "device_name" => "PWA"
+    }
+
+    alias Slackex.Notifications.DeviceToken
+    alias Slackex.Repo
+
+    existing = Repo.get_by(DeviceToken, token: subscription_json, user_id: user.id)
+    base = existing || %DeviceToken{}
+
+    case DeviceToken.changeset(base, attrs) |> Repo.insert_or_update() do
+      {:ok, _token} ->
+        {:noreply, assign(socket, :push_subscribed, true)}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Failed to register push subscription")}
+    end
+  end
+
+  def handle_event("push:remove_subscription", %{"subscription" => subscription_json}, socket) do
+    user = socket.assigns.current_user
+    alias Slackex.Notifications.DeviceToken
+    alias Slackex.Repo
+
+    case Repo.get_by(DeviceToken, token: subscription_json, user_id: user.id) do
+      nil -> :ok
+      token -> Repo.delete(token)
+    end
+
+    {:noreply, assign(socket, :push_subscribed, false)}
+  end
+
+  def handle_event("push:unsubscribed", _params, socket) do
+    {:noreply, assign(socket, :push_subscribed, false)}
+  end
+
+  def handle_event("push:error", %{"reason" => reason}, socket) do
+    {:noreply, put_flash(socket, :error, "Notification error: #{reason}")}
+  end
+
+  def handle_event("update_notification_level", %{"level" => level}, socket) do
+    user = socket.assigns.current_user
+    _ = Slackex.Notifications.Preference.set_global_default(user.id, level)
+    {:noreply, assign(socket, :notification_level, level)}
   end
 
   # ---------------------------------------------------------------------------

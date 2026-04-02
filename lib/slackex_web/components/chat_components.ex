@@ -822,6 +822,10 @@ defmodule SlackexWeb.ChatComponents do
   attr :show, :boolean, default: false
   attr :form, :any, required: true
   attr :current_user, :map, required: true
+  attr :push_notifications_enabled, :boolean, default: false
+  attr :push_permission, :string, default: "default"
+  attr :push_subscribed, :boolean, default: false
+  attr :notification_level, :string, default: "all"
 
   def edit_profile_modal(assigns) do
     ~H"""
@@ -886,6 +890,49 @@ defmodule SlackexWeb.ChatComponents do
                 {msg}
               </.field_error>
             </div>
+            <%= if @push_notifications_enabled do %>
+              <div class="divider">Notifications</div>
+
+              <div id="push-settings" phx-hook="PushSubscription" class="form-control">
+                <label class="label"><span class="label-text">Push Notifications</span></label>
+                <%= if @push_subscribed do %>
+                  <div class="flex items-center gap-2">
+                    <span class="badge badge-success">Enabled</span>
+                    <button type="button" phx-click="disable_push" class="btn btn-sm btn-ghost">
+                      Disable
+                    </button>
+                  </div>
+                <% else %>
+                  <%= if @push_permission == "denied" do %>
+                    <p class="text-sm text-warning">
+                      Notifications blocked by browser. Reset in browser settings.
+                    </p>
+                  <% else %>
+                    <button type="button" phx-click="enable_push" class="btn btn-sm btn-primary">
+                      Enable Notifications
+                    </button>
+                  <% end %>
+                <% end %>
+              </div>
+
+              <div class="form-control mt-4">
+                <label class="label">
+                  <span class="label-text">Default Notification Level</span>
+                </label>
+                <form phx-change="update_notification_level">
+                  <select name="level" class="select select-bordered select-sm">
+                    <option value="all" selected={@notification_level == "all"}>All messages</option>
+                    <option value="mentions" selected={@notification_level == "mentions"}>
+                      Mentions only
+                    </option>
+                    <option value="nothing" selected={@notification_level == "nothing"}>
+                      Nothing
+                    </option>
+                  </select>
+                </form>
+              </div>
+            <% end %>
+
             <div class="flex justify-end gap-2">
               <button type="button" phx-click="close_edit_profile" class="btn btn-ghost btn-sm">
                 Cancel
