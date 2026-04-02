@@ -23,11 +23,19 @@ defmodule Slackex.Notifications.Preference do
     |> validate_inclusion(:level, @valid_levels)
   end
 
+  def resolve_level(user_id, nil) do
+    get_global_default_level(user_id)
+  rescue
+    _ -> "all"
+  end
+
   def resolve_level(user_id, channel_id) do
     case get_by_channel(user_id, channel_id) do
       %{level: level} -> level
       nil -> get_global_default_level(user_id)
     end
+  rescue
+    _ -> "all"
   end
 
   def set_preference(user_id, channel_id, level) do
