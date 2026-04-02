@@ -18,12 +18,33 @@ defmodule Slackex.Notifications.PushWorker do
 
   import Ecto.Query
 
+  alias Slackex.Accounts.User
   alias Slackex.Chat.{Channel, DMConversation, Subscription}
-  alias Slackex.Notifications.{DeviceToken, OnlineTracker}
+  alias Slackex.Notifications.{DeviceToken, Mention, OnlineTracker, Preference}
   alias Slackex.Repo
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"type" => "new_message"} = args}) do
+    if FunWithFlags.enabled?(:push_notifications) do
+      dispatch_channel_pushes(args)
+    else
+      :ok
+    end
+  end
+
+  def perform(%Oban.Job{args: %{"type" => "new_dm"} = args}) do
+    if FunWithFlags.enabled?(:push_notifications) do
+      dispatch_dm_push(args)
+    else
+      :ok
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Private helpers
+  # ---------------------------------------------------------------------------
+
+  defp dispatch_channel_pushes(args) do
     %{
       "channel_id" => channel_id,
       "sender_id" => sender_id,
@@ -37,24 +58,24 @@ defmodule Slackex.Notifications.PushWorker do
         :ok
 
       channel ->
-        offline_subscriber_ids =
+        offline_subscribers =
           channel_id
-          |> subscriber_ids_excluding(sender_id)
-          |> Enum.reject(&OnlineTracker.online?/1)
+          |> subscribers_excluding(sender_id)
+          |> Enum.reject(&OnlineTracker.online?(&1.user_id))
 
-        tokens = device_tokens_for_users(offline_subscriber_ids)
+        title = "##{channel.name}"
+        body = truncate_body("#{username}: #{content}", 100)
 
-        if tokens != [] do
-          title = "##{channel.name}"
-          body = truncate_body("#{username}: #{content}", 100)
-          Enum.each(tokens, &dispatch_push(&1, title, body, args))
-        end
+        Enum.each(
+          offline_subscribers,
+          &maybe_push_to_subscriber(&1, channel_id, content, title, body, args)
+        )
 
         :ok
     end
   end
 
-  def perform(%Oban.Job{args: %{"type" => "new_dm"} = args}) do
+  defp dispatch_dm_push(args) do
     %{
       "dm_conversation_id" => dm_id,
       "sender_id" => sender_id,
@@ -69,31 +90,46 @@ defmodule Slackex.Notifications.PushWorker do
 
       dm ->
         recipient_id = if dm.user_a_id == sender_id, do: dm.user_b_id, else: dm.user_a_id
-
-        if OnlineTracker.online?(recipient_id) do
-          :ok
-        else
-          tokens = device_tokens_for_users([recipient_id])
-          body = truncate_body(content, 100)
-          Enum.each(tokens, &dispatch_push(&1, username, body, args))
-          :ok
-        end
+        send_dm_push_if_offline(recipient_id, username, content, args)
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # Private helpers
-  # ---------------------------------------------------------------------------
+  defp maybe_push_to_subscriber(subscriber, channel_id, content, title, body, args) do
+    level = Preference.resolve_level(subscriber.user_id, channel_id)
 
-  defp subscriber_ids_excluding(channel_id, sender_id) do
-    Repo.all(
-      from s in Subscription,
-        where: s.channel_id == ^channel_id and s.user_id != ^sender_id,
-        select: s.user_id
-    )
+    should_notify =
+      case level do
+        "nothing" -> false
+        "mentions" -> Mention.mentioned?(content, subscriber.username)
+        _ -> true
+      end
+
+    if should_notify do
+      tokens = device_tokens_for_users([subscriber.user_id])
+      _ = Enum.each(tokens, &dispatch_push(&1, title, body, args))
+    end
   end
 
-  defp device_tokens_for_users([]), do: []
+  defp send_dm_push_if_offline(recipient_id, username, content, args) do
+    if OnlineTracker.online?(recipient_id) do
+      :ok
+    else
+      tokens = device_tokens_for_users([recipient_id])
+      body = truncate_body(content, 100)
+      _ = Enum.each(tokens, &dispatch_push(&1, username, body, args))
+      :ok
+    end
+  end
+
+  defp subscribers_excluding(channel_id, sender_id) do
+    Repo.all(
+      from s in Subscription,
+        join: u in User,
+        on: u.id == s.user_id,
+        where: s.channel_id == ^channel_id and s.user_id != ^sender_id,
+        select: %{user_id: s.user_id, username: u.username}
+    )
+  end
 
   defp device_tokens_for_users(user_ids) do
     Repo.all(

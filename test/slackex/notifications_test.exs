@@ -9,6 +9,9 @@ defmodule Slackex.NotificationsTest do
   alias Slackex.Repo
 
   setup do
+    # Enable feature flag so PushWorker processes jobs
+    FunWithFlags.enable(:push_notifications)
+
     # Clean Redis online keys between tests
     Enum.each(0..9, fn i ->
       {:ok, keys} = Redix.command(:"redix_#{i}", ["KEYS", "online:*"])
