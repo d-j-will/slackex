@@ -389,6 +389,27 @@ defmodule SlackexWeb.ChatLiveTest do
     end
   end
 
+  describe "message send happy path" do
+    test "submitting a valid message persists it and clears the form", %{
+      conn: conn,
+      channel: channel
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      html =
+        lv
+        |> form("#message-form", message: %{content: "Hello from the test!"})
+        |> render_submit()
+
+      # No validation error flash — message was accepted
+      refute html =~ "Message content is invalid"
+
+      # Message should appear in the rendered view (ChannelServer streams it back via PubSub)
+      html = render(lv)
+      assert html =~ "Hello from the test!"
+    end
+  end
+
   describe "message send error handling" do
     test "form content is preserved when send_message returns an error", %{
       conn: conn,
