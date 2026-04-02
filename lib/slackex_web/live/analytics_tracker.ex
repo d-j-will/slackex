@@ -15,11 +15,22 @@ defmodule SlackexWeb.AnalyticsTracker do
         |> assign(:analytics_session_id, session_id)
         |> assign(:analytics_mount_start, mount_start)
         |> attach_hook(:analytics_handle_params, :handle_params, fn _params, uri, socket ->
-          _ = track_navigation(socket, uri)
+          _ =
+            try do
+              track_navigation(socket, uri)
+            rescue
+              _ -> :ok
+            end
+
           {:cont, socket}
         end)
 
-      _ = track_mount(socket, user, session_id, mount_start)
+      _ =
+        try do
+          track_mount(socket, user, session_id, mount_start)
+        rescue
+          _ -> :ok
+        end
 
       {:cont, socket}
     else

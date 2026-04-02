@@ -9,9 +9,15 @@ defmodule SlackexWeb.Plugs.AnalyticsPlug do
 
   def call(conn, _opts) do
     if FunWithFlags.enabled?(:website_analytics) do
-      conn
-      |> ensure_session_id()
-      |> register_page_view_callback()
+      try do
+        conn
+        |> ensure_session_id()
+        |> register_page_view_callback()
+      rescue
+        e ->
+          Logger.warning("AnalyticsPlug: crashed, skipping: #{inspect(e)}")
+          conn
+      end
     else
       conn
     end
