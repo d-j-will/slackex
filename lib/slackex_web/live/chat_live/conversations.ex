@@ -38,6 +38,13 @@ defmodule SlackexWeb.ChatLive.Conversations do
     reactions = messages |> Enum.map(& &1.id) |> Chat.list_reactions()
     Chat.mark_as_read(user.id, channel.id)
 
+    channel_notification_level =
+      if FunWithFlags.enabled?(:push_notifications) do
+        Slackex.Notifications.Preference.resolve_level(user.id, channel.id)
+      else
+        "all"
+      end
+
     socket
     |> assign(:active_channel, channel)
     |> assign(:can_send, can_send)
@@ -46,6 +53,7 @@ defmodule SlackexWeb.ChatLive.Conversations do
     |> assign(:reactions, reactions)
     |> assign(:member_count, length(Chat.Members.list_members(channel.id)))
     |> assign(:pin_count, Chat.Pins.pin_count(channel.id))
+    |> assign(:channel_notification_level, channel_notification_level)
     |> Helpers.reset_unread_count(:channel_counts, channel.id)
     |> assign_conversation_state(messages)
     |> assign(:sidebar_open, true)

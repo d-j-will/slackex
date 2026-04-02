@@ -42,6 +42,49 @@
           subtitle={@active_channel.description}
         >
           <:actions>
+            <%= if @push_notifications_enabled and @active_channel do %>
+              <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-ghost btn-sm btn-square">
+                  <%= if @channel_notification_level == "nothing" do %>
+                    <span class="hero-bell-slash size-5 opacity-50" />
+                  <% else %>
+                    <span class="hero-bell size-5" />
+                  <% end %>
+                </label>
+                <ul
+                  tabindex="0"
+                  class="dropdown-content z-[100] menu p-2 shadow bg-base-100 rounded-box w-52"
+                >
+                  <li>
+                    <button
+                      phx-click="set_channel_notification"
+                      phx-value-level="all"
+                      class={if @channel_notification_level == "all", do: "active"}
+                    >
+                      All messages
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      phx-click="set_channel_notification"
+                      phx-value-level="mentions"
+                      class={if @channel_notification_level == "mentions", do: "active"}
+                    >
+                      Mentions only
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      phx-click="set_channel_notification"
+                      phx-value-level="nothing"
+                      class={if @channel_notification_level == "nothing", do: "active"}
+                    >
+                      Mute
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            <% end %>
             <%= if @summarization_enabled do %>
               <button
                 data-role="summarize-button"

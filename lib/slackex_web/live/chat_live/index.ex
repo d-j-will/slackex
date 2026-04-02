@@ -119,6 +119,7 @@ defmodule SlackexWeb.ChatLive.Index do
          "all"
        end
      )
+     |> assign(:channel_notification_level, "all")
      |> stream(:messages, [])}
   end
 
@@ -897,6 +898,18 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
     _ = Slackex.Notifications.Preference.set_global_default(user.id, level)
     {:noreply, assign(socket, :notification_level, level)}
+  end
+
+  def handle_event("set_channel_notification", %{"level" => level}, socket) do
+    user = socket.assigns.current_user
+    channel = socket.assigns[:active_channel]
+
+    if channel do
+      _ = Slackex.Notifications.Preference.set_preference(user.id, channel.id, level)
+      {:noreply, assign(socket, :channel_notification_level, level)}
+    else
+      {:noreply, socket}
+    end
   end
 
   # ---------------------------------------------------------------------------
