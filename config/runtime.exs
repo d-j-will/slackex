@@ -158,6 +158,26 @@ if config_env() == :prod do
       otlp_endpoint: otel_endpoint
   end
 
+  # Web Push VAPID keys — generate with: mix slackex.gen.vapid_keys
+  vapid_public_key =
+    System.get_env("VAPID_PUBLIC_KEY") ||
+      raise """
+      environment variable VAPID_PUBLIC_KEY is missing.
+      Generate a key pair with: mix slackex.gen.vapid_keys
+      """
+
+  vapid_private_key =
+    System.get_env("VAPID_PRIVATE_KEY") ||
+      raise """
+      environment variable VAPID_PRIVATE_KEY is missing.
+      Generate a key pair with: mix slackex.gen.vapid_keys
+      """
+
+  config :slackex, :vapid,
+    public_key: vapid_public_key,
+    private_key: vapid_private_key,
+    subject: "mailto:#{System.get_env("VAPID_SUBJECT") || "admin@tenun.dev"}"
+
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",
     password:

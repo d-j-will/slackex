@@ -9,6 +9,10 @@
     <meta name="theme-color" content="#E8A835" media="(prefers-color-scheme: light)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta
+      name="vapid-public-key"
+      content={Application.get_env(:slackex, :vapid, [])[:public_key] || ""}
+    />
     <link rel="apple-touch-icon" href="/images/icon-192.png" />
     <.live_title default="Tenun">
       {assigns[:page_title]}
