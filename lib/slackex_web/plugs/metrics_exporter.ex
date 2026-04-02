@@ -39,5 +39,11 @@ defmodule SlackexWeb.Plugs.MetricsExporter do
   defp internal_network?({172, second, _, _}) when second >= 16 and second <= 31, do: true
   defp internal_network?({192, 168, _, _}), do: true
   defp internal_network?({127, _, _, _}), do: true
+  # IPv6 loopback (::1) and IPv4-mapped IPv6 (::ffff:127.0.0.1)
+  defp internal_network?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+
+  defp internal_network?({0, 0, 0, 0, 0, 65_535, ip4_hi, _})
+       when ip4_hi in [0x7F00, 0xA00, 0xAC10..0xAC1F, 0xC0A8], do: true
+
   defp internal_network?(_), do: false
 end
