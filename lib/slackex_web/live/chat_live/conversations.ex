@@ -12,8 +12,10 @@ defmodule SlackexWeb.ChatLive.Conversations do
   import Phoenix.LiveView, only: [connected?: 1, push_patch: 2, stream: 4, stream_insert: 4]
 
   alias Slackex.Chat
+  alias Slackex.Chat.MessageGrouping
   alias Slackex.Links
   alias Slackex.Messaging
+  alias Slackex.Notifications.Preference
   alias Slackex.Search.HistoryLoader
   alias SlackexWeb.ChatLive.Helpers
 
@@ -40,7 +42,7 @@ defmodule SlackexWeb.ChatLive.Conversations do
 
     channel_notification_level =
       if FunWithFlags.enabled?(:push_notifications) do
-        Slackex.Notifications.Preference.resolve_level(user.id, channel.id)
+        Preference.resolve_level(user.id, channel.id)
       else
         "all"
       end
@@ -132,7 +134,7 @@ defmodule SlackexWeb.ChatLive.Conversations do
   # -- Private ----------------------------------------------------------------
 
   defp assign_conversation_state(socket, messages) do
-    messages = Slackex.Chat.MessageGrouping.annotate(messages)
+    messages = MessageGrouping.annotate(messages)
 
     previews =
       if socket.assigns.link_previews_enabled do
@@ -156,7 +158,7 @@ defmodule SlackexWeb.ChatLive.Conversations do
   end
 
   defp prepend_older_messages(messages, socket) do
-    messages = Slackex.Chat.MessageGrouping.annotate(messages)
+    messages = MessageGrouping.annotate(messages)
     new_oldest = List.first(messages).id
 
     socket =

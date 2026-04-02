@@ -65,15 +65,13 @@ defmodule Slackex.Analytics.TelemetryHandler do
   end
 
   defp get_otel_trace_id do
-    try do
-      span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+    span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
-      case span_ctx do
-        :undefined -> nil
-        ctx -> OpenTelemetry.Span.trace_id(ctx) |> Integer.to_string(16) |> String.downcase()
-      end
-    rescue
-      _ -> nil
+    case span_ctx do
+      :undefined -> nil
+      ctx -> OpenTelemetry.Span.trace_id(ctx) |> Integer.to_string(16) |> String.downcase()
     end
+  rescue
+    _ -> nil
   end
 end

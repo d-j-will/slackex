@@ -11,6 +11,7 @@ defmodule Slackex.Accounts do
   import Ecto.Query
 
   alias Slackex.Accounts.{User, UserToken}
+  alias Slackex.Notifications.Preference
   alias Slackex.Repo
 
   @doc """
@@ -24,7 +25,7 @@ defmodule Slackex.Accounts do
 
     case result do
       {:ok, user} ->
-        Slackex.Notifications.Preference.create_default_for_user(user.id)
+        Preference.create_default_for_user(user.id)
         {:ok, user}
 
       error ->

@@ -2,8 +2,8 @@ defmodule Slackex.Analytics.TrackWorkerTest do
   use Slackex.DataCase, async: true
   use Oban.Testing, repo: Slackex.Repo
 
-  alias Slackex.Analytics.TrackWorker
   alias Slackex.Analytics.Event
+  alias Slackex.Analytics.TrackWorker
   alias Slackex.Repo
 
   describe "perform/1" do

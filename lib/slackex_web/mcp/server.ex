@@ -12,7 +12,10 @@ defmodule SlackexWeb.MCP.Server do
 
   import Plug.Conn
 
+  alias Slackex.Chat.DMs
   alias Slackex.Integrations.McpTokens
+  alias Slackex.Ops.SystemSummary
+  alias SlackexWeb.MCP.FactoryTools
   alias SlackexWeb.MCP.Serializer
 
   @behaviour Plug
@@ -106,7 +109,7 @@ defmodule SlackexWeb.MCP.Server do
   defp dispatch(%{"method" => "tools/list"} = req, _session) do
     all_tools =
       if FunWithFlags.enabled?(:dark_factory),
-        do: tools() ++ SlackexWeb.MCP.FactoryTools.tools(),
+        do: tools() ++ FactoryTools.tools(),
         else: tools()
 
     ok_response(req["id"], %{tools: all_tools})
@@ -119,7 +122,7 @@ defmodule SlackexWeb.MCP.Server do
     result =
       if factory_tool?(name) do
         if FunWithFlags.enabled?(:dark_factory) do
-          SlackexWeb.MCP.FactoryTools.call_tool(name, args, session)
+          FactoryTools.call_tool(name, args, session)
         else
           {:error, "Dark factory is not enabled"}
         end
@@ -271,8 +274,8 @@ defmodule SlackexWeb.MCP.Server do
     bot_id = session.bot_user.id
 
     with {:ok, recipient_id} <- parse_id(uid),
-         {:ok, dm} <- Slackex.Chat.DMs.find_or_create_dm(bot_id, recipient_id),
-         {:ok, msg} <- Slackex.Chat.DMs.send_dm(dm.id, bot_id, content) do
+         {:ok, dm} <- DMs.find_or_create_dm(bot_id, recipient_id),
+         {:ok, msg} <- DMs.send_dm(dm.id, bot_id, content) do
       {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(msg))}]}
     else
       {:error, reason} -> {:error, inspect(reason)}
@@ -370,6 +373,12 @@ defmodule SlackexWeb.MCP.Server do
         name: "user",
         description: "User profile: display name, username, avatar, is_bot flag",
         mimeType: "application/json"
+      },
+      %{
+        uri: "tenun:///ops/summary",
+        name: "ops_summary",
+        description: "Low-sensitivity operational snapshot for authenticated MCP clients",
+        mimeType: "application/json"
       }
     ]
   end
@@ -401,6 +410,19 @@ defmodule SlackexWeb.MCP.Server do
       {:error, msg} -> {:error, msg}
       nil -> {:error, "User not found"}
     end
+  end
+
+  defp read_resource("tenun:///ops/summary", _session) do
+    snapshot = SystemSummary.snapshot()
+
+    {:ok,
+     [
+       %{
+         uri: "tenun:///ops/summary",
+         mimeType: "application/json",
+         text: snapshot |> Serializer.ops_summary() |> Jason.encode!()
+       }
+     ]}
   end
 
   defp read_resource(uri, _session), do: {:error, "Resource not found: #{uri}"}

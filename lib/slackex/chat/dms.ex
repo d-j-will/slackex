@@ -11,6 +11,7 @@ defmodule Slackex.Chat.DMs do
     DMRateLimiter,
     DMRequest,
     Message,
+    Moderation,
     Subscription,
     UserTrustScore
   }
@@ -174,7 +175,7 @@ defmodule Slackex.Chat.DMs do
     with :ok <- check_account_age(sender_id),
          :new <- check_existing_conversation(sender_id, recipient_id),
          :ok <- check_not_blocked(sender_id, recipient_id),
-         :ok <- Slackex.Chat.Moderation.check_not_dm_restricted(sender_id),
+         :ok <- Moderation.check_not_dm_restricted(sender_id),
          :ok <- check_cooldown(sender_id, recipient_id),
          :ok <- check_shared_channels_if_new(sender_id, recipient_id),
          :ok <- check_request_rate_hourly(sender_id),
@@ -288,7 +289,7 @@ defmodule Slackex.Chat.DMs do
       upsert_decline_count(request.sender_id)
 
       if prior_decline_count >= @auto_block_after_declines - 1 do
-        Slackex.Chat.Moderation.block_user(recipient_id, request.sender_id)
+        Moderation.block_user(recipient_id, request.sender_id)
       end
 
       {:ok, updated_request}
@@ -313,8 +314,7 @@ defmodule Slackex.Chat.DMs do
   # ---------------------------------------------------------------------------
 
   defp block_exists_between?(user_a_id, user_b_id) do
-    Slackex.Chat.Moderation.blocked?(user_a_id, user_b_id) or
-      Slackex.Chat.Moderation.blocked?(user_b_id, user_a_id)
+    Moderation.blocked?(user_a_id, user_b_id) or Moderation.blocked?(user_b_id, user_a_id)
   end
 
   defp find_or_create_dm_record(lower_id, higher_id, initiator_id, is_self_dm) do

@@ -1,6 +1,7 @@
 defmodule Slackex.Integrations.WebhooksTest do
   use Slackex.DataCase, async: true
 
+  alias Slackex.Chat.Channels
   alias Slackex.Integrations.Webhook
   alias Slackex.Integrations.Webhooks
 
@@ -30,7 +31,7 @@ defmodule Slackex.Integrations.WebhooksTest do
       assert bot_user.display_name == "Deploy Bot"
 
       # Bot user subscribed to channel
-      role = Slackex.Chat.Channels.get_role(bot_user.id, channel.id)
+      role = Channels.get_role(bot_user.id, channel.id)
       assert role == "member"
     end
 

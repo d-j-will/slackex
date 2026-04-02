@@ -4,15 +4,16 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Accounts
   alias Slackex.Accounts.User
   alias Slackex.Chat
+  alias Slackex.Chat.MessageGrouping
   alias Slackex.Messaging
   alias Slackex.Notifications.OnlineTracker
+  alias Slackex.Notifications.Preference
   alias Slackex.Search
-  alias SlackexWeb.ChatLive.Conversations
-  alias SlackexWeb.ChatLive.Helpers
-  alias SlackexWeb.ChatLive.Summary
   alias SlackexWeb.ChatLive.BrowseChannelsModal
   alias SlackexWeb.ChatLive.ChannelMembersModal
+  alias SlackexWeb.ChatLive.Conversations
   alias SlackexWeb.ChatLive.CreateChannelModal
+  alias SlackexWeb.ChatLive.Helpers
   alias SlackexWeb.ChatLive.InviteLinkModal
   alias SlackexWeb.ChatLive.NewDmModal
   alias SlackexWeb.ChatLive.PinnedMessagesModal
@@ -20,6 +21,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias SlackexWeb.ChatLive.SearchComponent
   alias SlackexWeb.ChatLive.SidebarComponent
   alias SlackexWeb.ChatLive.SlashCommand
+  alias SlackexWeb.ChatLive.Summary
   alias SlackexWeb.ChatLive.SummaryModal
   alias SlackexWeb.ChatLive.ThreadPanelComponent
 
@@ -114,7 +116,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(
        :notification_level,
        if FunWithFlags.enabled?(:push_notifications) do
-         Slackex.Notifications.Preference.resolve_level(user.id, nil)
+         Preference.resolve_level(user.id, nil)
        else
          "all"
        end
@@ -896,7 +898,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event("update_notification_level", %{"level" => level}, socket) do
     user = socket.assigns.current_user
-    _ = Slackex.Notifications.Preference.set_global_default(user.id, level)
+    _ = Preference.set_global_default(user.id, level)
     {:noreply, assign(socket, :notification_level, level)}
   end
 
@@ -905,7 +907,7 @@ defmodule SlackexWeb.ChatLive.Index do
     channel = socket.assigns[:active_channel]
 
     if channel do
-      _ = Slackex.Notifications.Preference.set_preference(user.id, channel.id, level)
+      _ = Preference.set_preference(user.id, channel.id, level)
       {:noreply, assign(socket, :channel_notification_level, level)}
     else
       {:noreply, socket}
@@ -922,8 +924,8 @@ defmodule SlackexWeb.ChatLive.Index do
       message = Helpers.enrich_message(message)
       last = socket.assigns.last_message
 
-      grouped = Slackex.Chat.MessageGrouping.should_group?(message, last)
-      {show_divider, divider_label} = Slackex.Chat.MessageGrouping.divider_info(message, last)
+      grouped = MessageGrouping.should_group?(message, last)
+      {show_divider, divider_label} = MessageGrouping.divider_info(message, last)
 
       message =
         Map.merge(message, %{

@@ -380,6 +380,7 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       assert "tenun:///channels" in uris
       assert "tenun:///users/{id}" in uris
+      assert "tenun:///ops/summary" in uris
     end
   end
 

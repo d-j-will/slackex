@@ -2,7 +2,7 @@ defmodule Slackex.Notifications.PushNotificationsIntegrationTest do
   use Slackex.DataCase, async: false
   use Oban.Testing, repo: Slackex.Repo
 
-  alias Slackex.Notifications.{Preference, DeviceToken, WebPushAdapter, Mention}
+  alias Slackex.Notifications.{DeviceToken, Mention, Preference, WebPushAdapter}
 
   setup do
     FunWithFlags.enable(:push_notifications)

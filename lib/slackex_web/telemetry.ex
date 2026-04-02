@@ -1,6 +1,11 @@
 defmodule SlackexWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
+  require Logger
+
+  alias Slackex.Analytics.TelemetryHandler
+
+  @queue_names [:default, :notifications, :embeddings, :link_previews]
 
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
@@ -8,7 +13,7 @@ defmodule SlackexWeb.Telemetry do
 
   @impl true
   def init(_arg) do
-    :ok = Slackex.Analytics.TelemetryHandler.attach()
+    :ok = TelemetryHandler.attach()
 
     children = [
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000},
@@ -116,32 +121,89 @@ defmodule SlackexWeb.Telemetry do
 
   @doc false
   def measure_oban_queue_depth do
-    for queue <- [:default, :notifications, :embeddings, :link_previews] do
-      case Oban.check_queue(queue: queue) do
-        %{running: running} when is_list(running) ->
-          :telemetry.execute(
-            [:slackex, :oban, :queue_depth],
-            %{running: length(running)},
-            %{queue: queue}
-          )
-
-        _ ->
-          :ok
-      end
-    end
-  rescue
-    _ -> :ok
+    Enum.each(@queue_names, &publish_queue_depth/1)
   end
 
   @doc false
   def measure_connected_users do
     count =
-      SlackexWeb.Presence
-      |> Phoenix.Presence.list("users:lobby")
-      |> map_size()
+      case connected_users_count() do
+        {:ok, count} ->
+          count
+
+        {:error, code} ->
+          log_probe_failure(:presence, code)
+          0
+      end
 
     :telemetry.execute([:slackex, :presence, :connected_users], %{count: count}, %{})
+  end
+
+  defp publish_queue_depth(queue) do
+    running_count =
+      case queue_running_count(queue) do
+        {:ok, count} ->
+          count
+
+        {:error, code} ->
+          log_probe_failure(:queue, code, queue: queue)
+          0
+      end
+
+    :telemetry.execute(
+      [:slackex, :oban, :queue_depth],
+      %{running: running_count},
+      %{queue: queue}
+    )
+  end
+
+  defp connected_users_count do
+    case presence_provider().list("users:lobby") do
+      presences when is_map(presences) -> {:ok, map_size(presences)}
+      _ -> {:error, :presence_probe_failed}
+    end
   rescue
-    _ -> :ok
+    _ -> {:error, :presence_probe_failed}
+  catch
+    _, _ -> {:error, :presence_probe_failed}
+  end
+
+  defp queue_running_count(queue) do
+    case queue_provider().check_queue(queue) do
+      %{running: running} when is_list(running) -> {:ok, length(running)}
+      _ -> {:error, :queue_probe_failed}
+    end
+  rescue
+    _ -> {:error, :queue_probe_failed}
+  catch
+    _, _ -> {:error, :queue_probe_failed}
+  end
+
+  defp log_probe_failure(probe, code, metadata \\ []) do
+    details =
+      metadata
+      |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{value}" end)
+
+    suffix = if details == "", do: "", else: " #{details}"
+
+    Logger.warning("telemetry_probe_failed probe=#{probe} code=#{code}#{suffix}")
+  end
+
+  defp queue_provider do
+    Application.get_env(:slackex, __MODULE__, [])
+    |> Keyword.get(:queue_provider, __MODULE__.QueueProvider)
+  end
+
+  defp presence_provider do
+    Application.get_env(:slackex, __MODULE__, [])
+    |> Keyword.get(:presence_provider, __MODULE__.PresenceProvider)
+  end
+
+  defmodule QueueProvider do
+    def check_queue(queue), do: Oban.check_queue(queue: queue)
+  end
+
+  defmodule PresenceProvider do
+    def list(topic), do: Phoenix.Presence.list(SlackexWeb.Presence, topic)
   end
 end

@@ -4,7 +4,7 @@ defmodule Slackex.Chat.Messages do
   import Ecto.Query
 
   alias Ecto.Multi
-  alias Slackex.Chat.{Message, Permissions}
+  alias Slackex.Chat.{Channels, Message, Permissions}
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.ReadRepo
   alias Slackex.Repo
@@ -71,7 +71,7 @@ defmodule Slackex.Chat.Messages do
   generates Snowflake ID, broadcasts via PubSub.
   """
   def send_message(channel_id, sender_id, content) do
-    with role <- Slackex.Chat.Channels.get_role(sender_id, channel_id),
+    with role <- Channels.get_role(sender_id, channel_id),
          true <- Permissions.can?(role, :send_message) do
       id = Snowflake.generate()
 
@@ -301,7 +301,7 @@ defmodule Slackex.Chat.Messages do
 
   defp authorize_delete(%Message{channel_id: channel_id} = _message, user_id)
        when not is_nil(channel_id) do
-    role = Slackex.Chat.Channels.get_role(user_id, channel_id)
+    role = Channels.get_role(user_id, channel_id)
 
     if Permissions.can?(role, :delete_any_message) do
       :ok
