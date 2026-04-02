@@ -11,6 +11,15 @@ defmodule Slackex.Notifications.WebPushAdapter do
 
   @spec send_push(String.t(), String.t(), map()) :: :ok | {:error, term()}
   def send_push(token, _platform, payload) do
+    if is_nil(Application.get_env(:web_push_elixir, :vapid_public_key)) do
+      Logger.warning("[WebPush] VAPID keys not configured — skipping push")
+      {:error, :vapid_not_configured}
+    else
+      do_send_push(token, payload)
+    end
+  end
+
+  defp do_send_push(token, payload) do
     json_payload = build_payload(payload)
 
     case WebPushElixir.send_notification(token, json_payload) do

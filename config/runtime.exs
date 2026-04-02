@@ -158,30 +158,23 @@ if config_env() == :prod do
       otlp_endpoint: otel_endpoint
   end
 
-  # Web Push VAPID keys — generate with: mix slackex.gen.vapid_keys
-  vapid_public_key =
-    System.get_env("VAPID_PUBLIC_KEY") ||
-      raise """
-      environment variable VAPID_PUBLIC_KEY is missing.
-      Generate a key pair with: mix slackex.gen.vapid_keys
-      """
+  # Web Push VAPID keys — optional, generate with: mix slackex.gen.vapid_keys
+  # Push notifications are feature-flagged; app boots fine without keys.
+  vapid_public_key = System.get_env("VAPID_PUBLIC_KEY")
+  vapid_private_key = System.get_env("VAPID_PRIVATE_KEY")
+  vapid_subject = System.get_env("VAPID_SUBJECT", "mailto:admin@tenun.dev")
 
-  vapid_private_key =
-    System.get_env("VAPID_PRIVATE_KEY") ||
-      raise """
-      environment variable VAPID_PRIVATE_KEY is missing.
-      Generate a key pair with: mix slackex.gen.vapid_keys
-      """
+  if vapid_public_key && vapid_private_key do
+    config :slackex, :vapid,
+      public_key: vapid_public_key,
+      private_key: vapid_private_key,
+      subject: vapid_subject
 
-  config :slackex, :vapid,
-    public_key: vapid_public_key,
-    private_key: vapid_private_key,
-    subject: "mailto:#{System.get_env("VAPID_SUBJECT") || "admin@tenun.dev"}"
-
-  config :web_push_elixir,
-    vapid_public_key: vapid_public_key,
-    vapid_private_key: vapid_private_key,
-    vapid_subject: System.get_env("VAPID_SUBJECT", "mailto:admin@tenun.dev")
+    config :web_push_elixir,
+      vapid_public_key: vapid_public_key,
+      vapid_private_key: vapid_private_key,
+      vapid_subject: vapid_subject
+  end
 
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",

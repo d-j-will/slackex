@@ -271,6 +271,15 @@ jobs:
             docker compose -f docker-compose.prod.yml pull app1 app2 2>&1
             echo "Pull complete."
 
+            # Boot check — verify the release can start before migrating or restarting
+            echo "Verifying release boot..."
+            if ! docker compose -f docker-compose.prod.yml run --rm --no-TTY app1 bin/slackex eval "IO.puts(:boot_ok)" < /dev/null 2>&1 | grep -q "boot_ok"; then
+              echo "ERROR: Release failed to boot. Aborting deploy — no changes made."
+              echo "Check runtime.exs for missing env vars or config errors."
+              exit 1
+            fi
+            echo "Boot check passed."
+
             # Run migrations (once, via app1)
             echo "Running migrations..."
             docker compose -f docker-compose.prod.yml run --rm --no-TTY app1 bin/slackex eval "Slackex.Release.migrate()" < /dev/null 2>&1
