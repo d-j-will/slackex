@@ -178,6 +178,11 @@ if config_env() == :prod do
     private_key: vapid_private_key,
     subject: "mailto:#{System.get_env("VAPID_SUBJECT") || "admin@tenun.dev"}"
 
+  config :web_push_elixir,
+    vapid_public_key: vapid_public_key,
+    vapid_private_key: vapid_private_key,
+    vapid_subject: System.get_env("VAPID_SUBJECT", "mailto:admin@tenun.dev")
+
   config :slackex, :flags_admin_auth,
     username: System.get_env("FLAGS_ADMIN_USER") || "admin",
     password:
