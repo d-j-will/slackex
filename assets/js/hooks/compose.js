@@ -66,10 +66,12 @@ const Compose = {
       sessionStorage.setItem(this.storageKey, this.textarea.value);
     });
 
-    // Clear textarea after form submit (LiveView captures the value first)
+    // Clear textarea after form submit (deferred so LiveView reads the value first)
     this.el.addEventListener("submit", () => {
-      this.textarea.value = "";
-      this.autoResize();
+      setTimeout(() => {
+        this.textarea.value = "";
+        this.autoResize();
+      }, 0);
       this.closePopover();
       sessionStorage.removeItem(this.storageKey);
     });
