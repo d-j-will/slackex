@@ -22,7 +22,7 @@ defmodule Slackex.Notifications.DeviceToken do
     device_token
     |> cast(attrs, @required ++ @optional)
     |> validate_required(@required)
-    |> validate_inclusion(:platform, ["fcm", "apns"])
+    |> validate_inclusion(:platform, ["fcm", "apns", "web_push"])
     |> validate_length(:platform, max: 10)
     |> validate_length(:device_name, max: 100)
     |> unique_constraint(:token)

@@ -15,14 +15,24 @@ defmodule Slackex.PushCapture do
     :ok
   end
 
-  @spec send_push(String.t(), String.t(), String.t(), String.t()) :: :ok
-  def send_push(token, platform, title, body) do
+  @spec send_push(String.t(), String.t(), map()) :: :ok | {:error, term()}
+  def send_push(token, platform, payload) do
     case :persistent_term.get(@registry_key, nil) do
       nil ->
         :ok
 
       pid ->
-        send(pid, {:push_sent, %{token: token, platform: platform, title: title, body: body}})
+        send(
+          pid,
+          {:push_sent,
+           %{
+             token: token,
+             platform: platform,
+             title: payload["title"],
+             body: payload["body"],
+             payload: payload
+           }}
+        )
     end
 
     :ok

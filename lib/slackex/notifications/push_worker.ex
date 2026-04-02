@@ -47,7 +47,7 @@ defmodule Slackex.Notifications.PushWorker do
         if tokens != [] do
           title = "##{channel.name}"
           body = truncate_body("#{username}: #{content}", 100)
-          Enum.each(tokens, &dispatch_push(&1, title, body))
+          Enum.each(tokens, &dispatch_push(&1, title, body, args))
         end
 
         :ok
@@ -75,7 +75,7 @@ defmodule Slackex.Notifications.PushWorker do
         else
           tokens = device_tokens_for_users([recipient_id])
           body = truncate_body(content, 100)
-          Enum.each(tokens, &dispatch_push(&1, username, body))
+          Enum.each(tokens, &dispatch_push(&1, username, body, args))
           :ok
         end
     end
@@ -109,10 +109,40 @@ defmodule Slackex.Notifications.PushWorker do
 
   defp truncate_body(text, _max_len), do: text
 
-  defp dispatch_push(%{token: token, platform: platform}, title, body) do
+  defp dispatch_push(%{token: token, platform: platform}, title, body, args) do
     adapter = Application.get_env(:slackex, :push_adapter, Slackex.Notifications.PushAdapter.Stub)
-    adapter.send_push(token, platform, title, body)
+
+    payload = %{
+      "title" => title,
+      "body" => body,
+      "tag" => build_tag(args),
+      "url" => build_url(args),
+      "type" => args["type"]
+    }
+
+    adapter.send_push(token, platform, payload)
   rescue
     e -> Logger.warning("Push dispatch failed: #{inspect(e)}")
   end
+
+  defp build_tag(%{"type" => "new_message", "channel_id" => channel_id}) do
+    "channel:#{channel_id}"
+  end
+
+  defp build_tag(%{"type" => "new_dm", "dm_conversation_id" => dm_id}) do
+    "dm:#{dm_id}"
+  end
+
+  defp build_tag(_args), do: "general"
+
+  defp build_url(%{"type" => "new_message"} = args) do
+    slug = args["channel_slug"] || "general"
+    "/chat/#{slug}"
+  end
+
+  defp build_url(%{"type" => "new_dm", "dm_conversation_id" => dm_id}) do
+    "/chat/dm/#{dm_id}"
+  end
+
+  defp build_url(_args), do: "/chat"
 end
