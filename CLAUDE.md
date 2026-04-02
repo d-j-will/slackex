@@ -11,10 +11,18 @@ Key directories:
 - `priv/repo/migrations/` — Ecto migrations
 - `docs/` — feature specs, evolution docs, research
 
+## Environment Prerequisites
+
+Always ensure Docker Desktop and PostgreSQL are running before attempting to start the Phoenix dev server or run tests. Run `docker ps | grep postgres` as a quick check.
+
 ## Development Paradigm
 
 functional
 @nw-functional-software-crafter
+
+## Development Principles
+
+When encountering unfamiliar tools or protocol issues (e.g., MCP, SSE, external integrations), research documentation FIRST before attempting trial-and-error fixes. Do not deploy broken iterations to production.
 
 ## Production Resilience
 
@@ -45,11 +53,17 @@ assert_enqueued(worker: LinkPreviewWorker)
 
 Incident precedent: v0.5.47-v0.5.64 — `pipeline:events` broadcast was designed in spec but never implemented. Listeners subscribed to a dead topic for 18 hours. All unit tests passed because they faked the upstream event. See `docs/rca/2026-03-06-pipeline-events-bridge-missing.md`.
 
+## Feature Development
+
+When adding feature flags, gate ALL user-facing surfaces (UI, routes, tests) behind the flag from the start. Do not wait for the user to remind you.
+
 ## Test Environment
 
 Docker required: `docker compose up -d postgres_test redis` then `mix test`. Test DB on port 5433, Redis on 6379.
 
 **Never dismiss test failures.** If tests fail due to infrastructure, fix the environment first.
+
+This project uses Elixir/Phoenix with LiveView. Target the CI Elixir version for API compatibility — do not use functions like `Enum.sum_by` that may not exist in the CI version. Check `.tool-versions` or CI config for the exact version.
 
 ### Ecto upsert safety
 
@@ -82,6 +96,12 @@ The following are **enforced by hooks or guided by skills** — use them instead
 - **Listener wiring**: Hook warns on `*_listener.ex` files with PubSub subscriptions — reminds to add integration tests for full producer → consumer path.
 - **CI deploy edits**: Hook warns on SSH heredoc issues in `ci-deploy.yml`.
 - **Docker/Caddy**: Hooks block bare `docker pull`, `caddy reload`, `build:` in prod compose, `--no-verify`.
+
+## Git & Deployment
+
+Always stage ALL changed/renamed files before committing. After any file rename or move, run `git status` to verify nothing is unstaged before proceeding with CI/deploy.
+
+Do not work on branches unless explicitly asked. Commit directly to main. Resolve any existing branch state before starting new work.
 
 ## Deployment Summary
 

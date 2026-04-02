@@ -209,9 +209,13 @@ defmodule SlackexWeb.ChatComponents do
       <div class="flex-shrink-0 pt-0.5">
         <%= if @grouped do %>
           <div class="w-10 shrink-0 flex items-center justify-center">
-            <span class="hidden group-hover:inline text-[10px] text-base-content/40">
-              {Calendar.strftime(@message.inserted_at, "%H:%M")}
-            </span>
+            <time
+              id={"#{@id_prefix}gtime-#{@message.id}"}
+              phx-hook="LocalTime"
+              datetime={DateTime.to_iso8601(@message.inserted_at)}
+              class="hidden group-hover:inline text-[10px] text-base-content/40"
+            >
+            </time>
           </div>
         <% else %>
           <.avatar user={@sender} size="md" />
@@ -226,7 +230,13 @@ defmodule SlackexWeb.ChatComponents do
           >
             BOT
           </span>
-          <time class="text-xs text-base-content/40">{@time}</time>
+          <time
+            id={"#{@id_prefix}time-#{@message.id}"}
+            phx-hook="LocalTime"
+            datetime={@time}
+            class="text-xs text-base-content/40"
+          >
+          </time>
         </div>
         <%= if @is_deleted do %>
           <p class="text-sm text-base-content/40 italic">[This message has been deleted]</p>
@@ -450,7 +460,7 @@ defmodule SlackexWeb.ChatComponents do
   defp sender_name(%{sender: %{"username" => username}}), do: username
   defp sender_name(_), do: "unknown"
 
-  defp format_time(%{inserted_at: ts}) when not is_nil(ts), do: Calendar.strftime(ts, "%H:%M")
+  defp format_time(%{inserted_at: ts}) when not is_nil(ts), do: DateTime.to_iso8601(ts)
   defp format_time(_), do: ""
 
   # ────────────────────────── Typing Indicator ─────────────────────────────

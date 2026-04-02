@@ -31,13 +31,14 @@ import LongPress from "./hooks/long_press"
 import CopyMessage from "./hooks/copy_message"
 import Analytics from "./hooks/analytics"
 import PushSubscription from "./hooks/push_subscription"
+import LocalTime from "./hooks/local_time"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {MessageList, Compose, EditMessage, EmojiPicker, QuickSwitcher, LongPress, CopyMessage, Analytics, PushSubscription},
+  hooks: {MessageList, Compose, EditMessage, EmojiPicker, QuickSwitcher, LongPress, CopyMessage, Analytics, PushSubscription, LocalTime},
 })
 
 // Show progress bar on live navigation and form submits
