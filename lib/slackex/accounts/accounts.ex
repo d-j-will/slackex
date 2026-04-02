@@ -17,9 +17,19 @@ defmodule Slackex.Accounts do
   Registers a new user.
   """
   def register_user(attrs) do
-    %User{}
-    |> User.registration_changeset(attrs)
-    |> Repo.insert()
+    result =
+      %User{}
+      |> User.registration_changeset(attrs)
+      |> Repo.insert()
+
+    case result do
+      {:ok, user} ->
+        Slackex.Notifications.Preference.create_default_for_user(user.id)
+        {:ok, user}
+
+      error ->
+        error
+    end
   end
 
   @doc """
