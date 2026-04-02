@@ -11,10 +11,15 @@ defmodule SlackexWeb.Plugs.MetricsExporter do
   """
 
   import Plug.Conn
+  require Logger
 
   def init(opts), do: opts
 
   def call(%{request_path: "/metrics"} = conn, _opts) do
+    Logger.info(
+      "[MetricsExporter] remote_ip=#{inspect(conn.remote_ip)} allowed=#{allow_metrics?(conn)}"
+    )
+
     if allow_metrics?(conn) do
       metrics = TelemetryMetricsPrometheus.Core.scrape(:slackex_metrics)
 
