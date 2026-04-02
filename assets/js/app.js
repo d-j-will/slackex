@@ -30,13 +30,14 @@ import QuickSwitcher from "./hooks/quick_switcher"
 import LongPress from "./hooks/long_press"
 import CopyMessage from "./hooks/copy_message"
 import Analytics from "./hooks/analytics"
+import PushSubscription from "./hooks/push_subscription"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {MessageList, Compose, EditMessage, EmojiPicker, QuickSwitcher, LongPress, CopyMessage, Analytics},
+  hooks: {MessageList, Compose, EditMessage, EmojiPicker, QuickSwitcher, LongPress, CopyMessage, Analytics, PushSubscription},
 })
 
 // Show progress bar on live navigation and form submits
