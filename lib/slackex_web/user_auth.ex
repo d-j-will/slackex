@@ -76,6 +76,9 @@ defmodule SlackexWeb.UserAuth do
   """
   def log_out_user(conn) do
     user_token = get_session(conn, :user_token)
+
+    cleanup_web_push_tokens(user_token)
+
     user_token && Accounts.delete_user_session_token(user_token)
 
     _ =
@@ -209,4 +212,20 @@ defmodule SlackexWeb.UserAuth do
   defp maybe_store_return_to(conn), do: conn
 
   defp signed_in_path(_conn_or_socket), do: ~p"/chat"
+
+  defp cleanup_web_push_tokens(nil), do: :ok
+
+  defp cleanup_web_push_tokens(user_token) do
+    import Ecto.Query
+
+    case Accounts.get_user_by_session_token(user_token) do
+      nil ->
+        :ok
+
+      user ->
+        Slackex.Notifications.DeviceToken
+        |> where([t], t.user_id == ^user.id and t.platform == "web_push")
+        |> Slackex.Repo.delete_all()
+    end
+  end
 end

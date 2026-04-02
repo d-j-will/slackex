@@ -74,7 +74,8 @@ config :slackex, Oban,
        {"*/15 * * * *", Slackex.Embeddings.ReconciliationWorker},
        {"*/2 * * * *", Slackex.Factory.LifecycleWorker},
        {"0 3 * * *", Slackex.Analytics.PruneWorker},
-       {"* * * * *", Slackex.Analytics.MetricsBridge}
+       {"* * * * *", Slackex.Analytics.MetricsBridge},
+       {"0 4 1 * *", Slackex.Notifications.SubscriptionCleanupWorker}
      ]}
   ]
 
