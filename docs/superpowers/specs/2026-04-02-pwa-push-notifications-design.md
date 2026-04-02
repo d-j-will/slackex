@@ -57,8 +57,10 @@ Reuse the existing `device_tokens` table. A Web Push subscription from the brows
 
 - Store the full subscription JSON in the `token` field
 - Set `platform: "web_push"`
+- **Required schema change:** The existing `DeviceToken.changeset/2` validates platform against `["fcm", "apns"]` only. Must add `"web_push"` to the allowed platforms: `validate_inclusion(:platform, ["fcm", "apns", "web_push"])`
 - The existing unique constraint on `token` prevents duplicate subscriptions
 - The existing `DeviceTokenController` (POST/DELETE) handles registration — no new endpoints needed
+- **Note:** The `token` column now stores three formats (FCM device IDs, APNs tokens, Web Push subscription JSON). This is acceptable at current scale; the `platform` field disambiguates.
 
 ## Notification Preferences
 
@@ -81,17 +83,42 @@ When deciding whether to notify a user about a message:
 
 1. Check per-channel preference for this user + channel
 2. If none, fall back to global default (`channel_id = NULL` row)
-3. If no global default, fall back to `"all"` (notify for everything)
+3. Global default always exists — created on user registration (see below)
 
 For DMs, preferences do not apply — DMs always notify (unless the user has no push subscription at all).
 
+### Default Initialization
+
+Every user gets a global default preference row (`channel_id: NULL, level: "all"`) created at registration time. A migration backfills this row for all existing users. This ensures:
+- Preference resolution always finds a global default (no fallback to hardcoded value)
+- Every user has an auditable preference state
+- Queries are efficient (single lookup, no three-step fallback)
+
 ### Mention Detection
 
-When a user's preference level is `"mentions"`, the PushWorker checks if the message content contains `@username` for the target user. This is a simple string match against the user's `username` field. If found, the notification is sent; otherwise, it is skipped.
+When a user's preference level is `"mentions"`, the PushWorker checks if the message content contains an `@username` mention for the target user.
+
+Mention detection is handled by a dedicated `Notifications.Mention` module using word-boundary regex matching:
+
+```elixir
+~r/(?<!\w)@#{Regex.escape(username)}\b/i
+```
+
+This prevents false positives (e.g., user "ash" matching "cash" or "dashboard"). The match runs against the raw plaintext content before any markdown rendering. Case-insensitive.
+
+**Limitation:** Only plaintext `@username` format triggers mention notifications. Markdown links to user profiles do not trigger mentions.
 
 ## WebPush Adapter
 
-A new module `Slackex.Notifications.WebPushAdapter` implementing the same interface as the existing `StubAdapter`. Swapping Stub for WebPush is a config change:
+A new module `Slackex.Notifications.WebPushAdapter` implementing the push adapter behaviour. **Required interface change:** The existing adapter signature `send_push(token, platform, title, body)` cannot carry grouping metadata. Refactor to:
+
+```elixir
+@callback send_push(token :: String.t(), platform :: String.t(), payload :: map()) :: :ok | {:error, term()}
+```
+
+Where `payload` contains: `title`, `body`, `tag`, `url`, `type`. Both `StubAdapter` and `WebPushAdapter` must implement the new signature, and all call sites in `PushWorker` must be updated.
+
+Swapping Stub for WebPush is a config change:
 
 ```elixir
 # config/runtime.exs (prod)
@@ -99,11 +126,19 @@ config :slackex, :push_adapter, Slackex.Notifications.WebPushAdapter
 ```
 
 The adapter:
-1. Decodes the subscription JSON from the `token` field
+1. Decodes the subscription JSON from the `token` field. Validates the JSON structure before use — malformed JSON returns `{:error, :invalid_subscription}` rather than crashing.
 2. Builds the Web Push notification payload
 3. Sends via `web_push_elixir` using the configured VAPID keys
 4. Returns `:ok` on success or `{:error, reason}` on failure
-5. On HTTP 410 (subscription expired/unsubscribed), deletes the device token from the database
+5. On HTTP 410 (subscription expired/unsubscribed), deletes the device token from the database and returns `:ok` (the push was "delivered" in the sense that the subscription is cleaned up)
+
+### Subscription Expiry Cleanup
+
+**Reactive cleanup (per-push):** When the adapter receives HTTP 410 from the push endpoint, it deletes the device token within the same database transaction. If the delete fails, the token remains in the DB (safe state — next push attempt will retry the cleanup).
+
+**Periodic cleanup (Oban cron):** A `Notifications.SubscriptionCleanupWorker` runs monthly and samples 10% of `platform: "web_push"` tokens, sending a silent push to each. Tokens that return 410 are deleted. This catches subscriptions that expired while no messages were being sent.
+
+**Logout cleanup:** When a user logs out, all their `platform: "web_push"` device tokens are deleted server-side. The client-side `unsubscribe()` call may not always fire (e.g., if the user clears cookies), so server-side cleanup on logout is the safety net.
 
 ### Notification Payload
 
@@ -169,7 +204,10 @@ self.addEventListener('push', (event) => {
     renotify: true,
     data: { url: data.url },
   };
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+      .catch(err => console.error('[SW] showNotification failed:', err))
+  );
 });
 ```
 
@@ -238,6 +276,7 @@ Gated behind `:push_notifications` FunWithFlags flag:
 - **Flag off** — Settings toggle hidden, PushWorker uses StubAdapter, service worker push handler is inert (no pushes arrive)
 - **Flag on** — Full notification flow enabled
 - **Per-user gating** — Enable for specific users first for validation
+- **Rollback:** If the flag is disabled after users have subscribed, existing `platform: "web_push"` device tokens remain in the DB but are unused (StubAdapter logs only). A mix task `mix tenun.cleanup_web_push_tokens` deletes all `platform: "web_push"` rows for clean rollback.
 
 ## Testing Strategy
 
@@ -274,7 +313,11 @@ WebPushAdapter payload JSON shape matches what the service worker expects: `titl
 | Layout | `root.html.heex` | Modify (add VAPID meta tag) |
 | UI | Profile settings | Modify (add notifications section) |
 | UI | Channel header | Modify (add notification bell) |
-| API | `DeviceTokenController` | No change (already handles web_push) |
-| Migration | `notification_preferences` table | New |
+| Schema | `Notifications.DeviceToken` | Modify (add `"web_push"` to platform validation) |
+| API | `DeviceTokenController` | No change (already handles registration) |
+| Mention | `Notifications.Mention` | New (word-boundary regex mention detection) |
+| Cleanup | `Notifications.SubscriptionCleanupWorker` | New (monthly Oban cron, sample expired tokens) |
+| Mix task | `Mix.Tasks.Tenun.CleanupWebPushTokens` | New (rollback cleanup) |
+| Migration | `notification_preferences` table + backfill defaults | New |
 | Gate | `:push_notifications` flag | New |
 | Dep | `web_push_elixir` | New hex dependency |
