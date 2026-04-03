@@ -7,6 +7,8 @@
 **Related:**
 - `docs/research/mcp-product-discovery-workflow-discovery-2026-03-08.md` (MCP server — the input channel for specs)
 - `docs/research/tauri-desktop-mobile-app-discovery-2026-03-08.md` (mobile capture of ideas → specs)
+- `docs/research/dark-factory-lifecycle-proposal-2026-04-03.md` (proposed deploy-dark → release → cleanup lifecycle)
+- `docs/research/dark-factory-feature-flag-governance-2026-04-03.md` (feature-flag governance for factory-delivered work)
 
 ---
 
