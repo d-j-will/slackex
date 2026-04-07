@@ -15,11 +15,11 @@ defmodule Slackex.Ops.SystemSummaryTest do
     end
   end
 
-  defmodule PresenceProviderStub do
-    def list(_topic) do
-      case Process.get(:presence_mode, :ok) do
-        :ok -> %{"u1" => %{}, "u2" => %{}}
-        :bad_shape -> []
+  defmodule OnlineProviderStub do
+    def count do
+      case Process.get(:online_mode, :ok) do
+        :ok -> 2
+        :bad_shape -> :not_a_number
         :raise -> raise "boom"
       end
     end
@@ -40,18 +40,18 @@ defmodule Slackex.Ops.SystemSummaryTest do
 
     Application.put_env(:slackex, SystemSummary,
       active_channel_server_provider: ActiveChannelServerProviderStub,
-      presence_provider: PresenceProviderStub,
+      online_provider: OnlineProviderStub,
       queue_provider: QueueProviderStub
     )
 
     Process.put(:channel_server_mode, :ok)
-    Process.put(:presence_mode, :ok)
+    Process.put(:online_mode, :ok)
     Process.put(:queue_mode, :ok)
 
     on_exit(fn ->
       Application.put_env(:slackex, SystemSummary, previous)
       Process.delete(:channel_server_mode)
-      Process.delete(:presence_mode)
+      Process.delete(:online_mode)
       Process.delete(:queue_mode)
     end)
 
@@ -65,7 +65,7 @@ defmodule Slackex.Ops.SystemSummaryTest do
              "generated_at" => generated_at,
              "node" => node_name,
              "active_channel_servers" => 7,
-             "lobby_presence_count" => 2,
+             "online_users_count" => 2,
              "queue_running_counts" => %{
                "default" => 1,
                "notifications" => 1,
@@ -74,7 +74,7 @@ defmodule Slackex.Ops.SystemSummaryTest do
              },
              "partial_failures" => %{
                "active_channel_servers" => nil,
-               "presence" => nil,
+               "online_users" => nil,
                "queues" => nil
              }
            } = snapshot
@@ -95,7 +95,7 @@ defmodule Slackex.Ops.SystemSummaryTest do
         assert snapshot["partial_failures"]["active_channel_servers"] ==
                  "channel_server_probe_failed"
 
-        assert snapshot["partial_failures"]["presence"] == nil
+        assert snapshot["partial_failures"]["online_users"] == nil
         assert snapshot["partial_failures"]["queues"] == nil
       end)
 
@@ -105,21 +105,21 @@ defmodule Slackex.Ops.SystemSummaryTest do
     refute log =~ "boom"
   end
 
-  test "snapshot falls back on presence probe failure with exact shape" do
-    Process.put(:presence_mode, :bad_shape)
+  test "snapshot falls back on online users probe failure with exact shape" do
+    Process.put(:online_mode, :bad_shape)
 
     log =
       capture_log(fn ->
         snapshot = SystemSummary.snapshot()
 
-        assert snapshot["lobby_presence_count"] == 0
+        assert snapshot["online_users_count"] == 0
         assert snapshot["partial_failures"]["active_channel_servers"] == nil
-        assert snapshot["partial_failures"]["presence"] == "presence_probe_failed"
+        assert snapshot["partial_failures"]["online_users"] == "online_probe_failed"
         assert snapshot["partial_failures"]["queues"] == nil
       end)
 
-    assert log =~ "ops_snapshot_probe_failed probe=presence code=presence_probe_failed"
-    refute log =~ "[]"
+    assert log =~ "ops_snapshot_probe_failed probe=online_users code=online_probe_failed"
+    refute log =~ ":not_a_number"
   end
 
   test "snapshot falls back on queue probe failure with exact shape" do
@@ -137,7 +137,7 @@ defmodule Slackex.Ops.SystemSummaryTest do
                }
 
         assert snapshot["partial_failures"]["active_channel_servers"] == nil
-        assert snapshot["partial_failures"]["presence"] == nil
+        assert snapshot["partial_failures"]["online_users"] == nil
         assert snapshot["partial_failures"]["queues"] == "queue_probe_failed"
       end)
 

@@ -55,8 +55,8 @@ defmodule SlackexWeb.MCP.OpsResourcesTest do
       assert Map.keys(summary) |> Enum.sort() == [
                "active_channel_servers",
                "generated_at",
-               "lobby_presence_count",
                "node",
+               "online_users_count",
                "partial_failures",
                "queue_running_counts"
              ]
@@ -64,7 +64,7 @@ defmodule SlackexWeb.MCP.OpsResourcesTest do
       assert {:ok, _, _} = DateTime.from_iso8601(summary["generated_at"])
       assert is_binary(summary["node"])
       assert is_integer(summary["active_channel_servers"])
-      assert is_integer(summary["lobby_presence_count"])
+      assert is_integer(summary["online_users_count"])
 
       assert Map.keys(summary["queue_running_counts"]) |> Enum.sort() == [
                "default",
@@ -75,7 +75,7 @@ defmodule SlackexWeb.MCP.OpsResourcesTest do
 
       assert Map.keys(summary["partial_failures"]) |> Enum.sort() == [
                "active_channel_servers",
-               "presence",
+               "online_users",
                "queues"
              ]
 
@@ -113,8 +113,8 @@ defmodule SlackexWeb.MCP.OpsResourcesTest do
       assert Map.keys(serialized) |> Enum.sort() == [
                :active_channel_servers,
                :generated_at,
-               :lobby_presence_count,
                :node,
+               :online_users_count,
                :partial_failures,
                :queue_running_counts
              ]
@@ -139,7 +139,7 @@ defmodule SlackexWeb.MCP.OpsResourcesTest do
       summary = Jason.decode!(text)
 
       message =
-        "Ops snapshot: node=#{summary["node"]} active_channel_servers=#{summary["active_channel_servers"]} lobby_presence_count=#{summary["lobby_presence_count"]}"
+        "Ops snapshot: node=#{summary["node"]} active_channel_servers=#{summary["active_channel_servers"]} online_users_count=#{summary["online_users_count"]}"
 
       send_conn =
         mcp_post(

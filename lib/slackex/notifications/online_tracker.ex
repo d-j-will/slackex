@@ -71,6 +71,15 @@ defmodule Slackex.Notifications.OnlineTracker do
     end
   end
 
+  @doc "Returns the count of currently online users."
+  @spec count_online() :: integer()
+  def count_online do
+    case redis_command(["KEYS", "online:*"], []) do
+      keys when is_list(keys) -> length(keys)
+      _ -> 0
+    end
+  end
+
   @doc "Returns true if the user has an active online marker in Redis."
   @spec online?(integer()) :: boolean()
   def online?(user_id) do

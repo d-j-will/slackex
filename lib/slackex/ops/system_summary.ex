@@ -14,18 +14,18 @@ defmodule Slackex.Ops.SystemSummary do
   @spec snapshot() :: snapshot()
   def snapshot do
     {channel_count, channel_error} = active_channel_servers()
-    {presence_count, presence_error} = lobby_presence_count()
+    {online_count, online_error} = online_users_count()
     {queue_counts, queue_error} = queue_running_counts()
 
     %{
       "generated_at" => generated_at(),
       "node" => node() |> to_string(),
       "active_channel_servers" => channel_count,
-      "lobby_presence_count" => presence_count,
+      "online_users_count" => online_count,
       "queue_running_counts" => queue_counts,
       "partial_failures" => %{
         "active_channel_servers" => channel_error,
-        "presence" => presence_error,
+        "online_users" => online_error,
         "queues" => queue_error
       }
     }
@@ -51,18 +51,18 @@ defmodule Slackex.Ops.SystemSummary do
     _, _ -> channel_server_fallback()
   end
 
-  defp lobby_presence_count do
-    case presence_provider().list("users:lobby") do
-      presences when is_map(presences) ->
-        {map_size(presences), nil}
+  defp online_users_count do
+    case online_provider().count() do
+      count when is_integer(count) and count >= 0 ->
+        {count, nil}
 
       _ ->
-        presence_fallback()
+        online_fallback()
     end
   rescue
-    _ -> presence_fallback()
+    _ -> online_fallback()
   catch
-    _, _ -> presence_fallback()
+    _, _ -> online_fallback()
   end
 
   defp queue_running_counts do
@@ -86,9 +86,9 @@ defmodule Slackex.Ops.SystemSummary do
     {0, "channel_server_probe_failed"}
   end
 
-  defp presence_fallback do
-    log_probe_failure(:presence, "presence_probe_failed")
-    {0, "presence_probe_failed"}
+  defp online_fallback do
+    log_probe_failure(:online_users, "online_probe_failed")
+    {0, "online_probe_failed"}
   end
 
   defp queues_fallback(queue \\ nil) do
@@ -116,9 +116,9 @@ defmodule Slackex.Ops.SystemSummary do
     |> Keyword.get(:active_channel_server_provider, __MODULE__.ActiveChannelServerProvider)
   end
 
-  defp presence_provider do
+  defp online_provider do
     Application.get_env(:slackex, __MODULE__, [])
-    |> Keyword.get(:presence_provider, __MODULE__.PresenceProvider)
+    |> Keyword.get(:online_provider, __MODULE__.OnlineProvider)
   end
 
   defp queue_provider do
@@ -132,10 +132,10 @@ defmodule Slackex.Ops.SystemSummary do
     def channel_count, do: Slackex.Messaging.channel_count()
   end
 
-  defmodule PresenceProvider do
+  defmodule OnlineProvider do
     @moduledoc false
 
-    def list(topic), do: Phoenix.Presence.list(SlackexWeb.Presence, topic)
+    def count, do: Slackex.Notifications.OnlineTracker.count_online()
   end
 
   defmodule QueueProvider do

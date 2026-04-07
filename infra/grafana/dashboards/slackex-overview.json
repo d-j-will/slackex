@@ -126,6 +126,10 @@
         {
           "expr": "slackex_oban_queue_depth_running",
           "legendFormat": "{{queue}} running"
+        },
+        {
+          "expr": "slackex_oban_queue_depth_available",
+          "legendFormat": "{{queue}} available"
         }
       ]
     }

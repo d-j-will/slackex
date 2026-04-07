@@ -102,6 +102,7 @@ defmodule SlackexWeb.Telemetry do
 
       # Application Metrics
       last_value("slackex.oban.queue_depth.running", tags: [:queue]),
+      last_value("slackex.oban.queue_depth.available", tags: [:queue]),
       last_value("slackex.presence.connected_users.count"),
 
       # Analytics Metrics
@@ -150,16 +151,26 @@ defmodule SlackexWeb.Telemetry do
           0
       end
 
+    available_count =
+      case queue_available_count(queue) do
+        {:ok, count} ->
+          count
+
+        {:error, code} ->
+          log_probe_failure(:queue_available, code, queue: queue)
+          0
+      end
+
     :telemetry.execute(
       [:slackex, :oban, :queue_depth],
-      %{running: running_count},
+      %{running: running_count, available: available_count},
       %{queue: queue}
     )
   end
 
   defp connected_users_count do
-    case presence_provider().list("users:lobby") do
-      presences when is_map(presences) -> {:ok, map_size(presences)}
+    case online_provider().count() do
+      count when is_integer(count) and count >= 0 -> {:ok, count}
       _ -> {:error, :presence_probe_failed}
     end
   rescue
@@ -179,6 +190,17 @@ defmodule SlackexWeb.Telemetry do
     _, _ -> {:error, :queue_probe_failed}
   end
 
+  defp queue_available_count(queue) do
+    case queue_provider().count_available(queue) do
+      count when is_integer(count) and count >= 0 -> {:ok, count}
+      _ -> {:error, :queue_available_probe_failed}
+    end
+  rescue
+    _ -> {:error, :queue_available_probe_failed}
+  catch
+    _, _ -> {:error, :queue_available_probe_failed}
+  end
+
   defp log_probe_failure(probe, code, metadata \\ []) do
     details =
       metadata
@@ -194,16 +216,27 @@ defmodule SlackexWeb.Telemetry do
     |> Keyword.get(:queue_provider, __MODULE__.QueueProvider)
   end
 
-  defp presence_provider do
+  defp online_provider do
     Application.get_env(:slackex, __MODULE__, [])
-    |> Keyword.get(:presence_provider, __MODULE__.PresenceProvider)
+    |> Keyword.get(:online_provider, __MODULE__.OnlineProvider)
   end
 
   defmodule QueueProvider do
     def check_queue(queue), do: Oban.check_queue(queue: queue)
+
+    def count_available(queue) do
+      import Ecto.Query
+
+      Slackex.Repo.aggregate(
+        from(j in "oban_jobs",
+          where: j.state == "available" and j.queue == ^to_string(queue)
+        ),
+        :count
+      )
+    end
   end
 
-  defmodule PresenceProvider do
-    def list(topic), do: Phoenix.Presence.list(SlackexWeb.Presence, topic)
+  defmodule OnlineProvider do
+    def count, do: Slackex.Notifications.OnlineTracker.count_online()
   end
 end

@@ -73,7 +73,7 @@ defmodule SlackexWeb.MCP.Serializer do
         "generated_at" => generated_at,
         "node" => node,
         "active_channel_servers" => active_channel_servers,
-        "lobby_presence_count" => lobby_presence_count,
+        "online_users_count" => online_users_count,
         "queue_running_counts" => queue_running_counts,
         "partial_failures" => partial_failures
       }) do
@@ -81,7 +81,7 @@ defmodule SlackexWeb.MCP.Serializer do
       generated_at: generated_at,
       node: node,
       active_channel_servers: active_channel_servers,
-      lobby_presence_count: lobby_presence_count,
+      online_users_count: online_users_count,
       queue_running_counts: queue_running_counts,
       partial_failures: partial_failures
     }

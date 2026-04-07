@@ -13,13 +13,21 @@ defmodule SlackexWeb.TelemetryTest do
         :raise -> raise "boom"
       end
     end
+
+    def count_available(_queue) do
+      case Process.get(:queue_provider_mode, :ok) do
+        :ok -> 5
+        :bad_shape -> :not_a_number
+        :raise -> raise "boom"
+      end
+    end
   end
 
-  defmodule PresenceProviderStub do
-    def list(_topic) do
-      case Process.get(:presence_provider_mode, :ok) do
-        :ok -> %{"u1" => %{}, "u2" => %{}}
-        :bad_shape -> []
+  defmodule OnlineProviderStub do
+    def count do
+      case Process.get(:online_provider_mode, :ok) do
+        :ok -> 2
+        :bad_shape -> :not_a_number
         :raise -> raise "boom"
       end
     end
@@ -30,16 +38,16 @@ defmodule SlackexWeb.TelemetryTest do
 
     Application.put_env(:slackex, Telemetry,
       queue_provider: QueueProviderStub,
-      presence_provider: PresenceProviderStub
+      online_provider: OnlineProviderStub
     )
 
     Process.put(:queue_provider_mode, :ok)
-    Process.put(:presence_provider_mode, :ok)
+    Process.put(:online_provider_mode, :ok)
 
     on_exit(fn ->
       Application.put_env(:slackex, Telemetry, previous)
       Process.delete(:queue_provider_mode)
-      Process.delete(:presence_provider_mode)
+      Process.delete(:online_provider_mode)
     end)
 
     :ok
@@ -74,7 +82,7 @@ defmodule SlackexWeb.TelemetryTest do
     end
 
     test "measure_connected_users logs a sanitized warning on provider failure" do
-      Process.put(:presence_provider_mode, :raise)
+      Process.put(:online_provider_mode, :raise)
 
       log =
         capture_log(fn ->
@@ -86,7 +94,7 @@ defmodule SlackexWeb.TelemetryTest do
     end
 
     test "measure_connected_users logs a sanitized warning on bad shape" do
-      Process.put(:presence_provider_mode, :bad_shape)
+      Process.put(:online_provider_mode, :bad_shape)
 
       log =
         capture_log(fn ->

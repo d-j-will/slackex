@@ -32,7 +32,11 @@ defmodule SlackexWeb.Plugs.MetricsExporterTest do
       :telemetry.execute([:vm, :system_counts], %{process_count: 100, port_count: 10})
       :telemetry.execute([:vm, :total_run_queue_lengths], %{total: 0, cpu: 0, io: 0})
       :telemetry.execute([:slackex, :presence, :connected_users], %{count: 0}, %{})
-      :telemetry.execute([:slackex, :oban, :queue_depth], %{running: 2}, %{queue: :default})
+
+      :telemetry.execute([:slackex, :oban, :queue_depth], %{running: 2, available: 5}, %{
+        queue: :default
+      })
+
       :telemetry.execute([:phoenix, :endpoint, :stop], %{duration: 100_000_000}, %{conn: conn})
 
       %{body: get(conn, "/metrics").resp_body}
@@ -66,6 +70,7 @@ defmodule SlackexWeb.Plugs.MetricsExporterTest do
     test "exports application metrics", %{body: body} do
       assert body =~ "slackex_presence_connected_users_count "
       assert body =~ "slackex_oban_queue_depth_running "
+      assert body =~ "slackex_oban_queue_depth_available "
     end
 
     test "exports Phoenix endpoint histogram", %{body: body} do
