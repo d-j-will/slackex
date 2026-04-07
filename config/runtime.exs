@@ -174,6 +174,8 @@ if config_env() == :prod do
       vapid_public_key: vapid_public_key,
       vapid_private_key: vapid_private_key,
       vapid_subject: vapid_subject
+
+    config :slackex, :push_adapter, Slackex.Notifications.WebPushAdapter
   end
 
   config :slackex, :flags_admin_auth,
