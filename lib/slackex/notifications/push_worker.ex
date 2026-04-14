@@ -66,12 +66,20 @@ defmodule Slackex.Notifications.PushWorker do
         title = "##{channel.name}"
         body = truncate_body("#{username}: #{content}", 100)
 
-        Enum.each(
-          offline_subscribers,
-          &maybe_push_to_subscriber(&1, channel_id, content, title, body, args)
-        )
+        push_to_each(offline_subscribers, channel_id, content, title, body, args)
+    end
+  end
 
-        :ok
+  defp push_to_each(subscribers, channel_id, content, title, body, args) do
+    Enum.reduce_while(subscribers, :ok, fn subscriber, :ok ->
+      push_one(subscriber, channel_id, content, title, body, args)
+    end)
+  end
+
+  defp push_one(subscriber, channel_id, content, title, body, args) do
+    case maybe_push_to_subscriber(subscriber, channel_id, content, title, body, args) do
+      :ok -> {:cont, :ok}
+      {:error, _reason} = err -> {:halt, err}
     end
   end
 
@@ -106,7 +114,9 @@ defmodule Slackex.Notifications.PushWorker do
 
     if should_notify do
       tokens = device_tokens_for_users([subscriber.user_id])
-      _ = Enum.each(tokens, &dispatch_push(&1, title, body, args))
+      dispatch_all(tokens, title, body, args)
+    else
+      :ok
     end
   end
 
@@ -116,9 +126,20 @@ defmodule Slackex.Notifications.PushWorker do
     else
       tokens = device_tokens_for_users([recipient_id])
       body = truncate_body(content, 100)
-      _ = Enum.each(tokens, &dispatch_push(&1, username, body, args))
-      :ok
+      dispatch_all(tokens, username, body, args)
     end
+  end
+
+  # Returns the first dispatch error so Oban retries; `:ok` only when every
+  # token succeeded (or the list was empty). Previously every result was
+  # discarded with `_ =`, so max_attempts never triggered.
+  defp dispatch_all(tokens, title, body, args) do
+    Enum.reduce_while(tokens, :ok, fn token, :ok ->
+      case dispatch_push(token, title, body, args) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = err -> {:halt, err}
+      end
+    end)
   end
 
   defp subscribers_excluding(channel_id, sender_id) do
@@ -158,7 +179,9 @@ defmodule Slackex.Notifications.PushWorker do
 
     adapter.send_push(token, platform, payload)
   rescue
-    e -> Logger.warning("Push dispatch failed: #{inspect(e)}")
+    e ->
+      Logger.warning("Push dispatch raised: #{Exception.format(:error, e, __STACKTRACE__)}")
+      {:error, {:exception, Exception.message(e)}}
   end
 
   defp build_tag(%{"type" => "new_message", "channel_id" => channel_id}) do
