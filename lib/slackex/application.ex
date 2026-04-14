@@ -42,8 +42,12 @@ defmodule Slackex.Application do
         maybe_embedding_serving([]) ++
         [
           {Oban, Application.fetch_env!(:slackex, Oban)},
-          Slackex.Embeddings.PersistenceListener,
-          Slackex.Links.LinkPreviewListener,
+          # Listeners are non-essential PubSub→Oban bridges. If they repeatedly
+          # crash, :permanent restart would exhaust the root supervisor budget
+          # and take down the app. ReconciliationWorker is the safety net for
+          # missed embedding events; link previews are cosmetic.
+          Supervisor.child_spec(Slackex.Embeddings.PersistenceListener, restart: :temporary),
+          Supervisor.child_spec(Slackex.Links.LinkPreviewListener, restart: :temporary),
           Supervisor.child_spec(Slackex.Factory.ChannelNotifier, restart: :temporary),
           # FunWithFlags auto-starts via OTP app dependency ordering (before Slackex.Application).
           # Its Ecto adapter queries are lazy, so the Repo being started here first is safe.
