@@ -138,8 +138,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/davewil/slackex:latest
-            ghcr.io/davewil/slackex:${{ steps.meta.outputs.version }}
+            ghcr.io/d-j-will/slackex:latest
+            ghcr.io/d-j-will/slackex:${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -239,7 +239,7 @@ jobs:
 
           # Authenticate Docker on the server to pull from private GHCR
           # Only re-auth if the host can't already pull (preserves long-lived PAT)
-          ssh root@${{ secrets.DEPLOY_HOST }} "docker pull ghcr.io/davewil/slackex:latest --quiet 2>/dev/null" || \
+          ssh root@${{ secrets.DEPLOY_HOST }} "docker pull ghcr.io/d-j-will/slackex:latest --quiet 2>/dev/null" || \
             echo "${{ secrets.GITHUB_TOKEN }}" | ssh root@${{ secrets.DEPLOY_HOST }} docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           ssh -o StrictHostKeyChecking=accept-new root@${{ secrets.DEPLOY_HOST }} << 'EOF'
