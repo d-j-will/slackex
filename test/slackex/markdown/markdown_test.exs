@@ -72,6 +72,17 @@ defmodule Slackex.MarkdownTest do
     test "handles nil" do
       assert Markdown.to_html(nil) == {:safe, ""}
     end
+
+    test "preserves single newlines as line breaks (shift+enter)" do
+      result = html("line one\nline two")
+      assert result =~ ~r{line one<br\s*/?>line two}
+    end
+
+    test "preserves multiple consecutive newlines as separate paragraphs" do
+      result = html("para one\n\npara two")
+      assert result =~ "<p>para one</p>"
+      assert result =~ "<p>para two</p>"
+    end
   end
 
   describe "chat preprocessing (no blank lines between blocks)" do

@@ -22,7 +22,7 @@ defmodule Slackex.Markdown do
   def to_html(markdown) when is_binary(markdown) do
     markdown
     |> chat_preprocess()
-    |> Earmark.as_html!(compact_output: true)
+    |> Earmark.as_html!(%Earmark.Options{compact_output: true, breaks: true})
     |> HtmlSanitizeEx.Scrubber.scrub(Slackex.Markdown.Scrubber)
     |> add_link_attributes()
     |> Phoenix.HTML.raw()
