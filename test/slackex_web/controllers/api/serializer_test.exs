@@ -79,7 +79,7 @@ defmodule SlackexWeb.SerializerTest do
       username: "bob",
       display_name: "Bob Jones",
       avatar_url: nil,
-      status: "offline"
+      status: ""
     }
 
     @valid_message %{

@@ -31,7 +31,7 @@ defmodule Slackex.TestFactory do
       email: email,
       email_hash: email,
       hashed_password: Bcrypt.hash_pwd_salt("password123"),
-      status: "offline"
+      status: ""
     }
 
     merge_attributes(user, Map.delete(attrs, :email))

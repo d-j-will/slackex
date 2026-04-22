@@ -29,7 +29,7 @@ defmodule Slackex.Accounts.User do
     field :hashed_password, :string
     field :password, :string, virtual: true, redact: true
     field :avatar_url, :string
-    field :status, :string, default: "offline"
+    field :status, :string, default: ""
     field :dm_preference, :string, default: "anyone"
     field :is_bot, :boolean, default: false
 
