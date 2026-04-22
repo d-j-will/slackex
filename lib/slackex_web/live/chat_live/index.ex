@@ -54,12 +54,25 @@ defmodule SlackexWeb.ChatLive.Index do
 
     base_unread_counts = Chat.batch_unread_counts(user.id)
 
-    {unread_counts, catchup_summary} =
-      if connected?(socket) do
-        catchup = Slackex.Notifications.CatchupServer.build_catchup(user.id)
+    catchup_enabled = connected?(socket) and FunWithFlags.enabled?(:catchup_on_reconnect)
 
-        {SlackexWeb.ChatLive.Catchup.merge_unread(base_unread_counts, catchup),
-         SlackexWeb.ChatLive.Catchup.summary(catchup)}
+    {unread_counts, catchup_summary} =
+      if catchup_enabled do
+        try do
+          catchup = Slackex.Notifications.CatchupServer.build_catchup(user.id)
+
+          {SlackexWeb.ChatLive.Catchup.merge_unread(base_unread_counts, catchup),
+           SlackexWeb.ChatLive.Catchup.summary(catchup)}
+        rescue
+          e ->
+            require Logger
+
+            Logger.warning(
+              "catchup_on_reconnect failed for user #{user.id}: #{Exception.message(e)}"
+            )
+
+            {base_unread_counts, nil}
+        end
       else
         {base_unread_counts, nil}
       end

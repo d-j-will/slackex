@@ -14,6 +14,12 @@ defmodule SlackexWeb.ChatLive.IndexCatchupTest do
   end
 
   describe "reconnect-mount catchup" do
+    setup do
+      FunWithFlags.enable(:catchup_on_reconnect)
+      on_exit(fn -> FunWithFlags.disable(:catchup_on_reconnect) end)
+      :ok
+    end
+
     test "flashes a summary and restores unread counts when messages arrived during disconnect",
          %{conn: conn} do
       user = insert(:user)
@@ -37,6 +43,26 @@ defmodule SlackexWeb.ChatLive.IndexCatchupTest do
       user = insert(:user)
       channel = insert(:channel)
       insert(:subscription, user: user, channel: channel)
+
+      conn = log_in_user(conn, user)
+      {:ok, _view, html} = live(conn, ~p"/chat")
+
+      refute html =~ "new message"
+      refute html =~ "while you were away"
+    end
+
+    test "does not flash when :catchup_on_reconnect is disabled", %{conn: conn} do
+      FunWithFlags.disable(:catchup_on_reconnect)
+
+      user = insert(:user)
+      other = insert(:user)
+      channel = insert(:channel)
+      insert(:subscription, user: user, channel: channel)
+      insert(:subscription, user: other, channel: channel)
+
+      for n <- 1..3 do
+        insert(:message, channel: channel, sender: other, content: "missed #{n}")
+      end
 
       conn = log_in_user(conn, user)
       {:ok, _view, html} = live(conn, ~p"/chat")
