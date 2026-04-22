@@ -52,7 +52,17 @@ defmodule SlackexWeb.ChatLive.Index do
         Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
       end
 
-    unread_counts = Chat.batch_unread_counts(user.id)
+    base_unread_counts = Chat.batch_unread_counts(user.id)
+
+    {unread_counts, catchup_summary} =
+      if connected?(socket) do
+        catchup = Slackex.Notifications.CatchupServer.build_catchup(user.id)
+
+        {SlackexWeb.ChatLive.Catchup.merge_unread(base_unread_counts, catchup),
+         SlackexWeb.ChatLive.Catchup.summary(catchup)}
+      else
+        {base_unread_counts, nil}
+      end
 
     online_user_ids =
       if connected?(socket) do
@@ -122,7 +132,8 @@ defmodule SlackexWeb.ChatLive.Index do
        end
      )
      |> assign(:channel_notification_level, "all")
-     |> stream(:messages, [])}
+     |> stream(:messages, [])
+     |> maybe_put_catchup_flash(catchup_summary)}
   end
 
   # ---------------------------------------------------------------------------
@@ -1401,4 +1412,9 @@ defmodule SlackexWeb.ChatLive.Index do
         Map.put(metadata, :feature, feature)
       )
   end
+
+  defp maybe_put_catchup_flash(socket, nil), do: socket
+
+  defp maybe_put_catchup_flash(socket, msg),
+    do: Phoenix.LiveView.put_flash(socket, :info, msg)
 end
