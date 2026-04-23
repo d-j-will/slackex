@@ -78,12 +78,24 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   event.waitUntil((async () => {
+    // Only clear the OS badge when this was the last visible notification —
+    // otherwise we'd zero it while other unread toasts remain on screen.
     if ('clearAppBadge' in self.navigator) {
-      self._badgeCount = 0;
-      try {
-        await self.navigator.clearAppBadge();
-      } catch (_err) {
-        // best-effort
+      const remaining = await self.registration.getNotifications();
+      if (remaining.length <= 1) {
+        self._badgeCount = 0;
+        try {
+          await self.navigator.clearAppBadge();
+        } catch (_err) {
+          // best-effort
+        }
+      } else {
+        self._badgeCount = Math.max(0, (self._badgeCount || 0) - 1);
+        try {
+          await self.navigator.setAppBadge(self._badgeCount || 1);
+        } catch (_err) {
+          // best-effort
+        }
       }
     }
 
