@@ -7,7 +7,7 @@ defmodule SlackexWeb.ChatLive.Helpers do
   """
 
   import Phoenix.Component, only: [assign: 3, to_form: 2]
-  import Phoenix.LiveView, only: [put_flash: 3, push_event: 3, stream_insert: 3]
+  import Phoenix.LiveView, only: [connected?: 1, put_flash: 3, push_event: 3, stream_insert: 3]
 
   alias Slackex.Accounts
   alias Slackex.Accounts.User
@@ -308,8 +308,24 @@ defmodule SlackexWeb.ChatLive.Helpers do
     current = Map.get(counts_map, conversation_id, 0)
     updated_counts = Map.put(counts_map, conversation_id, update_fn.(current))
     updated_unread = Map.put(unread_counts, count_key, updated_counts)
-    assign(socket, :unread_counts, updated_unread)
+
+    socket
+    |> assign(:unread_counts, updated_unread)
+    |> push_badge_total()
   end
+
+  defp push_badge_total(socket) do
+    if connected?(socket) do
+      %{channel_counts: c, dm_counts: d} = socket.assigns.unread_counts
+      total = Enum.sum(Map.values(c)) + Enum.sum(Map.values(d))
+      push_event(socket, "badge:set", %{count: total})
+    else
+      socket
+    end
+  end
+
+  @doc "Pushes a badge:set event with the current total unread count."
+  def push_initial_badge(socket), do: push_badge_total(socket)
 
   # -- Error messages ---------------------------------------------------------
 

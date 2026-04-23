@@ -146,7 +146,8 @@ defmodule SlackexWeb.ChatLive.Index do
      )
      |> assign(:channel_notification_level, "all")
      |> stream(:messages, [])
-     |> maybe_put_catchup_flash(catchup_summary)}
+     |> maybe_put_catchup_flash(catchup_summary)
+     |> Helpers.push_initial_badge()}
   end
 
   # ---------------------------------------------------------------------------
