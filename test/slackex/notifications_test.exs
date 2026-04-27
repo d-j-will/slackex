@@ -4,7 +4,7 @@ defmodule Slackex.NotificationsTest do
   import Slackex.TestFactory
 
   alias Slackex.Chat
-  alias Slackex.Notifications.{DeviceToken, OnlineTracker, PushWorker}
+  alias Slackex.Notifications.{ActiveTracker, DeviceToken, OnlineTracker, PushWorker}
   alias Slackex.PushCapture
   alias Slackex.Repo
 
@@ -12,10 +12,12 @@ defmodule Slackex.NotificationsTest do
     # Enable feature flag so PushWorker processes jobs
     FunWithFlags.enable(:push_notifications)
 
-    # Clean Redis online keys between tests
+    # Clean Redis online and active keys between tests
     Enum.each(0..9, fn i ->
       {:ok, keys} = Redix.command(:"redix_#{i}", ["KEYS", "online:*"])
       Enum.each(keys, fn k -> Redix.command(:"redix_#{i}", ["DEL", k]) end)
+      {:ok, akeys} = Redix.command(:"redix_#{i}", ["KEYS", "active:*"])
+      Enum.each(akeys, fn k -> Redix.command(:"redix_#{i}", ["DEL", k]) end)
     end)
 
     # Register push capture adapter
@@ -182,7 +184,7 @@ defmodule Slackex.NotificationsTest do
 
       Chat.join_channel(online_user.id, channel.id)
       insert(:device_token, user: online_user, token: "online-tok", platform: "fcm")
-      OnlineTracker.mark_online(online_user.id)
+      ActiveTracker.mark_active(online_user.id)
 
       PushWorker.perform(%Oban.Job{
         args: %{
@@ -299,7 +301,7 @@ defmodule Slackex.NotificationsTest do
     test "skips push when DM recipient is online" do
       {dm, sender, recipient} = make_dm()
       insert(:device_token, user: recipient, token: "dm-online-tok", platform: "fcm")
-      OnlineTracker.mark_online(recipient.id)
+      ActiveTracker.mark_active(recipient.id)
 
       PushWorker.perform(%Oban.Job{
         args: %{

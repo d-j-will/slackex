@@ -20,7 +20,7 @@ defmodule Slackex.Notifications.PushWorker do
 
   alias Slackex.Accounts.User
   alias Slackex.Chat.{Channel, DMConversation, Subscription}
-  alias Slackex.Notifications.{DeviceToken, Mention, OnlineTracker, Preference}
+  alias Slackex.Notifications.{ActiveTracker, DeviceToken, Mention, Preference}
   alias Slackex.Repo
 
   @impl Oban.Worker
@@ -61,7 +61,7 @@ defmodule Slackex.Notifications.PushWorker do
         offline_subscribers =
           channel_id
           |> subscribers_excluding(sender_id)
-          |> Enum.reject(&OnlineTracker.online?(&1.user_id))
+          |> Enum.reject(&ActiveTracker.active?(&1.user_id))
 
         title = "##{channel.name}"
         body = truncate_body("#{username}: #{content}", 100)
@@ -125,7 +125,7 @@ defmodule Slackex.Notifications.PushWorker do
   end
 
   defp send_dm_push_if_offline(recipient_id, username, content, args) do
-    if OnlineTracker.online?(recipient_id) do
+    if ActiveTracker.active?(recipient_id) do
       :ok
     else
       tokens = device_tokens_for_users([recipient_id])

@@ -6,6 +6,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Chat
   alias Slackex.Chat.MessageGrouping
   alias Slackex.Messaging
+  alias Slackex.Notifications.ActiveTracker
   alias Slackex.Notifications.OnlineTracker
   alias Slackex.Notifications.Preference
   alias Slackex.Search
@@ -28,6 +29,7 @@ defmodule SlackexWeb.ChatLive.Index do
   import SlackexWeb.ChatComponents
 
   @heartbeat_interval_ms 60_000
+  @active_heartbeat_interval_ms 10_000
   @typing_timeout_ms 3_000
   @presence_topic "presence:online"
 
@@ -45,11 +47,13 @@ defmodule SlackexWeb.ChatLive.Index do
         _ = Phoenix.PubSub.subscribe(Slackex.PubSub, @presence_topic)
         _ = Phoenix.PubSub.subscribe(Slackex.PubSub, "profile:updates")
         OnlineTracker.mark_online(user.id)
+        ActiveTracker.mark_active(user.id)
 
         _ =
           Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :online, user.id})
 
         Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
+        Process.send_after(self(), :active_heartbeat, @active_heartbeat_interval_ms)
       end
 
     base_unread_counts = Chat.batch_unread_counts(user.id)
@@ -921,6 +925,18 @@ defmodule SlackexWeb.ChatLive.Index do
     {:noreply, put_flash(socket, :error, "Notification error: #{reason}")}
   end
 
+  @impl true
+  def handle_event("page:visible", _params, socket) do
+    ActiveTracker.mark_active(socket.assigns.current_user.id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("page:hidden", _params, socket) do
+    ActiveTracker.mark_inactive(socket.assigns.current_user.id)
+    {:noreply, socket}
+  end
+
   def handle_event("update_notification_level", %{"level" => level}, socket) do
     user = socket.assigns.current_user
     _ = Preference.set_global_default(user.id, level)
@@ -1121,6 +1137,13 @@ defmodule SlackexWeb.ChatLive.Index do
   def handle_info(:online_heartbeat, socket) do
     OnlineTracker.refresh(socket.assigns.current_user.id)
     _ = Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(:active_heartbeat, socket) do
+    ActiveTracker.mark_active(socket.assigns.current_user.id)
+    _ = Process.send_after(self(), :active_heartbeat, @active_heartbeat_interval_ms)
     {:noreply, socket}
   end
 
@@ -1402,6 +1425,7 @@ defmodule SlackexWeb.ChatLive.Index do
       if socket.assigns[:current_user] do
         user_id = socket.assigns.current_user.id
         OnlineTracker.mark_offline(user_id)
+        ActiveTracker.mark_inactive(user_id)
         Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :offline, user_id})
       end
 

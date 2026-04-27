@@ -24,6 +24,17 @@ const AppBadge = {
     window.addEventListener("focus", this._clearWhenVisible);
     this._clearWhenVisible();
 
+    // Tell the server when our visibility changes so the push worker can
+    // decide whether the user actually needs an OS notification.
+    this._reportVisibility = () => {
+      if (document.visibilityState === "visible") {
+        this.pushEvent("page:visible", {});
+      } else {
+        this.pushEvent("page:hidden", {});
+      }
+    };
+    document.addEventListener("visibilitychange", this._reportVisibility);
+
     // Server is the source of truth — every unread-count change pushes a
     // badge:set event so the OS badge can never drift from assigns.
     this.handleEvent("badge:set", ({ count }) => {
@@ -42,6 +53,7 @@ const AppBadge = {
     }
     document.removeEventListener("visibilitychange", this._clearWhenVisible);
     window.removeEventListener("focus", this._clearWhenVisible);
+    document.removeEventListener("visibilitychange", this._reportVisibility);
   },
 };
 
