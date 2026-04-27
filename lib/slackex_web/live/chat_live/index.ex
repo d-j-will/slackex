@@ -149,6 +149,7 @@ defmodule SlackexWeb.ChatLive.Index do
        end
      )
      |> assign(:channel_notification_level, "all")
+     |> assign(:page_visible, true)
      |> stream(:messages, [])
      |> maybe_put_catchup_flash(catchup_summary)
      |> Helpers.push_initial_badge()}
@@ -928,13 +929,13 @@ defmodule SlackexWeb.ChatLive.Index do
   @impl true
   def handle_event("page:visible", _params, socket) do
     ActiveTracker.mark_active(socket.assigns.current_user.id)
-    {:noreply, socket}
+    {:noreply, assign(socket, :page_visible, true)}
   end
 
   @impl true
   def handle_event("page:hidden", _params, socket) do
     ActiveTracker.mark_inactive(socket.assigns.current_user.id)
-    {:noreply, socket}
+    {:noreply, assign(socket, :page_visible, false)}
   end
 
   def handle_event("update_notification_level", %{"level" => level}, socket) do
@@ -1142,7 +1143,10 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_info(:active_heartbeat, socket) do
-    ActiveTracker.mark_active(socket.assigns.current_user.id)
+    if socket.assigns.page_visible do
+      ActiveTracker.mark_active(socket.assigns.current_user.id)
+    end
+
     _ = Process.send_after(self(), :active_heartbeat, @active_heartbeat_interval_ms)
     {:noreply, socket}
   end

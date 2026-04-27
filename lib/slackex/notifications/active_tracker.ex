@@ -20,11 +20,23 @@ defmodule Slackex.Notifications.ActiveTracker do
 
   defp redis_command(args, fallback) do
     case Redix.command(random_conn(), args) do
-      {:ok, result} -> result
-      _ -> fallback
+      {:ok, result} ->
+        result
+
+      {:error, reason} ->
+        require Logger
+        Logger.warning("ActiveTracker Redis error: #{inspect(reason)} (args=#{inspect(args)})")
+        fallback
     end
   rescue
-    _ -> fallback
+    e ->
+      require Logger
+
+      Logger.warning(
+        "ActiveTracker Redis exception: #{Exception.message(e)} (args=#{inspect(args)})"
+      )
+
+      fallback
   end
 
   @doc "Marks a user as actively engaged with a 20s TTL."
