@@ -19,10 +19,12 @@ defmodule Slackex.Notifications.WebPushAdapter do
     end
   end
 
+  defp pusher, do: Application.get_env(:slackex, :web_push_elixir_module, WebPushElixir)
+
   defp do_send_push(token, payload) do
     json_payload = build_payload(payload)
 
-    case WebPushElixir.send_notification(token, json_payload) do
+    case pusher().send_notification(token, json_payload) do
       {:ok, _response} ->
         :ok
 
