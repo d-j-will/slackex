@@ -22,12 +22,16 @@ const PushSubscription = {
       this.pushEvent("push:status", {
         permission: permission,
         subscribed: !!subscription,
+        // Send the full subscription so the server can re-register it if
+        // its DeviceToken row is missing (browser side outliving server side).
+        subscription: subscription ? JSON.stringify(subscription) : null,
       });
     } catch (err) {
       console.error("[Push] Status check failed:", err);
       this.pushEvent("push:status", {
         permission: "default",
         subscribed: false,
+        subscription: null,
       });
     }
   },

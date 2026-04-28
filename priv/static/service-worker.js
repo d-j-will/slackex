@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tenun-shell-v2';
+const CACHE_NAME = 'tenun-shell-v3';
 const OFFLINE_URL = '/offline';
 
 self.addEventListener('install', (event) => {
@@ -61,12 +61,10 @@ self.addEventListener('push', (event) => {
       client.postMessage({ type: 'push:received', payload: data });
     }
 
-    // 3. Suppress the OS notification when at least one client is currently
-    //    visible — the postMessage above already informed it. Otherwise show
-    //    the notification so a backgrounded user is alerted.
-    const anyVisible = clients.some((c) => c.visibilityState === 'visible');
-    if (anyVisible) return;
-
+    // 3. Always show the OS notification — matches WhatsApp/Slack/Discord
+    //    desktop behavior. The user wants to know they got a message even
+    //    when the app is open, unfocused, occluded, or minimized. The
+    //    in-app badge updates separately via the postMessage above.
     return self.registration
       .showNotification(data.title || 'Tenun', options)
       .catch((err) => console.error('[SW] showNotification failed:', err));

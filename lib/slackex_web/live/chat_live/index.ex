@@ -863,9 +863,11 @@ defmodule SlackexWeb.ChatLive.Index do
 
   def handle_event(
         "push:status",
-        %{"permission" => permission, "subscribed" => subscribed},
+        %{"permission" => permission, "subscribed" => subscribed} = params,
         socket
       ) do
+    socket = maybe_heal_device_token(socket, subscribed, Map.get(params, "subscription"))
+
     {:noreply,
      socket
      |> assign(:push_permission, permission)
@@ -1459,4 +1461,34 @@ defmodule SlackexWeb.ChatLive.Index do
 
   defp maybe_put_catchup_flash(socket, msg),
     do: Phoenix.LiveView.put_flash(socket, :info, msg)
+
+  # Auto-heal: when the browser still holds a push subscription but our
+  # DeviceToken row was lost (deploy hiccup, expired-cleanup desync, etc.),
+  # re-register it on the next push:status check so the UI's "Enabled"
+  # badge actually reflects deliverability.
+  defp maybe_heal_device_token(socket, true, subscription_json)
+       when is_binary(subscription_json) do
+    user = socket.assigns.current_user
+    alias Slackex.Notifications.DeviceToken
+    alias Slackex.Repo
+
+    if Repo.get_by(DeviceToken, token: subscription_json, user_id: user.id) do
+      socket
+    else
+      require Logger
+      Logger.info("Auto-healing missing device token for user #{user.id}")
+
+      attrs = %{
+        "user_id" => user.id,
+        "token" => subscription_json,
+        "platform" => "web_push",
+        "device_name" => "PWA"
+      }
+
+      _ = DeviceToken.changeset(%DeviceToken{}, attrs) |> Repo.insert()
+      socket
+    end
+  end
+
+  defp maybe_heal_device_token(socket, _subscribed, _subscription), do: socket
 end
