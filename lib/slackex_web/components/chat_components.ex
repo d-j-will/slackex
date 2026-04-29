@@ -911,6 +911,13 @@ defmodule SlackexWeb.ChatComponents do
                     <button type="button" phx-click="disable_push" class="btn btn-sm btn-ghost">
                       Disable
                     </button>
+                    <button
+                      type="button"
+                      phx-click="send_test_push"
+                      class="btn btn-sm btn-ghost"
+                    >
+                      Send test
+                    </button>
                   </div>
                 <% else %>
                   <%= if @push_permission == "denied" do %>

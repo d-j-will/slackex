@@ -928,6 +928,36 @@ defmodule SlackexWeb.ChatLive.Index do
     {:noreply, put_flash(socket, :error, "Notification error: #{reason}")}
   end
 
+  def handle_event("send_test_push", _params, socket) do
+    user = socket.assigns.current_user
+
+    socket =
+      case Slackex.Notifications.TestPush.send(user.id) do
+        {:ok, 0} ->
+          put_flash(
+            socket,
+            :error,
+            "No registered devices — enable notifications first."
+          )
+
+        {:ok, n} ->
+          devices = if n == 1, do: "device", else: "devices"
+
+          put_flash(
+            socket,
+            :info,
+            "Test notification sent to #{n} #{devices}. Check your OS notification centre."
+          )
+
+        {:error, reason} ->
+          require Logger
+          Logger.warning("send_test_push failed for user #{user.id}: #{inspect(reason)}")
+          put_flash(socket, :error, "Couldn't send test notification — see browser console.")
+      end
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event("page:visible", _params, socket) do
     ActiveTracker.mark_active(socket.assigns.current_user.id)
