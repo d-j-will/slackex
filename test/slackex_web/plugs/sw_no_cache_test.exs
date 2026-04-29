@@ -1,6 +1,7 @@
 defmodule SlackexWeb.Plugs.SwNoCacheTest do
   use ExUnit.Case, async: true
-  use Plug.Test
+  import Plug.Test
+  import Plug.Conn
 
   alias SlackexWeb.Plugs.SwNoCache
 
