@@ -415,6 +415,24 @@ jobs:
             echo "Deploy complete."
           EOF
 
+      - name: Purge Cloudflare cache for service worker and manifest
+        if: success()
+        env:
+          CF_PURGE_TOKEN: ${{ secrets.CF_PURGE_TOKEN }}
+          CF_ZONE_ID: 410b3ec5260b7e6937b3794cdc6ee976
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_PURGE_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"files":["https://chat.davewil.dev/service-worker.js","https://chat.davewil.dev/manifest.json"]}')
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"success":true' || {
+            echo "Cloudflare purge failed."
+            exit 1
+          }
+          echo "Cloudflare cache purged for /service-worker.js and /manifest.json."
+
   notify:
     name: Discord Notification
     runs-on: ubuntu-latest

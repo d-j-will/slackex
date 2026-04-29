@@ -19,9 +19,15 @@ const PushSubscription = {
       const registration = await navigator.serviceWorker?.ready;
       const subscription = await registration?.pushManager?.getSubscription();
 
+      // "Subscribed" must reflect *deliverability*, not just the existence
+      // of a browser-side subscription. A subscription can exist while
+      // Notification.permission has been revoked or never granted —
+      // showing "Enabled" in that state misled us during debugging.
+      const deliverable = !!subscription && permission === "granted";
+
       this.pushEvent("push:status", {
         permission: permission,
-        subscribed: !!subscription,
+        subscribed: deliverable,
         // Send the full subscription so the server can re-register it if
         // its DeviceToken row is missing (browser side outliving server side).
         subscription: subscription ? JSON.stringify(subscription) : null,
