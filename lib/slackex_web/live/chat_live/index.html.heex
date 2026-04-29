@@ -355,6 +355,8 @@
   notification_level={@notification_level}
 />
 
+<.push_explainer_modal show={@show_push_explainer} />
+
 <.live_component
   :if={@show_summary_modal}
   module={SummaryModal}

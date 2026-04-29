@@ -963,6 +963,72 @@ defmodule SlackexWeb.ChatComponents do
     """
   end
 
+  @doc """
+  Pre-prompt explainer shown before the browser's Notification.requestPermission()
+  fires. Avoids accidental "Block" clicks (which are unrecoverable without
+  the user manually editing site settings).
+  """
+  attr :show, :boolean, default: false
+
+  def push_explainer_modal(assigns) do
+    ~H"""
+    <div
+      :if={@show}
+      id="push-explainer-modal"
+      phx-window-keydown="dismiss_push_explainer"
+      phx-key="Escape"
+    >
+      <div
+        id="push-explainer-backdrop"
+        class="fixed inset-0 z-40 bg-black/50"
+        phx-click="dismiss_push_explainer"
+      />
+      <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
+        <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-md p-6 relative">
+          <button
+            type="button"
+            phx-click="dismiss_push_explainer"
+            class="btn btn-ghost btn-sm btn-square absolute top-2 right-2"
+            aria-label="Close"
+          >
+            <span class="hero-x-mark size-5" />
+          </button>
+          <div class="space-y-4">
+            <div class="flex items-center gap-3">
+              <span class="hero-bell text-primary size-8" />
+              <h3 class="font-bold text-lg">Enable notifications</h3>
+            </div>
+            <p class="text-sm text-base-content/80">
+              Tenun can alert you when people send you messages, so you don't
+              miss anything important.
+            </p>
+            <p class="text-sm text-base-content/60">
+              Your browser will show a prompt next — choose <strong>Allow</strong>.
+              You can change this later from your browser settings.
+            </p>
+            <div class="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                phx-click="dismiss_push_explainer"
+                class="btn btn-ghost btn-sm"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                phx-click="confirm_enable_push"
+                class="btn btn-primary btn-sm"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   defp field_error(assigns) do
     ~H"""
     <p class="mt-1 text-xs text-error">{render_slot(@inner_block)}</p>

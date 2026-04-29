@@ -112,6 +112,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:report_form, to_form(%{}, as: :report))
      |> assign(:profile_user, nil)
      |> assign(:show_edit_profile, false)
+     |> assign(:show_push_explainer, false)
      |> assign(:edit_profile_form, Helpers.build_profile_form(user))
      |> assign(:editing_message_id, nil)
      |> assign(:reactions, %{})
@@ -875,7 +876,22 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("enable_push", _params, socket) do
-    {:noreply, push_event(socket, "push:subscribe", %{})}
+    if socket.assigns.push_permission == "granted" and socket.assigns.push_subscribed do
+      {:noreply, socket}
+    else
+      {:noreply, assign(socket, :show_push_explainer, true)}
+    end
+  end
+
+  def handle_event("confirm_enable_push", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_push_explainer, false)
+     |> push_event("push:subscribe", %{})}
+  end
+
+  def handle_event("dismiss_push_explainer", _params, socket) do
+    {:noreply, assign(socket, :show_push_explainer, false)}
   end
 
   def handle_event("disable_push", _params, socket) do
