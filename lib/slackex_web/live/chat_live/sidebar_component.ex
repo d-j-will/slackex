@@ -16,6 +16,8 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
 
   import SlackexWeb.ChatComponents
 
+  attr :push_health, :atom, default: :not_set_up
+
   @impl true
   def mount(socket) do
     {:ok,
@@ -277,6 +279,27 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
         >
           {@node_name}
         </span>
+        <button
+          :if={@push_health != :ok}
+          data-push-health={@push_health}
+          phx-click="edit_profile"
+          class={[
+            "btn btn-ghost btn-xs btn-square",
+            @push_health == :browser_blocked && "text-error",
+            @push_health == :not_set_up && "text-warning"
+          ]}
+          title={
+            if @push_health == :browser_blocked,
+              do: "Notifications blocked by browser",
+              else: "Set up notifications"
+          }
+        >
+          <span class={
+            if @push_health == :browser_blocked,
+              do: "hero-bell-slash size-4",
+              else: "hero-bell size-4"
+          } />
+        </button>
         <button
           phx-click="edit_profile"
           class="btn btn-ghost btn-xs btn-circle"

@@ -835,6 +835,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :push_notifications_enabled, :boolean, default: false
   attr :push_permission, :string, default: "default"
   attr :push_subscribed, :boolean, default: false
+  attr :push_health, :atom, default: :not_set_up
   attr :notification_level, :string, default: "all"
 
   def edit_profile_modal(assigns) do
@@ -905,30 +906,29 @@ defmodule SlackexWeb.ChatComponents do
 
               <div id="push-settings" phx-hook="PushSubscription" class="form-control">
                 <label class="label"><span class="label-text">Push Notifications</span></label>
-                <%= if @push_subscribed do %>
-                  <div class="flex items-center gap-2">
-                    <span class="badge badge-success">Enabled</span>
-                    <button type="button" phx-click="disable_push" class="btn btn-sm btn-ghost">
-                      Disable
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="send_test_push"
-                      class="btn btn-sm btn-ghost"
-                    >
-                      Send test
-                    </button>
-                  </div>
-                <% else %>
-                  <%= if @push_permission == "denied" do %>
-                    <p class="text-sm text-warning">
-                      Notifications blocked by browser. Reset in browser settings.
-                    </p>
-                  <% else %>
+                <%= case @push_health do %>
+                  <% :ok -> %>
+                    <div class="flex items-center gap-2">
+                      <span class="badge badge-success">Notifications on</span>
+                      <button type="button" phx-click="disable_push" class="btn btn-sm btn-ghost">
+                        Disable
+                      </button>
+                      <button type="button" phx-click="send_test_push" class="btn btn-sm btn-ghost">
+                        Send test
+                      </button>
+                    </div>
+                  <% :browser_blocked -> %>
+                    <div class="space-y-2">
+                      <span class="badge badge-error">Blocked by browser</span>
+                      <p class="text-sm text-warning">
+                        You've blocked Tenun in your browser. Open the site settings (lock icon
+                        in the address bar) to allow notifications, then refresh.
+                      </p>
+                    </div>
+                  <% :not_set_up -> %>
                     <button type="button" phx-click="enable_push" class="btn btn-sm btn-primary">
                       Enable Notifications
                     </button>
-                  <% end %>
                 <% end %>
               </div>
 

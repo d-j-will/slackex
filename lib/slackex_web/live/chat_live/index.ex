@@ -141,6 +141,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:push_notifications_enabled, FunWithFlags.enabled?(:push_notifications))
      |> assign(:push_permission, "default")
      |> assign(:push_subscribed, false)
+     |> assign(:push_health, :not_set_up)
      |> assign(
        :notification_level,
        if FunWithFlags.enabled?(:push_notifications) do
@@ -153,6 +154,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:page_visible, true)
      |> stream(:messages, [])
      |> maybe_put_catchup_flash(catchup_summary)
+     |> then(fn s -> assign(s, :push_health, derive_push_health(s)) end)
      |> Helpers.push_initial_badge()}
   end
 
@@ -869,10 +871,12 @@ defmodule SlackexWeb.ChatLive.Index do
       ) do
     socket = maybe_heal_device_token(socket, subscribed, Map.get(params, "subscription"))
 
-    {:noreply,
-     socket
-     |> assign(:push_permission, permission)
-     |> assign(:push_subscribed, subscribed)}
+    socket =
+      socket
+      |> assign(:push_permission, permission)
+      |> assign(:push_subscribed, subscribed)
+
+    {:noreply, assign(socket, :push_health, derive_push_health(socket))}
   end
 
   def handle_event("enable_push", _params, socket) do
@@ -933,11 +937,13 @@ defmodule SlackexWeb.ChatLive.Index do
       token -> Repo.delete(token)
     end
 
-    {:noreply, assign(socket, :push_subscribed, false)}
+    socket = assign(socket, :push_subscribed, false)
+    {:noreply, assign(socket, :push_health, derive_push_health(socket))}
   end
 
   def handle_event("push:unsubscribed", _params, socket) do
-    {:noreply, assign(socket, :push_subscribed, false)}
+    socket = assign(socket, :push_subscribed, false)
+    {:noreply, assign(socket, :push_health, derive_push_health(socket))}
   end
 
   def handle_event("push:error", %{"reason" => reason}, socket) do
@@ -1537,4 +1543,25 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   defp maybe_heal_device_token(socket, _subscribed, _subscription), do: socket
+
+  defp derive_push_health(socket) do
+    cond do
+      socket.assigns.push_permission == "denied" ->
+        :browser_blocked
+
+      socket.assigns.push_subscribed and device_token_exists?(socket.assigns.current_user.id) ->
+        :ok
+
+      true ->
+        :not_set_up
+    end
+  end
+
+  defp device_token_exists?(user_id) do
+    import Ecto.Query
+
+    Slackex.Repo.exists?(
+      from dt in Slackex.Notifications.DeviceToken, where: dt.user_id == ^user_id
+    )
+  end
 end
