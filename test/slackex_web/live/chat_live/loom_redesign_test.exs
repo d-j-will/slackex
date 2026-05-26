@@ -30,7 +30,7 @@ defmodule SlackexWeb.ChatLive.LoomRedesignTest do
     user = insert(:user)
     {:ok, _lv, html} = conn |> log_in_user(user) |> live(~p"/chat")
 
-    refute html =~ ~s(aria-label="Appearance")
+    refute html =~ ~s(phx-click="open_appearance")
   end
 
   test "appearance trigger opens the appearance panel when loom is enabled", %{conn: conn} do
@@ -39,10 +39,10 @@ defmodule SlackexWeb.ChatLive.LoomRedesignTest do
     {:ok, lv, html} = conn |> log_in_user(user) |> live(~p"/chat")
 
     # Trigger present but panel not yet rendered.
-    assert html =~ ~s(aria-label="Appearance")
+    assert html =~ ~s(phx-click="open_appearance")
     refute render(lv) =~ ~s(id="appearance-modal")
 
-    html = lv |> element(~s(button[aria-label="Appearance"])) |> render_click()
+    html = lv |> element(~s(button[phx-click="open_appearance"])) |> render_click()
 
     # Sectioned panel with pref controls scoped under .loom.
     assert html =~ ~s(id="appearance-modal")

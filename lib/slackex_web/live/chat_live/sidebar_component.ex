@@ -273,66 +273,116 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
             {@current_user.status}
           </span>
         </span>
-        <button
-          :if={@push_health != :ok}
-          data-push-health={@push_health}
-          phx-click="edit_profile"
-          class={[
-            "btn btn-ghost btn-xs btn-square",
-            @push_health == :browser_blocked && "text-error",
-            @push_health == :not_set_up && "text-warning"
-          ]}
-          title={
-            if @push_health == :browser_blocked,
-              do: "Notifications blocked by browser",
-              else: "Set up notifications"
-          }
-        >
-          <span class={
-            if @push_health == :browser_blocked,
-              do: "hero-bell-slash size-4",
-              else: "hero-bell size-4"
-          } />
-        </button>
-        <button
-          phx-click="edit_profile"
-          class="btn btn-ghost btn-xs btn-circle"
-          aria-label="Edit profile"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-            />
-          </svg>
-        </button>
-        <button
-          :if={@loom}
-          phx-click="open_appearance"
-          class="btn btn-ghost btn-xs btn-circle"
-          aria-label="Appearance"
-          title="Appearance"
-        >
-          <span class="hero-adjustments-horizontal size-3.5" />
-        </button>
-        <button
-          phx-click={JS.dispatch("phx:set-theme", detail: %{toggle: true})}
-          class="btn btn-ghost btn-xs btn-circle"
-          aria-label="Toggle theme"
-          data-phx-theme="toggle"
-        >
-          <span class="hero-sun-solid size-3.5 hidden dark:block" />
-          <span class="hero-moon-solid size-3.5 dark:hidden" />
-        </button>
-        <.link
-          href={~p"/users/log-out"}
-          method="delete"
-          class="btn btn-ghost btn-xs"
-        >
-          Log out
-        </.link>
+        <%= if @loom do %>
+          <%!-- Loom: collapse footer actions into a single overflow menu --%>
+          <div class="dropdown dropdown-top dropdown-end shrink-0">
+            <label
+              tabindex="0"
+              class={[
+                "btn btn-ghost btn-xs btn-circle",
+                @push_health == :browser_blocked && "text-error",
+                @push_health == :not_set_up && "text-warning"
+              ]}
+              aria-label="Menu"
+              title="Menu"
+            >
+              <span class="hero-bars-3 size-4" />
+            </label>
+            <ul
+              tabindex="0"
+              class="dropdown-content menu z-[100] mb-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow"
+            >
+              <li :if={@push_health != :ok}>
+                <button phx-click="edit_profile" data-push-health={@push_health}>
+                  <span class={
+                    if @push_health == :browser_blocked,
+                      do: "hero-bell-slash size-4",
+                      else: "hero-bell size-4"
+                  } />
+                  {if @push_health == :browser_blocked,
+                    do: "Notifications blocked",
+                    else: "Set up notifications"}
+                </button>
+              </li>
+              <li>
+                <button phx-click="edit_profile">
+                  <span class="hero-pencil-square size-4" /> Edit profile
+                </button>
+              </li>
+              <li>
+                <button phx-click="open_appearance">
+                  <span class="hero-adjustments-horizontal size-4" /> Appearance
+                </button>
+              </li>
+              <li>
+                <button
+                  phx-click={JS.dispatch("phx:set-theme", detail: %{toggle: true})}
+                  data-phx-theme="toggle"
+                >
+                  <span class="hero-sun-solid size-4 hidden dark:inline" />
+                  <span class="hero-moon-solid size-4 dark:hidden" /> Toggle theme
+                </button>
+              </li>
+              <li>
+                <.link href={~p"/users/log-out"} method="delete">
+                  <span class="hero-arrow-right-on-rectangle size-4" /> Log out
+                </.link>
+              </li>
+            </ul>
+          </div>
+        <% else %>
+          <button
+            :if={@push_health != :ok}
+            data-push-health={@push_health}
+            phx-click="edit_profile"
+            class={[
+              "btn btn-ghost btn-xs btn-square",
+              @push_health == :browser_blocked && "text-error",
+              @push_health == :not_set_up && "text-warning"
+            ]}
+            title={
+              if @push_health == :browser_blocked,
+                do: "Notifications blocked by browser",
+                else: "Set up notifications"
+            }
+          >
+            <span class={
+              if @push_health == :browser_blocked,
+                do: "hero-bell-slash size-4",
+                else: "hero-bell size-4"
+            } />
+          </button>
+          <button
+            phx-click="edit_profile"
+            class="btn btn-ghost btn-xs btn-circle"
+            aria-label="Edit profile"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+              />
+            </svg>
+          </button>
+          <button
+            phx-click={JS.dispatch("phx:set-theme", detail: %{toggle: true})}
+            class="btn btn-ghost btn-xs btn-circle"
+            aria-label="Toggle theme"
+            data-phx-theme="toggle"
+          >
+            <span class="hero-sun-solid size-3.5 hidden dark:block" />
+            <span class="hero-moon-solid size-3.5 dark:hidden" />
+          </button>
+          <.link
+            href={~p"/users/log-out"}
+            method="delete"
+            class="btn btn-ghost btn-xs"
+          >
+            Log out
+          </.link>
+        <% end %>
       </div>
     </aside>
     """
