@@ -52,16 +52,19 @@
   color:var(--color-base-content);
   font-family:var(--ff-sans);
   -webkit-font-smoothing:antialiased;
+  /* own stacking context so the weave can sit behind content (z-index:-1)
+     WITHOUT forcing position/z-index on children — preserves the mobile
+     drawer + backdrop, which are `fixed` direct children of #chat-container. */
+  isolation:isolate;
 }
 
 /* ---- Global weave texture overlay (subtle) ---- */
 .loom .loom-weave-bg {
-  position:absolute; inset:0; pointer-events:none; z-index:0; mix-blend-mode:screen;
+  position:absolute; inset:0; pointer-events:none; z-index:-1; mix-blend-mode:screen;
   background-image:
     repeating-linear-gradient(90deg, transparent 0, transparent 11px, rgba(232,197,71,.06) 11px, rgba(232,197,71,.06) 12px),
     repeating-linear-gradient(0deg,  transparent 0, transparent 11px, rgba(232,197,71,.025) 11px, rgba(232,197,71,.025) 12px);
 }
-.loom > :not(.loom-weave-bg) { position:relative; z-index:1; }
 
 /* ---- Global type: mono timestamps + kbd ---- */
 .loom time,
