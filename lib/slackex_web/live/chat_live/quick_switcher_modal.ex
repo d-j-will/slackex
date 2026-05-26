@@ -102,14 +102,14 @@ defmodule SlackexWeb.ChatLive.QuickSwitcherModal do
       />
 
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] px-4">
-        <div class="bg-base-100 rounded-xl shadow-xl w-full sm:max-w-md">
+        <div class="loom-palette bg-base-100 rounded-xl shadow-xl w-full sm:max-w-md">
           <div class="p-3">
             <input
               type="text"
               name="query"
               value={@query}
               placeholder="Search channels and conversations..."
-              class="input input-bordered w-full"
+              class="loom-palette-input input input-bordered w-full"
               phx-keyup="search"
               phx-target={@myself}
               phx-debounce="100"
@@ -131,10 +131,12 @@ defmodule SlackexWeb.ChatLive.QuickSwitcherModal do
               phx-target={@myself}
               class="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-base-200 text-left transition-colors"
             >
-              <span :if={item.type == :channel} class="text-base-content/50 text-sm">#</span>
+              <span :if={item.type == :channel} class="loom-palette-kind text-base-content/50 text-sm">
+                #
+              </span>
               <span
                 :if={item.type == :dm}
-                class="hero-chat-bubble-left-right size-4 text-base-content/50"
+                class="loom-palette-kind hero-chat-bubble-left-right size-4 text-base-content/50"
               />
               <span class="text-sm truncate">{item.name}</span>
             </button>

@@ -48,7 +48,7 @@ defmodule SlackexWeb.ChatLive.SummaryModal do
       <div class="relative bg-base-100 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
         <%!-- Header --%>
         <div class="flex items-center justify-between p-4 border-b border-base-300">
-          <h3 class="text-lg font-semibold">Channel Summary</h3>
+          <h3 class="loom-sum-title text-lg font-semibold">Channel Summary</h3>
           <button
             data-role="close-summary"
             phx-click="close_summary"
@@ -95,7 +95,8 @@ defmodule SlackexWeb.ChatLive.SummaryModal do
 
           <%= if @summary_state == :loading do %>
             <div class="flex items-center gap-2 mb-2">
-              <span class="loading loading-spinner loading-sm" />
+              <.loom_loader :if={@loom} />
+              <span :if={!@loom} class="loading loading-spinner loading-sm" />
               <span class="text-sm text-base-content/70">Generating summary...</span>
             </div>
             <%= if @markdown_enabled do %>
@@ -121,6 +122,46 @@ defmodule SlackexWeb.ChatLive.SummaryModal do
         </div>
       </div>
     </div>
+    """
+  end
+
+  defp loom_loader(assigns) do
+    ~H"""
+    <svg class="loom-loader" width="40" height="40" viewBox="0 0 24 24" aria-label="loading">
+      <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none">
+        <path d="M4 4 V20" opacity="0.7" />
+        <path d="M9 4 V20" opacity="0.5" />
+        <path d="M14 4 V20" opacity="0.5" />
+        <path d="M19 4 V20" opacity="0.7" />
+        <path d="M2 8 H22" stroke-dasharray="4 6">
+          <animate
+            attributeName="stroke-dashoffset"
+            from="0"
+            to="-20"
+            dur="1.6s"
+            repeatCount="indefinite"
+          />
+        </path>
+        <path d="M2 12 H22" stroke-dasharray="4 6" stroke-dashoffset="3">
+          <animate
+            attributeName="stroke-dashoffset"
+            from="3"
+            to="-17"
+            dur="1.6s"
+            repeatCount="indefinite"
+          />
+        </path>
+        <path d="M2 16 H22" stroke-dasharray="4 6">
+          <animate
+            attributeName="stroke-dashoffset"
+            from="0"
+            to="-20"
+            dur="1.6s"
+            repeatCount="indefinite"
+          />
+        </path>
+      </g>
+    </svg>
     """
   end
 

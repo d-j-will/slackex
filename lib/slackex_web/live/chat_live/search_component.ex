@@ -105,7 +105,10 @@ defmodule SlackexWeb.ChatLive.SearchComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="search-component" class="flex flex-col h-full border-l border-base-300 bg-base-100 w-80">
+    <div
+      id="search-component"
+      class="loom-search flex flex-col h-full border-l border-base-300 bg-base-100 w-80"
+    >
       <div class="p-3 border-b border-base-300 flex items-center justify-between">
         <h3 class="font-bold text-sm">Search messages</h3>
         <button

@@ -124,3 +124,16 @@
 .loom .thread-title { font-family:var(--ff-serif); font-style:italic; }
 .loom .loom-weft { display:block; padding:0 16px; }
 .loom .loom-weft line { stroke:var(--accent); }
+
+/* ---- Summary modal ("The Loom") ---- */
+.loom .loom-sum-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; }
+.loom .loom-loader { color:var(--accent); width:40px; height:40px; }
+
+/* ---- ⌘K palette ---- */
+.loom .loom-palette { background:#131109; border:0.5px solid var(--line-strong); border-radius:var(--radius-box); }
+.loom .loom-palette-input { font-family:var(--ff-serif); font-style:italic; font-size:18px; background:transparent; }
+.loom .loom-palette-kind { color:var(--accent); }
+
+/* ---- Search ---- */
+.loom .loom-search { background:#131109; border-left:0.5px solid var(--line); }
+.loom .loom-search mark { background:var(--accent); color:#1a160c; }
