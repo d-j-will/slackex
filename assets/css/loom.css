@@ -150,6 +150,11 @@
 .loom .loom-section-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; }
 .loom .loom-auth-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; }
 
+/* ---- CTA feedback (primary buttons: login, register, get-started, join) ---- */
+.loom .btn-primary { transition:filter .12s, transform .12s, box-shadow .12s; }
+.loom .btn-primary:hover { filter:brightness(1.08); box-shadow:0 4px 16px var(--accent-wash); transform:translateY(-1px); }
+.loom .btn-primary:active { transform:translateY(0); filter:brightness(.96); }
+
 /* ---- Light variant ---- */
 [data-theme="light"] .loom {
   --color-base-100:#fbf7eb;

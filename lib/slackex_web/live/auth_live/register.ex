@@ -35,7 +35,7 @@ defmodule SlackexWeb.AuthLive.Register do
           </div>
 
           <div class="mt-6">
-            <.button phx-disable-with="Creating account..." class="w-full">
+            <.button phx-disable-with="Creating account..." class="btn btn-primary w-full">
               Create account
             </.button>
           </div>

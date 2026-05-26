@@ -38,7 +38,7 @@ defmodule SlackexWeb.AuthLive.Login do
           </div>
 
           <div class="mt-6">
-            <.button phx-disable-with="Logging in..." class="w-full">
+            <.button phx-disable-with="Logging in..." class="btn btn-primary w-full">
               Log in
             </.button>
           </div>
