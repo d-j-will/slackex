@@ -91,3 +91,18 @@
 /* Summarize button -> gold-washed AI affordance (data-role exists already) */
 .loom [data-role="summarize-button"] { background:linear-gradient(135deg,var(--accent-wash),transparent); border:0.5px solid var(--accent-soft); color:var(--color-base-content); border-radius:var(--radius-field); }
 .loom [data-role="summarize-button"]:hover { border-color:var(--accent); }
+
+/* ---- Messages ---- */
+.loom .msg-name { font-weight:600; color:var(--color-base-content); }
+.loom #message-list time { font-family:var(--ff-mono); font-size:10.5px; color:#56503e; }
+/* reactions as woven pills */
+.loom .reaction { border-radius:999px; border:0.5px solid var(--line); background:#1b1810; font-family:var(--ff-mono); font-size:11.5px; padding:2px 7px 2px 5px; transition:transform .15s,border-color .15s; }
+.loom .reaction:hover { transform:translateY(-1px); border-color:var(--line-strong); }
+.loom .reaction.is-mine { background:var(--accent-wash); border-color:var(--accent-soft); color:var(--accent); }
+/* hover action bar */
+.loom [data-role="message-actions"] { background:#1b1810; border:0.5px solid var(--line); border-radius:var(--radius-field); box-shadow:0 8px 24px rgba(0,0,0,.32); }
+/* AI/bot serif label (only applies if msg-ai-label hook was added) */
+.loom .msg-ai-label { font-family:var(--ff-serif); font-style:italic; color:var(--accent); }
+/* code blocks + inline code */
+.loom #message-list pre, .loom #message-list code { font-family:var(--ff-mono); }
+.loom #message-list :not(pre) > code { color:var(--accent); }

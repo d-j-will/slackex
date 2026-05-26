@@ -223,10 +223,10 @@ defmodule SlackexWeb.ChatComponents do
       </div>
       <div class="flex-1 min-w-0">
         <div class={["flex items-baseline gap-2", @grouped && "hidden"]}>
-          <span class="font-semibold text-sm">{@sender_name}</span>
+          <span class="msg-name font-semibold text-sm">{@sender_name}</span>
           <span
             :if={Map.get(@sender, :is_bot, false)}
-            class="badge badge-xs badge-primary ml-1 align-middle"
+            class="msg-ai-label badge badge-xs badge-primary ml-1 align-middle"
           >
             BOT
           </span>
@@ -410,17 +410,17 @@ defmodule SlackexWeb.ChatComponents do
 
   def reaction_bar(assigns) do
     ~H"""
-    <div :if={@reactions != []} class="flex flex-wrap gap-1 mt-1">
+    <div :if={@reactions != []} class="reaction-bar flex flex-wrap gap-1 mt-1">
       <button
         :for={reaction <- @reactions}
         phx-click="toggle_reaction"
         phx-value-message-id={@message_id}
         phx-value-emoji={reaction.emoji}
         class={[
-          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border",
+          "reaction inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border",
           "hover:bg-base-300 transition-colors cursor-pointer",
           if(@current_user_id in reaction.user_ids,
-            do: "border-primary bg-primary/10 text-primary",
+            do: "is-mine border-primary bg-primary/10 text-primary",
             else: "border-base-300 bg-base-200 text-base-content"
           )
         ]}
