@@ -121,6 +121,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:pin_count, 0)
      |> assign(:show_quick_switcher, false)
      |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
+     |> assign(:loom, FunWithFlags.enabled?(:loom_redesign, for: user))
      |> assign(:node_name, Helpers.short_node_name())
      |> assign(:search_open, false)
      |> assign(:search_enabled, FunWithFlags.enabled?(:message_search))

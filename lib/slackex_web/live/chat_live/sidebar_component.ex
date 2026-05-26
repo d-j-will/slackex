@@ -17,6 +17,7 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
   import SlackexWeb.ChatComponents
 
   attr :push_health, :atom, default: :not_set_up
+  attr :loom, :boolean, default: false
 
   @impl true
   def mount(socket) do

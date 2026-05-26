@@ -29,6 +29,8 @@ defmodule SlackexWeb.ChatLive.SummaryModal do
     {:noreply, socket}
   end
 
+  attr :loom, :boolean, default: false
+
   @impl true
   def render(assigns) do
     ~H"""

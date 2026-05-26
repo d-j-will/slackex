@@ -40,6 +40,8 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
     {:noreply, assign(socket, :reply_form, to_form(%{"content" => ""}, as: :reply))}
   end
 
+  attr :loom, :boolean, default: false
+
   @impl true
   def render(assigns) do
     ~H"""

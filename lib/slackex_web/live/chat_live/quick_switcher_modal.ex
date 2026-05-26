@@ -84,6 +84,8 @@ defmodule SlackexWeb.ChatLive.QuickSwitcherModal do
     |> Enum.take(10)
   end
 
+  attr :loom, :boolean, default: false
+
   @impl true
   def render(assigns) do
     ~H"""

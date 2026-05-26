@@ -1,4 +1,9 @@
-<div class="flex h-full" id="chat-container" phx-hook="QuickSwitcher">
+<div
+  class={["flex h-full relative", @loom && "loom"]}
+  id="chat-container"
+  phx-hook="QuickSwitcher"
+>
+  <div :if={@loom} class="loom-weave-bg" aria-hidden="true"></div>
   <%!-- Mobile backdrop --%>
   <div
     :if={@sidebar_open}
@@ -28,6 +33,7 @@
       show_node={@show_node}
       node_name={@node_name}
       push_health={@push_health}
+      loom={@loom}
     />
   </div>
 
@@ -276,6 +282,7 @@
       parent_message={@thread_parent}
       current_user={@current_user}
       markdown_enabled={@markdown_enabled}
+      loom={@loom}
     />
   </div>
 
@@ -367,6 +374,7 @@
   summary_state={@summary_state}
   summary_error={@summary_error}
   markdown_enabled={@markdown_enabled}
+  loom={@loom}
 />
 
 <.live_component
@@ -376,4 +384,5 @@
   channels={@channels}
   dm_conversations={@dm_conversations}
   current_user={@current_user}
+  loom={@loom}
 />
