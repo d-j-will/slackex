@@ -1053,7 +1053,7 @@ defmodule SlackexWeb.ChatComponents do
         phx-click="close_appearance"
       />
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
-        <div class="bg-base-100 border border-base-300 rounded-box shadow-xl w-full max-w-md p-6 relative">
+        <div class="bg-base-100 border border-base-300 rounded-box shadow-xl w-full max-w-md p-6 relative max-h-[calc(100dvh-6rem)] overflow-y-auto">
           <button
             type="button"
             phx-click="close_appearance"

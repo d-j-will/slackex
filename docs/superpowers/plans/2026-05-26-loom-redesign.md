@@ -581,6 +581,12 @@ Define `loom_loader/1` as a small function component in this module (animated wa
 
 Once `:loom_redesign` is at 100% and stable for a sustained period, a separate effort should: remove the flag conditionals, delete the old daisyUI purple/orange theme blocks from `app.css` if Loom becomes the default, fold `loom.css` into the base theme, and drop the dead `:new_ui` DB row. **Do not do this now** — the flag is the safety net.
 
+**PWA chrome (global, can't be flag-gated — defer to this cutover):** update the warm-charcoal/gold palette in the surfaces that sit *outside* `.loom` and apply to all users:
+- `lib/slackex_web/components/layouts/root.html.heex` — `<meta name="theme-color">` (currently `#5D4D8F` dark / `#E8A835` light) → charcoal; and `apple-mobile-web-app-status-bar-style` `default` → `black-translucent`.
+- `priv/static/manifest.json` — `theme_color` / `background_color` (currently `#2A2640` / `#5D4D8F`) → Loom charcoal/gold.
+- `lib/slackex_web/controllers/offline_controller.ex` — the offline page is static + outside `.loom` (old purple/orange `#2A2640`/`#5D4D8F`/`#E8A835`); recolor to the Loom palette so it doesn't jar against the app.
+Changing these *before* the cutover would mis-color the PWA status bar / splash / offline screen for non-Loom prod users — that's why they wait. (Identified in the 2026-05-27 mobile/PWA audit.)
+
 ---
 
 ## Self-Review
