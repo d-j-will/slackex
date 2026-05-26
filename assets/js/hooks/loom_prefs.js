@@ -63,14 +63,11 @@ function applySerifAi(value) {
 function applyAccent(value) {
   const s = root().style;
   if (isHex(value)) {
-    // 8-digit hex alpha: 59 ~= 35% (soft), 14 ~= 8% (wash) — matches the gold defaults.
+    // Only the base accent is set; --accent-soft/--accent-wash are derived from it
+    // via color-mix in loom.css, theme-aware (heavier wash in light mode).
     s.setProperty("--loom-accent", value);
-    s.setProperty("--loom-accent-soft", `${value}59`);
-    s.setProperty("--loom-accent-wash", `${value}14`);
   } else {
     s.removeProperty("--loom-accent");
-    s.removeProperty("--loom-accent-soft");
-    s.removeProperty("--loom-accent-wash");
   }
 }
 
@@ -82,7 +79,7 @@ function applyPrefs() {
 }
 
 // A pref value that means "default" — clear from storage rather than persist.
-const DEFAULTS = {density: "regular", weave: "subtle", "serif-ai": "true", accent: ""};
+const DEFAULTS = {density: "regular", weave: "subtle", "serif-ai": "true", accent: "#e8c547"};
 
 function setPref(key, value) {
   const storageKey = "phx:" + key;

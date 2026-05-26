@@ -18,8 +18,9 @@
      Read from --loom-* overrides (set on <html> by the LoomPrefs hook) with the
      current values as fallbacks, so no-prefs renders byte-for-byte unchanged. */
   --accent: var(--loom-accent, #e8c547);
-  --accent-soft: var(--loom-accent-soft, rgba(232,197,71,.33));
-  --accent-wash: var(--loom-accent-wash, rgba(232,197,71,.08));
+  /* soft/wash derived from --accent so the picker recolors them too (theme-aware). */
+  --accent-soft: color-mix(in srgb, var(--accent) 33%, transparent);
+  --accent-wash: color-mix(in srgb, var(--accent) 8%, transparent);
   --copper:#d97757;
   --jade:#6fb59a;
   --ok:#7fb59a;
@@ -273,8 +274,8 @@
   --color-base-200:#f3eedd;
   --color-base-300:rgba(40,32,12,.14);
   --color-base-content:#1a160c;
-  /* read the user-picked wash too (LoomPrefs sets --loom-accent-wash); default = stronger light-mode gold tint */
-  --accent-wash: var(--loom-accent-wash, rgba(232,197,71,.20));
+  /* stronger wash in light mode; still derived from the (possibly user-picked) accent */
+  --accent-wash: color-mix(in srgb, var(--accent) 20%, transparent);
   --line:rgba(40,32,12,.10);
   --line-strong:rgba(40,32,12,.18);
   background:#f6f1e2;
