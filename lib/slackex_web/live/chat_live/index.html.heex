@@ -295,94 +295,96 @@
   />
 </div>
 
-<.live_component
-  :if={@live_action == :new_dm}
-  module={NewDmModal}
-  id="new-dm-modal"
-  current_user={@current_user}
-/>
+<div class={[@loom && "loom"]}>
+  <.live_component
+    :if={@live_action == :new_dm}
+    module={NewDmModal}
+    id="new-dm-modal"
+    current_user={@current_user}
+  />
 
-<.live_component
-  :if={@live_action == :create_channel}
-  module={CreateChannelModal}
-  id="create-channel-modal"
-  current_user={@current_user}
-/>
+  <.live_component
+    :if={@live_action == :create_channel}
+    module={CreateChannelModal}
+    id="create-channel-modal"
+    current_user={@current_user}
+  />
 
-<.live_component
-  :if={@live_action == :browse_channels}
-  module={BrowseChannelsModal}
-  id="browse-channels-modal"
-  current_user={@current_user}
-/>
+  <.live_component
+    :if={@live_action == :browse_channels}
+    module={BrowseChannelsModal}
+    id="browse-channels-modal"
+    current_user={@current_user}
+  />
 
-<.live_component
-  :if={@channel_management_enabled and @live_action == :members and @active_channel}
-  module={ChannelMembersModal}
-  id="channel-members-modal"
-  channel={@active_channel}
-  current_user={@current_user}
-/>
+  <.live_component
+    :if={@channel_management_enabled and @live_action == :members and @active_channel}
+    module={ChannelMembersModal}
+    id="channel-members-modal"
+    channel={@active_channel}
+    current_user={@current_user}
+  />
 
-<.live_component
-  :if={@channel_management_enabled and @live_action == :pinned and @active_channel}
-  module={PinnedMessagesModal}
-  id="pinned-messages-modal"
-  channel={@active_channel}
-  current_user={@current_user}
-/>
+  <.live_component
+    :if={@channel_management_enabled and @live_action == :pinned and @active_channel}
+    module={PinnedMessagesModal}
+    id="pinned-messages-modal"
+    channel={@active_channel}
+    current_user={@current_user}
+  />
 
-<.live_component
-  :if={@channel_management_enabled and @live_action == :invite and @active_channel}
-  module={InviteLinkModal}
-  id="invite-link-modal"
-  channel={@active_channel}
-  current_user={@current_user}
-/>
+  <.live_component
+    :if={@channel_management_enabled and @live_action == :invite and @active_channel}
+    module={InviteLinkModal}
+    id="invite-link-modal"
+    channel={@active_channel}
+    current_user={@current_user}
+  />
 
-<.report_modal
-  show={@show_report_modal}
-  report_form={@report_form}
-  report_message_id={@report_message_id}
-/>
+  <.report_modal
+    show={@show_report_modal}
+    report_form={@report_form}
+    report_message_id={@report_message_id}
+  />
 
-<.user_profile_card
-  :if={@profile_user}
-  user={@profile_user}
-  online={MapSet.member?(@online_user_ids, @profile_user.id)}
-  show_send_message={@profile_user.id != @current_user.id}
-/>
+  <.user_profile_card
+    :if={@profile_user}
+    user={@profile_user}
+    online={MapSet.member?(@online_user_ids, @profile_user.id)}
+    show_send_message={@profile_user.id != @current_user.id}
+  />
 
-<.edit_profile_modal
-  show={@show_edit_profile}
-  form={@edit_profile_form}
-  current_user={@current_user}
-  push_notifications_enabled={@push_notifications_enabled}
-  push_permission={@push_permission}
-  push_subscribed={@push_subscribed}
-  push_health={@push_health}
-  notification_level={@notification_level}
-/>
+  <.edit_profile_modal
+    show={@show_edit_profile}
+    form={@edit_profile_form}
+    current_user={@current_user}
+    push_notifications_enabled={@push_notifications_enabled}
+    push_permission={@push_permission}
+    push_subscribed={@push_subscribed}
+    push_health={@push_health}
+    notification_level={@notification_level}
+  />
 
-<.push_explainer_modal show={@show_push_explainer} />
+  <.push_explainer_modal show={@show_push_explainer} />
 
-<.live_component
-  :if={@show_summary_modal}
-  module={SummaryModal}
-  id="summary-modal"
-  summary_text={@summary_text}
-  summary_state={@summary_state}
-  summary_error={@summary_error}
-  markdown_enabled={@markdown_enabled}
-  loom={@loom}
-/>
+  <.live_component
+    :if={@show_summary_modal}
+    module={SummaryModal}
+    id="summary-modal"
+    summary_text={@summary_text}
+    summary_state={@summary_state}
+    summary_error={@summary_error}
+    markdown_enabled={@markdown_enabled}
+    loom={@loom}
+  />
 
-<.live_component
-  :if={@quick_switcher_enabled and @show_quick_switcher}
-  module={QuickSwitcherModal}
-  id="quick-switcher"
-  channels={@channels}
-  dm_conversations={@dm_conversations}
-  current_user={@current_user}
-  loom={@loom}
-/>
+  <.live_component
+    :if={@quick_switcher_enabled and @show_quick_switcher}
+    module={QuickSwitcherModal}
+    id="quick-switcher"
+    channels={@channels}
+    dm_conversations={@dm_conversations}
+    current_user={@current_user}
+    loom={@loom}
+  />
+</div>
