@@ -642,7 +642,7 @@ defmodule SlackexWeb.ChatComponents do
 
   def compose_area(assigns) do
     ~H"""
-    <div class="p-3 border-t border-base-300 bg-base-100">
+    <div class="p-3 border-t border-base-300 bg-base-100 chat-composer">
       <.form
         for={@message_form}
         id="message-form"
@@ -658,7 +658,7 @@ defmodule SlackexWeb.ChatComponents do
           autocomplete="off"
           phx-debounce="100"
         >{@message_form[:content].value}</textarea>
-        <button type="submit" class="btn btn-primary btn-sm h-[2.5rem]">Send</button>
+        <button type="submit" class="btn btn-primary btn-sm h-[2.5rem] loom-send">Send</button>
       </.form>
     </div>
     """

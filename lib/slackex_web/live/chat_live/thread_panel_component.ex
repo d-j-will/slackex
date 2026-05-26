@@ -46,11 +46,11 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
   def render(assigns) do
     ~H"""
     <div class={[
-      "flex flex-col border-l border-base-300 bg-base-100",
+      "flex flex-col border-l border-base-300 bg-base-100 thread-panel",
       "w-full md:w-[400px] h-full"
     ]}>
       <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
-        <h3 class="font-semibold text-sm">Thread</h3>
+        <h3 class="font-semibold text-sm thread-title">Thread</h3>
         <button
           phx-click="close_thread"
           class="btn btn-ghost btn-sm btn-square"
@@ -67,6 +67,27 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
           id_prefix="thread-"
         />
       </div>
+
+      <svg
+        :if={@loom}
+        class="loom-weft"
+        viewBox="0 0 200 20"
+        preserveAspectRatio="none"
+        width="100%"
+        height="14"
+        aria-hidden="true"
+      >
+        <line
+          :for={i <- 0..4}
+          x1="0"
+          x2="200"
+          y1={(i + 0.5) * 4}
+          y2={(i + 0.5) * 4}
+          stroke-width="1.3"
+          stroke-dasharray="2 4"
+          opacity="0.5"
+        />
+      </svg>
 
       <div class="flex-1 overflow-y-auto px-4 py-2 space-y-2">
         <div :if={@replies == []} class="text-center text-base-content/50 py-8 text-sm">

@@ -106,3 +106,21 @@
 /* code blocks + inline code */
 .loom #message-list pre, .loom #message-list code { font-family:var(--ff-mono); }
 .loom #message-list :not(pre) > code { color:var(--accent); }
+
+/* ---- Composer ---- */
+.loom .chat-composer { background:#0b0a07; }
+.loom .chat-composer textarea, .loom #message-form textarea {
+  background:#1b1810; border:0.5px solid var(--line); border-radius:var(--radius-box); font-family:var(--ff-sans);
+}
+.loom .chat-composer textarea:focus, .loom #message-form textarea:focus {
+  border-color:var(--accent-soft); box-shadow:0 0 0 3px var(--accent-wash); outline:0;
+}
+.loom .chat-composer textarea::placeholder { font-family:var(--ff-serif); font-style:italic; color:#56503e; }
+.loom .loom-send { background:var(--accent); color:#1a160c; font-weight:600; border-radius:var(--radius-field); }
+.loom .loom-send:hover { filter:brightness(1.08); }
+
+/* ---- Thread panel ---- */
+.loom .thread-panel { background:linear-gradient(180deg,#131109,#16140d); border-left:0.5px solid var(--line); }
+.loom .thread-title { font-family:var(--ff-serif); font-style:italic; }
+.loom .loom-weft { display:block; padding:0 16px; }
+.loom .loom-weft line { stroke:var(--accent); }
