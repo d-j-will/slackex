@@ -14,10 +14,12 @@
 
 /* ---- Loom tokens + daisyUI var remap (dark) ---- */
 .loom {
-  /* Loom-only tokens used by targeted selectors (added in later tasks) */
-  --accent:#e8c547;
-  --accent-soft:rgba(232,197,71,.33);
-  --accent-wash:rgba(232,197,71,.08);
+  /* Loom-only tokens used by targeted selectors (added in later tasks).
+     Read from --loom-* overrides (set on <html> by the LoomPrefs hook) with the
+     current values as fallbacks, so no-prefs renders byte-for-byte unchanged. */
+  --accent: var(--loom-accent, #e8c547);
+  --accent-soft: var(--loom-accent-soft, rgba(232,197,71,.33));
+  --accent-wash: var(--loom-accent-wash, rgba(232,197,71,.08));
   --copper:#d97757;
   --jade:#6fb59a;
   --ok:#7fb59a;
@@ -32,13 +34,14 @@
   --color-base-200:#16140d;   /* sidebar / secondary surfaces */
   --color-base-300:#2a2519;   /* borders + insets */
   --color-base-content:#f2ecdc;
-  --color-primary:#e8c547;        --color-primary-content:#1a160c;
+  /* daisyUI primary/accent/warning follow the chosen accent so btn-primary etc. recolor */
+  --color-primary: var(--loom-accent, #e8c547);   --color-primary-content:#1a160c;
   --color-secondary:#d97757;      --color-secondary-content:#1a160c;
-  --color-accent:#e8c547;         --color-accent-content:#1a160c;
+  --color-accent:  var(--loom-accent, #e8c547);   --color-accent-content:#1a160c;
   --color-neutral:#221e15;        --color-neutral-content:#f2ecdc;
   --color-info:#7fb59a;           --color-info-content:#0b0a07;
   --color-success:#7fb59a;        --color-success-content:#0b0a07;
-  --color-warning:#e8c547;        --color-warning-content:#1a160c;
+  --color-warning: var(--loom-accent, #e8c547);   --color-warning-content:#1a160c;
   --color-error:#e07c6e;          --color-error-content:#1a160c;
 
   --radius-selector:0.4375rem;
@@ -61,6 +64,7 @@
 /* ---- Global weave texture overlay (subtle) ---- */
 .loom .loom-weave-bg {
   position:absolute; inset:0; pointer-events:none; z-index:-1; mix-blend-mode:screen;
+  opacity: var(--loom-weave-opacity, 1);
   background-image:
     repeating-linear-gradient(90deg, transparent 0, transparent 11px, rgba(232,197,71,.06) 11px, rgba(232,197,71,.06) 12px),
     repeating-linear-gradient(0deg,  transparent 0, transparent 11px, rgba(232,197,71,.025) 11px, rgba(232,197,71,.025) 12px);
@@ -104,8 +108,9 @@
 .loom .reaction.is-mine { background:var(--accent-wash); border-color:var(--accent-soft); color:var(--accent); }
 /* hover action bar */
 .loom [data-role="message-actions"] { background:#1b1810; border:0.5px solid var(--line); border-radius:var(--radius-field); box-shadow:0 8px 24px rgba(0,0,0,.32); }
-/* AI/bot serif label (only applies if msg-ai-label hook was added) */
-.loom .msg-ai-label { font-family:var(--ff-serif); font-style:italic; color:var(--accent); }
+/* AI/bot serif label (only applies if msg-ai-label hook was added).
+   Font is swappable via --loom-ai-* (serif-AI pref) — see Appearance prefs section. */
+.loom .msg-ai-label { font-family:var(--loom-ai-font, var(--ff-serif)); font-style:var(--loom-ai-style, italic); color:var(--accent); }
 /* code blocks + inline code */
 .loom #message-list pre, .loom #message-list code { font-family:var(--ff-mono); }
 .loom #message-list :not(pre) > code { color:var(--accent); }
@@ -128,11 +133,11 @@
 .loom .loom-weft { display:block; padding:0 16px; }
 .loom .loom-weft line { stroke:var(--accent); }
 
-/* ---- Modal titles -> serif ---- */
-.loom .loom-modal-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; }
+/* ---- Modal titles -> serif (AI moment: swappable via --loom-ai-*) ---- */
+.loom .loom-modal-title { font-family:var(--loom-ai-font, var(--ff-serif)); font-style:var(--loom-ai-style, italic); font-weight:400; }
 
-/* ---- Summary modal ("The Loom") ---- */
-.loom .loom-sum-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; }
+/* ---- Summary modal ("The Loom") (AI moment: swappable via --loom-ai-*) ---- */
+.loom .loom-sum-title { font-family:var(--loom-ai-font, var(--ff-serif)); font-style:var(--loom-ai-style, italic); font-weight:400; }
 .loom .loom-loader { color:var(--accent); width:40px; height:40px; }
 
 /* ---- ⌘K palette ---- */
@@ -157,6 +162,38 @@
 .loom .btn-primary { transition:filter .12s, transform .12s, box-shadow .12s; }
 .loom .btn-primary:hover { filter:brightness(1.08); box-shadow:0 4px 16px var(--accent-wash); transform:translateY(-1px); }
 .loom .btn-primary:active { transform:translateY(0); filter:brightness(.96); }
+
+/* ---- Appearance prefs (user tweaks) ----
+   All rules below read --loom-* override vars (set on <html> by the LoomPrefs
+   hook) with the CURRENT default as the fallback. With no prefs set, every
+   var() yields its fallback and the rendered result is byte-for-byte unchanged.
+   --loom-accent / -soft / -wash and --loom-ai-font / -style are consumed in the
+   base .loom rule and the AI-moment selectors above. */
+
+/* density: compact / regular(default) / comfy.
+   Gated on [data-loom-density] (set on <html> by the hook for compact/comfy only)
+   so that with NO pref the rules don't match AT ALL — the message row keeps its
+   Tailwind py-1 (ungrouped) / py-0.5 (grouped) padding and text-sm sizing.
+   (A `var(..., revert)` fallback can't be used here: this rule out-specifies
+   Tailwind's utility, so `revert` would roll back to the UA default of 0.) */
+:root[data-loom-density] .loom #message-list { font-size: var(--loom-msg-fs); }
+:root[data-loom-density] .loom #message-list [phx-hook="LongPress"] {
+  padding-top: var(--loom-msg-py);
+  padding-bottom: var(--loom-msg-py);
+}
+:root[data-loom-density] .loom #message-list [data-message-content] {
+  font-size: var(--loom-msg-fs);
+  line-height: var(--loom-msg-lh);
+}
+
+/* weave intensity: off (opacity 0) / subtle (default) / pronounced.
+   "pronounced" swaps to a denser, higher-alpha gradient via a data attribute the
+   hook sets on <html>; default (no attr) keeps the subtle look above. */
+:root[data-loom-weave="pronounced"] .loom .loom-weave-bg {
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0, transparent 9px, rgba(232,197,71,.11) 9px, rgba(232,197,71,.11) 10px),
+    repeating-linear-gradient(0deg,  transparent 0, transparent 9px, rgba(232,197,71,.05) 9px, rgba(232,197,71,.05) 10px);
+}
 
 /* ---- Light variant ---- */
 [data-theme="light"] .loom {
