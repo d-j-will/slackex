@@ -273,7 +273,8 @@
   --color-base-200:#f3eedd;
   --color-base-300:rgba(40,32,12,.14);
   --color-base-content:#1a160c;
-  --accent-wash:rgba(232,197,71,.20);
+  /* read the user-picked wash too (LoomPrefs sets --loom-accent-wash); default = stronger light-mode gold tint */
+  --accent-wash: var(--loom-accent-wash, rgba(232,197,71,.20));
   --line:rgba(40,32,12,.10);
   --line-strong:rgba(40,32,12,.18);
   background:#f6f1e2;
