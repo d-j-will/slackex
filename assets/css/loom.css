@@ -137,3 +137,31 @@
 /* ---- Search ---- */
 .loom .loom-search { background:#131109; border-left:0.5px solid var(--line); }
 .loom .loom-search mark { background:var(--accent); color:#1a160c; }
+
+/* ---- Empty + typing ---- */
+.loom .loom-empty :is(h1,h2,h3) { font-family:var(--ff-serif); font-style:italic; }
+.loom .loom-typing { font-family:var(--ff-mono); font-size:10.5px; color:#80785f; }
+
+/* ---- Light variant ---- */
+[data-theme="light"] .loom {
+  --color-base-100:#fbf7eb;
+  --color-base-200:#f3eedd;
+  --color-base-300:rgba(40,32,12,.14);
+  --color-base-content:#1a160c;
+  --accent-wash:rgba(232,197,71,.20);
+  --line:rgba(40,32,12,.10);
+  --line-strong:rgba(40,32,12,.18);
+  background:#f6f1e2;
+}
+[data-theme="light"] .loom .chat-sidebar { background:linear-gradient(180deg,#fbf7eb,#f3eedd); }
+[data-theme="light"] .loom .chat-header { background:linear-gradient(180deg,#fbf7eb,#f6f1e2); }
+[data-theme="light"] .loom .chat-composer { background:#f6f1e2; }
+[data-theme="light"] .loom .chat-composer textarea, [data-theme="light"] .loom #message-form textarea { background:#ffffff; }
+[data-theme="light"] .loom .reaction, [data-theme="light"] .loom [data-role="message-actions"] { background:#ffffff; }
+[data-theme="light"] .loom .loom-palette, [data-theme="light"] .loom .loom-search { background:#fbf7eb; }
+[data-theme="light"] .loom .loom-weave-bg {
+  mix-blend-mode:multiply;
+  background-image:
+    repeating-linear-gradient(90deg,transparent 0,transparent 11px,rgba(120,90,0,.05) 11px,rgba(120,90,0,.05) 12px),
+    repeating-linear-gradient(0deg, transparent 0,transparent 11px,rgba(120,90,0,.02) 11px,rgba(120,90,0,.02) 12px);
+}

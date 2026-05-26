@@ -472,7 +472,7 @@ defmodule SlackexWeb.ChatComponents do
     assigns = assign(assigns, :text, typing_text(assigns.users))
 
     ~H"""
-    <div :if={@text} class="px-4 py-1 text-xs text-base-content/50 italic">
+    <div :if={@text} class="loom-typing px-4 py-1 text-xs text-base-content/50 italic">
       {@text}
     </div>
     """
@@ -673,7 +673,7 @@ defmodule SlackexWeb.ChatComponents do
 
   def empty_state(assigns) do
     ~H"""
-    <div class="flex-1 flex items-center justify-center text-base-content/50">
+    <div class="loom-empty flex-1 flex items-center justify-center text-base-content/50">
       <div class="text-center space-y-2">
         <div :if={@icon} class="text-4xl mb-4">{@icon}</div>
         <h2 class="text-2xl font-bold">{@title}</h2>
