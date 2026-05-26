@@ -1029,6 +1029,193 @@ defmodule SlackexWeb.ChatComponents do
     """
   end
 
+  # ────────────────────────── Appearance panel ─────────────────────────────
+  #
+  # Loom-only "Tweaks" panel. Stateless: every control dispatches a
+  # `loom:set-pref` window CustomEvent, which the LoomPrefs hook persists to
+  # localStorage and applies as `--loom-*` override vars. The AppearancePanel
+  # client hook reflects the current selection by adding `.is-active` to the
+  # matching `[data-pref]` button (the server can't read localStorage).
+  attr :show, :boolean, default: false
+
+  def appearance_modal(assigns) do
+    ~H"""
+    <div
+      :if={@show}
+      id="appearance-modal"
+      phx-hook="AppearancePanel"
+      phx-window-keydown="close_appearance"
+      phx-key="Escape"
+    >
+      <div
+        id="appearance-backdrop"
+        class="fixed inset-0 z-40 bg-black/50"
+        phx-click="close_appearance"
+      />
+      <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
+        <div class="bg-base-100 border border-base-300 rounded-box shadow-xl w-full max-w-md p-6 relative">
+          <button
+            type="button"
+            phx-click="close_appearance"
+            class="btn btn-ghost btn-sm btn-square absolute top-3 right-3"
+            aria-label="Close"
+          >
+            <span class="hero-x-mark size-5" />
+          </button>
+
+          <h3 class="loom-modal-title text-2xl mb-5">Appearance</h3>
+
+          <div class="space-y-6">
+            <%!-- Theme --%>
+            <section class="space-y-3">
+              <p class="loom-pref-section">Theme</p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm">Dark mode</span>
+                <button
+                  type="button"
+                  phx-click={JS.dispatch("phx:set-theme", detail: %{toggle: true})}
+                  class="btn btn-ghost btn-xs btn-circle"
+                  aria-label="Toggle dark mode"
+                  data-phx-theme="toggle"
+                >
+                  <span class="hero-sun-solid size-4 hidden dark:block" />
+                  <span class="hero-moon-solid size-4 dark:hidden" />
+                </button>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-sm">Density</span>
+                <div class="loom-seg">
+                  <button
+                    type="button"
+                    data-pref="density"
+                    data-value="compact"
+                    phx-click={
+                      JS.dispatch("loom:set-pref", detail: %{key: "density", value: "compact"})
+                    }
+                    class="loom-seg-btn"
+                  >
+                    Compact
+                  </button>
+                  <button
+                    type="button"
+                    data-pref="density"
+                    data-value="regular"
+                    phx-click={
+                      JS.dispatch("loom:set-pref", detail: %{key: "density", value: "regular"})
+                    }
+                    class="loom-seg-btn"
+                  >
+                    Regular
+                  </button>
+                  <button
+                    type="button"
+                    data-pref="density"
+                    data-value="comfy"
+                    phx-click={
+                      JS.dispatch("loom:set-pref", detail: %{key: "density", value: "comfy"})
+                    }
+                    class="loom-seg-btn"
+                  >
+                    Comfy
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <%!-- Weave --%>
+            <section class="space-y-3">
+              <p class="loom-pref-section">Weave</p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm">Texture</span>
+                <div class="loom-seg">
+                  <button
+                    type="button"
+                    data-pref="weave"
+                    data-value="off"
+                    phx-click={JS.dispatch("loom:set-pref", detail: %{key: "weave", value: "off"})}
+                    class="loom-seg-btn"
+                  >
+                    Off
+                  </button>
+                  <button
+                    type="button"
+                    data-pref="weave"
+                    data-value="subtle"
+                    phx-click={JS.dispatch("loom:set-pref", detail: %{key: "weave", value: "subtle"})}
+                    class="loom-seg-btn"
+                  >
+                    Subtle
+                  </button>
+                  <button
+                    type="button"
+                    data-pref="weave"
+                    data-value="pronounced"
+                    phx-click={
+                      JS.dispatch("loom:set-pref", detail: %{key: "weave", value: "pronounced"})
+                    }
+                    class="loom-seg-btn"
+                  >
+                    Pronounced
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <%!-- AI --%>
+            <section class="space-y-3">
+              <p class="loom-pref-section">AI</p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm">Serif for AI moments</span>
+                <div class="loom-seg">
+                  <button
+                    type="button"
+                    data-pref="serif-ai"
+                    data-value="true"
+                    phx-click={
+                      JS.dispatch("loom:set-pref", detail: %{key: "serif-ai", value: "true"})
+                    }
+                    class="loom-seg-btn"
+                  >
+                    On
+                  </button>
+                  <button
+                    type="button"
+                    data-pref="serif-ai"
+                    data-value="false"
+                    phx-click={
+                      JS.dispatch("loom:set-pref", detail: %{key: "serif-ai", value: "false"})
+                    }
+                    class="loom-seg-btn"
+                  >
+                    Off
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <%!-- Accent --%>
+            <section class="space-y-3">
+              <p class="loom-pref-section">Accent</p>
+              <div class="flex items-center gap-3">
+                <button
+                  :for={hex <- ~w(#e8c547 #d97757 #3ecf8e #7c5cff #ff5b8a #7fb5ff)}
+                  type="button"
+                  data-pref="accent"
+                  data-value={hex}
+                  phx-click={JS.dispatch("loom:set-pref", detail: %{key: "accent", value: hex})}
+                  class="loom-swatch"
+                  style={"background:#{hex}"}
+                  aria-label={"Accent #{hex}"}
+                />
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   defp field_error(assigns) do
     ~H"""
     <p class="mt-1 text-xs text-error">{render_slot(@inner_block)}</p>

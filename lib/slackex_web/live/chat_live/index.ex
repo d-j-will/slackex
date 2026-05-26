@@ -120,6 +120,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:member_count, 0)
      |> assign(:pin_count, 0)
      |> assign(:show_quick_switcher, false)
+     |> assign(:show_appearance, false)
      |> assign(:show_node, FunWithFlags.enabled?(:show_cluster_node, for: user))
      |> assign(:loom, FunWithFlags.enabled?(:loom_redesign, for: user))
      |> assign(:node_name, Helpers.short_node_name())
@@ -440,6 +441,14 @@ defmodule SlackexWeb.ChatLive.Index do
     socket = Summary.cancel_summary_task(socket)
 
     {:noreply, assign(socket, show_summary_modal: false, summary_state: :idle, summary_text: "")}
+  end
+
+  def handle_event("open_appearance", _params, socket) do
+    {:noreply, assign(socket, :show_appearance, true)}
+  end
+
+  def handle_event("close_appearance", _params, socket) do
+    {:noreply, assign(socket, :show_appearance, false)}
   end
 
   def handle_event("join_channel", _params, socket) do

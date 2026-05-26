@@ -316,6 +316,15 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
           </svg>
         </button>
         <button
+          :if={@loom}
+          phx-click="open_appearance"
+          class="btn btn-ghost btn-xs btn-circle"
+          aria-label="Appearance"
+          title="Appearance"
+        >
+          <span class="hero-adjustments-horizontal size-3.5" />
+        </button>
+        <button
           phx-click={JS.dispatch("phx:set-theme", detail: %{toggle: true})}
           class="btn btn-ghost btn-xs btn-circle"
           aria-label="Toggle theme"

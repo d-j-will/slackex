@@ -195,6 +195,78 @@
     repeating-linear-gradient(0deg,  transparent 0, transparent 9px, rgba(232,197,71,.05) 9px, rgba(232,197,71,.05) 10px);
 }
 
+/* ---- Appearance panel ----
+   Sectioned "Tweaks" panel: mono uppercase section labels, segmented controls,
+   and accent swatches. All colours read Loom tokens so they re-palette with the
+   chosen accent + the light/dark variant. Active state is added by the
+   AppearancePanel hook (mirrors localStorage). */
+.loom .loom-pref-section {
+  font-family: var(--ff-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #80785f;
+}
+
+/* Segmented control container */
+.loom .loom-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--color-base-200);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-field);
+}
+.loom .loom-seg-btn {
+  font-family: var(--ff-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: calc(var(--radius-field) - 2px);
+  color: var(--color-base-content);
+  opacity: 0.72;
+  transition: background 0.12s, color 0.12s, opacity 0.12s;
+}
+.loom .loom-seg-btn:hover {
+  opacity: 1;
+}
+.loom .loom-seg-btn.is-active {
+  background: var(--accent);
+  color: #1a160c;
+  font-weight: 600;
+  opacity: 1;
+}
+
+/* Accent swatches */
+.loom .loom-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 0.5px solid var(--line);
+  transition: transform 0.12s, box-shadow 0.12s;
+  cursor: pointer;
+}
+.loom .loom-swatch:hover {
+  transform: translateY(-1px);
+}
+.loom .loom-swatch.is-active {
+  box-shadow: 0 0 0 2px var(--color-base-100), 0 0 0 4px var(--accent);
+}
+.loom .loom-swatch.is-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 9px;
+  height: 5px;
+  border-left: 1.5px solid #1a160c;
+  border-bottom: 1.5px solid #1a160c;
+  transform: rotate(-45deg) translateY(-1px);
+}
+
 /* ---- Light variant ---- */
 [data-theme="light"] .loom {
   --color-base-100:#fbf7eb;

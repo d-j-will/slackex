@@ -35,13 +35,14 @@ import LocalTime from "./hooks/local_time"
 import ConnectionStatus from "./hooks/connection_status"
 import AppBadge from "./hooks/app_badge"
 import LoomPrefs from "./hooks/loom_prefs"
+import AppearancePanel from "./hooks/appearance_panel"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {MessageList, Compose, EditMessage, EmojiPicker, QuickSwitcher, LongPress, CopyMessage, Analytics, PushSubscription, LocalTime, ConnectionStatus, AppBadge, LoomPrefs},
+  hooks: {MessageList, Compose, EditMessage, EmojiPicker, QuickSwitcher, LongPress, CopyMessage, Analytics, PushSubscription, LocalTime, ConnectionStatus, AppBadge, LoomPrefs, AppearancePanel},
 })
 
 // Show progress bar on live navigation and form submits
