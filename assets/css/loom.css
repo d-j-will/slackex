@@ -1,0 +1,69 @@
+/* Loom — scoped visual layer for the chat redesign (:loom_redesign).
+   Everything lives under `.loom`. Re-maps daisyUI theme vars to the Loom
+   palette, then adds weave/serif/gold touches via targeted selectors. */
+
+/* ---- Self-hosted fonts ---- */
+@font-face { font-family:"Geist"; font-weight:400; font-style:normal; font-display:swap; src:url("/fonts/Geist-Regular.woff2") format("woff2"); }
+@font-face { font-family:"Geist"; font-weight:500; font-style:normal; font-display:swap; src:url("/fonts/Geist-Medium.woff2") format("woff2"); }
+@font-face { font-family:"Geist"; font-weight:600; font-style:normal; font-display:swap; src:url("/fonts/Geist-SemiBold.woff2") format("woff2"); }
+@font-face { font-family:"Geist"; font-weight:700; font-style:normal; font-display:swap; src:url("/fonts/Geist-Bold.woff2") format("woff2"); }
+@font-face { font-family:"Geist Mono"; font-weight:400; font-style:normal; font-display:swap; src:url("/fonts/GeistMono-Regular.woff2") format("woff2"); }
+@font-face { font-family:"Geist Mono"; font-weight:500; font-style:normal; font-display:swap; src:url("/fonts/GeistMono-Medium.woff2") format("woff2"); }
+@font-face { font-family:"Instrument Serif"; font-weight:400; font-style:normal; font-display:swap; src:url("/fonts/InstrumentSerif-Regular.woff2") format("woff2"); }
+@font-face { font-family:"Instrument Serif"; font-weight:400; font-style:italic; font-display:swap; src:url("/fonts/InstrumentSerif-Italic.woff2") format("woff2"); }
+
+/* ---- Loom tokens + daisyUI var remap (dark) ---- */
+.loom {
+  /* Loom-only tokens used by targeted selectors (added in later tasks) */
+  --accent:#e8c547;
+  --accent-soft:rgba(232,197,71,.33);
+  --accent-wash:rgba(232,197,71,.08);
+  --copper:#d97757;
+  --jade:#6fb59a;
+  --ok:#7fb59a;
+  --line:rgba(232,220,185,.10);
+  --line-strong:rgba(232,220,185,.18);
+  --ff-sans:"Geist",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --ff-mono:"Geist Mono",ui-monospace,"SF Mono",monospace;
+  --ff-serif:"Instrument Serif",Georgia,serif;
+
+  /* Re-map daisyUI theme vars -> Loom palette (warm charcoal + gold). */
+  --color-base-100:#131109;   /* primary panels: headers, composer, modals */
+  --color-base-200:#16140d;   /* sidebar / secondary surfaces */
+  --color-base-300:#2a2519;   /* borders + insets */
+  --color-base-content:#f2ecdc;
+  --color-primary:#e8c547;        --color-primary-content:#1a160c;
+  --color-secondary:#d97757;      --color-secondary-content:#1a160c;
+  --color-accent:#e8c547;         --color-accent-content:#1a160c;
+  --color-neutral:#221e15;        --color-neutral-content:#f2ecdc;
+  --color-info:#7fb59a;           --color-info-content:#0b0a07;
+  --color-success:#7fb59a;        --color-success-content:#0b0a07;
+  --color-warning:#e8c547;        --color-warning-content:#1a160c;
+  --color-error:#e07c6e;          --color-error-content:#1a160c;
+
+  --radius-selector:0.4375rem;
+  --radius-field:0.4375rem;
+  --radius-box:0.625rem;
+  --border:0.5px;
+  --depth:0;
+  --noise:0;
+
+  background:#0b0a07;
+  color:var(--color-base-content);
+  font-family:var(--ff-sans);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---- Global weave texture overlay (subtle) ---- */
+.loom .loom-weave-bg {
+  position:absolute; inset:0; pointer-events:none; z-index:0; mix-blend-mode:screen;
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0, transparent 11px, rgba(232,197,71,.06) 11px, rgba(232,197,71,.06) 12px),
+    repeating-linear-gradient(0deg,  transparent 0, transparent 11px, rgba(232,197,71,.025) 11px, rgba(232,197,71,.025) 12px);
+}
+.loom > :not(.loom-weave-bg) { position:relative; z-index:1; }
+
+/* ---- Global type: mono timestamps + kbd ---- */
+.loom time,
+.loom .loom-mono { font-family:var(--ff-mono); letter-spacing:.02em; }
+.loom kbd { font-family:var(--ff-mono); background:#2a2519; border:0.5px solid var(--line); }
