@@ -51,8 +51,9 @@ defmodule SlackexWeb.ChatLive.LayoutTest do
     test "highlights active channel in sidebar", %{conn: conn, channel: channel} do
       {:ok, _lv, html} = live(conn, ~p"/chat/#{channel.slug}")
 
-      # The active channel link should have the active styling
-      assert html =~ "bg-base-300 font-semibold"
+      # The active channel link should have the active styling (includes loom hook class)
+      assert html =~ "bg-base-300 loom-channel-active"
+      assert html =~ "font-semibold"
     end
 
     test "shows current user info in sidebar footer", %{conn: conn} do

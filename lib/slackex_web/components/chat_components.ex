@@ -132,7 +132,7 @@ defmodule SlackexWeb.ChatComponents do
     [
       "flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
       "hover:bg-base-300",
-      active && "bg-base-300",
+      active && "bg-base-300 loom-channel-active",
       (active || unread_count > 0) && "font-semibold"
     ]
   end
@@ -517,10 +517,10 @@ defmodule SlackexWeb.ChatComponents do
 
   def conversation_header(assigns) do
     ~H"""
-    <div class="px-4 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
+    <div class="chat-header px-4 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
       <.sidebar_toggle />
       <div class="flex-1 min-w-0">
-        <h2 class="font-bold text-lg truncate">{@title}</h2>
+        <h2 class="chat-title font-bold text-lg truncate">{@title}</h2>
         <p :if={@subtitle} class="text-xs text-base-content/60 truncate">
           {@subtitle}
         </p>

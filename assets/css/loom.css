@@ -67,3 +67,27 @@
 .loom time,
 .loom .loom-mono { font-family:var(--ff-mono); letter-spacing:.02em; }
 .loom kbd { font-family:var(--ff-mono); background:#2a2519; border:0.5px solid var(--line); }
+
+/* ---- Sidebar ---- */
+.loom .chat-sidebar {
+  background:linear-gradient(180deg,#131109 0%,#16140d 100%);
+  border-right:0.5px solid var(--line);
+  position:relative;
+}
+.loom .chat-sidebar::after {
+  content:''; position:absolute; top:0; bottom:0; right:-0.5px; width:1px; pointer-events:none; opacity:.4;
+  background:linear-gradient(180deg,transparent 0,var(--accent-soft) 20%,transparent 35%,var(--accent-soft) 55%,transparent 70%,var(--accent-soft) 88%,transparent 100%);
+}
+.loom .loom-wordmark { font-family:var(--ff-serif); font-style:italic; font-weight:400; letter-spacing:.005em; }
+/* active channel: gold wash + inset bar */
+.loom .loom-channel-active {
+  background:var(--accent-wash); box-shadow:inset 2px 0 0 var(--accent); color:var(--color-base-content);
+}
+
+/* ---- Channel header ---- */
+.loom .chat-header { background:linear-gradient(180deg,#131109,#0b0a07); border-bottom:0.5px solid var(--line); }
+.loom .chat-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; font-size:1.4rem; letter-spacing:-.005em; }
+.loom .chat-title + p { color:#80785f; }
+/* Summarize button -> gold-washed AI affordance (data-role exists already) */
+.loom [data-role="summarize-button"] { background:linear-gradient(135deg,var(--accent-wash),transparent); border:0.5px solid var(--accent-soft); color:var(--color-base-content); border-radius:var(--radius-field); }
+.loom [data-role="summarize-button"]:hover { border-color:var(--accent); }

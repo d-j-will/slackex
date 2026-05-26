@@ -65,10 +65,10 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <aside class="flex flex-col h-full bg-base-200">
+    <aside class="chat-sidebar flex flex-col h-full bg-base-200">
       <%!-- Workspace header --%>
       <div class="p-4 border-b border-base-300 flex items-center justify-between">
-        <h1 class="font-bold text-lg truncate">Tenun</h1>
+        <h1 class="loom-wordmark font-bold text-lg truncate">Tenun</h1>
       </div>
 
       <%!-- Scrollable navigation --%>
