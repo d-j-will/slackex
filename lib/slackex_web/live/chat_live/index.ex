@@ -1336,8 +1336,23 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   @impl true
-  def handle_info({:dm_conversation_new, _dm}, socket) do
+  def handle_info({:dm_conversation_new, dm}, socket) do
     user = socket.assigns.current_user
+
+    # Subscribe to the new DM's topic so the first message sent in it arrives in
+    # real time. Without this, mount only subscribed to DMs that existed then, so
+    # the first message in a freshly-created DM was dropped until the recipient
+    # opened it (which is what enter_dm/2 would belatedly subscribe).
+    #
+    # Unsubscribe-then-subscribe guarantees a single subscription: the DM initiator
+    # also receives this broadcast and may already be subscribed via enter_dm/2, and
+    # a double subscription would deliver every message twice.
+    _ =
+      if connected?(socket) do
+        Messaging.unsubscribe_dm(dm.id)
+        Messaging.subscribe_dm(dm.id)
+      end
+
     dm_conversations = Chat.list_user_dm_conversations(user.id)
     {:noreply, assign(socket, :dm_conversations, dm_conversations)}
   end
