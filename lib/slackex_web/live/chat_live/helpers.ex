@@ -75,13 +75,6 @@ defmodule SlackexWeb.ChatLive.Helpers do
     to_form(changeset, as: :profile)
   end
 
-  def short_node_name do
-    node()
-    |> Atom.to_string()
-    |> String.split("@")
-    |> List.last()
-  end
-
   def dismiss_report_modal(socket) do
     socket
     |> assign(:show_report_modal, false)

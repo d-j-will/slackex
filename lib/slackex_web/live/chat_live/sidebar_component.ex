@@ -273,13 +273,6 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
             {@current_user.status}
           </span>
         </span>
-        <span
-          :if={@show_node}
-          data-testid="node-badge"
-          class="badge badge-info badge-sm font-mono shrink-0"
-        >
-          {@node_name}
-        </span>
         <button
           :if={@push_health != :ok}
           data-push-health={@push_health}
