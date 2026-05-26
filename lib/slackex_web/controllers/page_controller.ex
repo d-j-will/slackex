@@ -5,7 +5,9 @@ defmodule SlackexWeb.PageController do
     if conn.assigns[:current_user] do
       redirect(conn, to: ~p"/chat")
     else
-      render(conn, :home)
+      conn
+      |> assign(:loom, FunWithFlags.enabled?(:loom_redesign))
+      |> render(:home)
     end
   end
 end

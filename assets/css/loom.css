@@ -145,6 +145,11 @@
 .loom .loom-empty :is(h1,h2,h3) { font-family:var(--ff-serif); font-style:italic; }
 .loom .loom-typing { font-family:var(--ff-mono); font-size:10.5px; color:#80785f; }
 
+/* ---- Public surfaces (landing + auth) ---- */
+.loom .loom-hero-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; letter-spacing:-.01em; }
+.loom .loom-section-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; }
+.loom .loom-auth-title { font-family:var(--ff-serif); font-style:italic; font-weight:400; }
+
 /* ---- Light variant ---- */
 [data-theme="light"] .loom {
   --color-base-100:#fbf7eb;
