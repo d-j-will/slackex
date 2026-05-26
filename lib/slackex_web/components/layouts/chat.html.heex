@@ -2,7 +2,10 @@
   id="analytics-container"
   phx-hook="Analytics"
   data-analytics-enabled={to_string(FunWithFlags.enabled?(:website_analytics))}
-  class="h-screen h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+  class={[
+    "h-screen h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]",
+    assigns[:loom] && "loom"
+  ]}
 >
   <div
     id="connection-status"

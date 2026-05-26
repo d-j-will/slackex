@@ -59,6 +59,18 @@ const EmojiPicker = {
     container.className =
       "fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2";
 
+    // emoji-mart renders inside its own Shadow DOM, so external CSS (including
+    // the Loom layer) cannot theme its internals — `theme` is the only lever.
+    // Under Loom the picker is appended to document.body (outside the .loom
+    // scope) on the near-black #0b0a07 canvas, so force dark there. Otherwise
+    // keep the prior behaviour exactly: dark only when data-theme === "dark".
+    const loomActive = !!document.querySelector(".loom");
+    const pickerTheme =
+      loomActive ||
+      document.documentElement.getAttribute("data-theme") === "dark"
+        ? "dark"
+        : "light";
+
     const picker = new Picker({
       data,
       onEmojiSelect: (emoji) => {
@@ -68,10 +80,7 @@ const EmojiPicker = {
         });
         this.closePicker();
       },
-      theme:
-        document.documentElement.getAttribute("data-theme") === "dark"
-          ? "dark"
-          : "light",
+      theme: pickerTheme,
       previewPosition: "bottom",
       skinTonePosition: "search",
       maxFrequentRows: 3,

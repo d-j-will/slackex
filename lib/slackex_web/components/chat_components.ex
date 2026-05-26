@@ -697,7 +697,7 @@ defmodule SlackexWeb.ChatComponents do
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
         <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-md">
           <div class="p-4 border-b border-base-300 flex items-center justify-between">
-            <h3 class="font-bold text-lg">Report User</h3>
+            <h3 class="loom-modal-title font-bold text-lg">Report User</h3>
             <button
               type="button"
               phx-click="close_report_modal"
@@ -854,7 +854,7 @@ defmodule SlackexWeb.ChatComponents do
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
         <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-md">
           <div class="p-4 border-b border-base-300 flex items-center justify-between">
-            <h3 class="font-bold text-lg">Edit Profile</h3>
+            <h3 class="loom-modal-title font-bold text-lg">Edit Profile</h3>
             <button
               type="button"
               phx-click="close_edit_profile"
@@ -996,7 +996,7 @@ defmodule SlackexWeb.ChatComponents do
           <div class="space-y-4">
             <div class="flex items-center gap-3">
               <span class="hero-bell text-primary size-8" />
-              <h3 class="font-bold text-lg">Enable notifications</h3>
+              <h3 class="loom-modal-title font-bold text-lg">Enable notifications</h3>
             </div>
             <p class="text-sm text-base-content/80">
               Tenun can alert you when people send you messages, so you don't

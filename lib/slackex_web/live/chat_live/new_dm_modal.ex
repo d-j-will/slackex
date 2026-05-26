@@ -65,7 +65,7 @@ defmodule SlackexWeb.ChatLive.NewDmModal do
       <div class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
         <div class="bg-base-100 rounded-xl shadow-xl w-full max-w-md">
           <div class="p-4 border-b border-base-300 flex items-center justify-between">
-            <h3 class="font-bold text-lg">New Message</h3>
+            <h3 class="loom-modal-title font-bold text-lg">New Message</h3>
             <button
               type="button"
               phx-click="close_modal"
