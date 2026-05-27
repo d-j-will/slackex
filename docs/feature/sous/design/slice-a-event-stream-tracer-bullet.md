@@ -69,10 +69,10 @@ Seed defaults at creation (no AI in Slice A):
   treatment (accent edge + "behind") from day one rather than a uniform default.
 These are set in the `:created` event payload, not entered in the modal.
 
-> The board implements all four treatments (`act`/`watch`/`know`/`hidden`), but `watch`/`know`/`hidden`
-> are per-viewer concepts that only become *meaningful* with Slice B's viewer model. Making them
-> exercisable within Slice A (a small board-side attention control backed by an `:attention_set`
-> event) is a pending product decision — see the plan's Task 14 note.
+> The board implements all four treatments (`act`/`watch`/`know`/`hidden`) as styling, but
+> `watch`/`know`/`hidden` are per-viewer concepts that only become *meaningful* with Slice B's viewer
+> model. **Decided 2026-05-27:** Slice A seeds `:act` and ships no attention control; a board-side
+> attention control + `:attention_set` event is **deferred to Slice B**.
 
 ## 4. Data model
 

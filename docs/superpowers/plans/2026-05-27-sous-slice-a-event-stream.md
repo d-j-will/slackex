@@ -812,9 +812,8 @@ defmodule Slackex.Sous do
       "facet_text" => attrs[:title],
       # Slice A has no viewer model, so attention is a single stored value. A
       # freshly-made decision demands attention → :act (accent edge + "behind"),
-      # so the board shows a real treatment from day one. (See the "attention
-      # variety" note at the head of Task 14 for how the other treatments become
-      # visible — a pending product decision.)
+      # so the board shows a real treatment from day one. Attention stays :act for
+      # Slice A (no attention control — deferred to Slice B; see the Task 14 note).
       "attention" => "act",
       # DRI name is snapshotted into the event (self-describing) so the card
       # renders with no render-time user lookup.
@@ -1642,13 +1641,11 @@ git commit -m "feat(sous): render decision cards in chat (two-step upgrade, ADR-
 
 ## Task 14: In Service board route + LiveView (flag-gated)
 
-> **Attention variety (pending product decision — see the wrap-up question).** The board implements
-> all four `attention_class/1` treatments. New decisions seed `:act` (Task 7), so the act treatment
-> is visible from day one. The other treatments (`watch`/`know`/`hidden`) are per-viewer concepts
-> that only become *meaningful* with Slice B's viewer model. If the team wants them exercisable in
-> Slice A, the agreed approach is a small attention control on each board card backed by an
-> `:attention_set` event (an additional command + projection clause + UI + test). Until that is
-> decided, this task ships the four treatments as styling with `:act` as the only seeded value.
+> **Attention variety (DECIDED 2026-05-27 — seed `:act` only).** The board implements all four
+> `attention_class/1` treatments as styling, but Slice A seeds every decision `:act` (Task 7) and
+> ships **no** attention control. The `watch`/`know`/`hidden` treatments are per-viewer concepts that
+> become meaningful only with Slice B's viewer model; a board-side attention control + `:attention_set`
+> event is **deferred to Slice B**. Keep this task as written — do not add an attention selector.
 
 **Files:**
 - Create: `lib/slackex_web/live/sous_live/in_service.ex`
