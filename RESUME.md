@@ -1,6 +1,6 @@
 # RESUME — where to pick up
 
-_Last updated: 2026-05-27 (Europe/London). Latest work: **Sous Slice A built on master** (committed, not pushed/deployed, UI not yet browser-verified) — see the Sous section below. This file is the continuity anchor._
+_Last updated: 2026-05-27 (Europe/London). Latest work: **Sous Slice A built on master** (committed, **browser-verified in dev**, not pushed/deployed) — see the Sous section below. This file is the continuity anchor._
 
 ## Just shipped — v0.9.16 (the Loom redesign)
 
@@ -53,8 +53,9 @@ Decisions made: framing = **evolve Tenun behind a `:sous` flag** (not a new app)
 
 **State / how to pick up:**
 - **NOT pushed** to origin; **NOT deployed**. Committed on local `master`.
-- `:sous` is **OFF** in the dev DB and prod (brand-new flag). To dogfood: `MIX_ENV=dev mix run -e 'FunWithFlags.enable(:sous)'` (or `/admin/flags`), then `mix phx.server`, log in, run `/decide` in a channel, open `/in-service`.
-- **UI NOT browser-verified** — only LiveView/integration tests pass. Dogfood in a browser before pushing.
+- `:sous` is now **ENABLED in the dev DB** (dogfooded 2026-05-27); still **OFF in prod** (no row). Prod stays off until you flip `/admin/flags` after deploy.
+- **UI browser-verified in dev (2026-05-27):** `/decide` → modal → decision card (DRI/What/Why/Next + "lives in: In Service") → In Service board (4 columns, `:act` accent + "behind" on the Mise card) → move button transitions the card live. Spine confirmed end-to-end.
+- **Cosmetic follow-up:** card title + board masthead render in serif *italic* (reused Loom styling). The Sous design wants **upright** Instrument Serif + `em { font-style: normal }` — the "Sous visual mode" was scoped out of Slice A (spec §4). Add to visual-polish/Slice B.
 - Deferred to Slice B (per review): viewer model + per-viewer `WorkItemFacet` + AI facets; attention control (`:attention_set` event); concurrent-move row lock (M-1); `post_decision_card` logging in-context (M-2); reducer fallthrough clause (M-3). 5 credo `--strict` alias-order nits in Sous test files (project gate is non-strict).
 
 **Key docs:** spec `docs/feature/sous/design/slice-a-event-stream-tracer-bullet.md`; ADR-001 (plaintext Decision fields), ADR-002 (write-behind reconciliation); plan `docs/superpowers/plans/2026-05-27-sous-slice-a-event-stream.md`; brainstorm `docs/feature/sous/sous-brainstorm.md`; handoff `docs/feature/sous/handoff/`.
