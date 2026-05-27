@@ -365,25 +365,6 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
-  # Routes a plain (non-command) message to the active DM or channel, honouring
-  # send permissions. Extracted from handle_event/3 to keep that clause's
-  # cyclomatic complexity within the project's credo budget.
-  defp dispatch_message(socket, user, content) do
-    cond do
-      socket.assigns.active_dm != nil ->
-        Helpers.send_message_to_dm(socket.assigns.active_dm, user, content, socket)
-
-      socket.assigns.active_channel != nil and socket.assigns.can_send ->
-        Helpers.send_message_to_channel(socket.assigns.active_channel, user, content, socket)
-
-      socket.assigns.active_channel != nil ->
-        {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
-
-      true ->
-        {:noreply, socket}
-    end
-  end
-
   def handle_event("typing", _params, socket) do
     user = socket.assigns.current_user
 
@@ -1522,6 +1503,25 @@ defmodule SlackexWeb.ChatLive.Index do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  # Routes a plain (non-command) message to the active DM or channel, honouring
+  # send permissions. Extracted from handle_event("send_message", ...) to keep
+  # that clause's cyclomatic complexity within the project's credo budget.
+  defp dispatch_message(socket, user, content) do
+    cond do
+      socket.assigns.active_dm != nil ->
+        Helpers.send_message_to_dm(socket.assigns.active_dm, user, content, socket)
+
+      socket.assigns.active_channel != nil and socket.assigns.can_send ->
+        Helpers.send_message_to_channel(socket.assigns.active_channel, user, content, socket)
+
+      socket.assigns.active_channel != nil ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
+
+      true ->
+        {:noreply, socket}
+    end
+  end
 
   defp track_feature(socket, feature, metadata) do
     user = socket.assigns.current_user
