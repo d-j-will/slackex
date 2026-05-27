@@ -15,6 +15,7 @@ defmodule Slackex.Sous do
 
   alias Ecto.Multi
   alias Slackex.Infrastructure.Snowflake
+  alias Slackex.Messaging
   alias Slackex.Repo
   alias Slackex.Sous.{Decision, Projection, WorkItem, WorkItemEvent}
 
@@ -93,6 +94,69 @@ defmodule Slackex.Sous do
       {:error, step, changeset, _changes} ->
         {:error, step, changeset, %{}}
     end
+  end
+
+  @doc """
+  Posts the decision card to the work item's channel via the existing messaging
+  facade, then records the linkage as a `:card_posted` event (ADR-002).
+
+  Returns `{:ok, work_item}` with `card_message_id` set, or `{:error, reason}`.
+  On failure the work item is left intact (no card); the caller logs it.
+  """
+  def post_decision_card(%WorkItem{} = wi, actor_id) do
+    with {:ok, msg} <- Messaging.send_message(wi.channel_id, actor_id, card_fallback_text(wi)) do
+      event = %WorkItemEvent{
+        id: Snowflake.generate(),
+        work_item_id: wi.id,
+        type: :card_posted,
+        payload: %{"card_message_id" => msg.id},
+        actor_user_id: actor_id
+      }
+
+      projected = Projection.apply_event(%{work_item: wi_to_attrs(wi), decision: nil}, event)
+
+      Multi.new()
+      |> Multi.insert(:event, WorkItemEvent.changeset(%WorkItemEvent{}, Map.from_struct(event)))
+      |> Multi.update(
+        :work_item,
+        WorkItem.changeset(wi, %{card_message_id: projected.work_item.card_message_id})
+      )
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{work_item: updated}} ->
+          broadcast_work_item(:card_posted, updated)
+
+          _result =
+            Phoenix.PubSub.broadcast(
+              @pubsub,
+              cards_topic(wi.channel_id),
+              {:decision_card, msg.id, updated}
+            )
+
+          {:ok, updated}
+
+        {:error, _step, changeset, _} ->
+          {:error, changeset}
+      end
+    end
+  end
+
+  defp card_fallback_text(%WorkItem{title: title}), do: "Decision: #{title}"
+
+  defp wi_to_attrs(%WorkItem{} = wi) do
+    %{
+      id: wi.id,
+      kind: wi.kind,
+      state: wi.state,
+      title: wi.title,
+      facet_text: wi.facet_text,
+      attention: wi.attention,
+      people: wi.people,
+      channel_id: wi.channel_id,
+      thread_root_message_id: wi.thread_root_message_id,
+      card_message_id: wi.card_message_id,
+      moved_at: wi.moved_at
+    }
   end
 
   defp broadcast_work_item(event_type, work_item) do
