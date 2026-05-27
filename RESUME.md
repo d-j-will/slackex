@@ -1,6 +1,6 @@
 # RESUME — where to pick up
 
-_Last updated: 2026-05-27 (Europe/London). Latest work: **Sous Slice A built on master** (committed, **browser-verified in dev**, not pushed/deployed) — see the Sous section below. This file is the continuity anchor._
+_Last updated: 2026-05-27 (Europe/London). Latest work: **Sous Slice A shipped** — deployed as **v0.9.19** (+ **v0.9.20** thread-panel dup-id fix), behind `:sous` (OFF in prod). Also fixed the pre-deploy/CI gate divergence and a flaky thread test this session. See the Sous section below. This file is the continuity anchor._
 
 ## Just shipped — v0.9.16 (the Loom redesign)
 
@@ -52,8 +52,9 @@ Decisions made: framing = **evolve Tenun behind a `:sous` flag** (not a new app)
 - 7 event-sourcing invariants honored; replay-guard test folds `:created`+`:state_changed` across all fields. Mandatory e2e integration test exercises chat→work-item→board via the real facade. Suite: **1505 tests, 0 failures**. Final code review passed (I-1 card-render gating + I-2 replay-guard strengthened and fixed).
 
 **State / how to pick up:**
-- **NOT pushed** to origin; **NOT deployed**. Committed on local `master`.
-- `:sous` is now **ENABLED in the dev DB** (dogfooded 2026-05-27); still **OFF in prod** (no row). Prod stays off until you flip `/admin/flags` after deploy.
+- **SHIPPED**: deployed as **v0.9.19** (Slice A) and **v0.9.20** (thread-panel dup-id fix). Pushed to origin; both CI quality runs green.
+- `:sous` is **ENABLED in the dev DB** (dogfooded 2026-05-27); still **OFF in prod** (no row). To turn Sous on in prod: `/admin/flags` → `:sous` → enable.
+- **Engineering-process fixes this session** (worth knowing): (a) `scripts/pre-deploy` + the pre-commit hook were running `mix format` in the **dev** env while CI uses **`MIX_ENV=test`** — they disagreed on migration files (caused a v0.9.18 CI format failure). Both now run format under test env; `scripts/pre-deploy` was also rewritten to mirror CI's **full** quality job (it was a partial copy missing contract/e2e/hex.audit/deps.unlock). (b) Fixed a flaky `ThreadTest` "duplicate id" crash — thread-panel replies now use `id_prefix="thread-"` (matching the parent) so they don't collide with the same message in the main stream. Deterministic regression test added.
 - **UI browser-verified in dev (2026-05-27):** `/decide` → modal → decision card (DRI/What/Why/Next + "lives in: In Service") → In Service board (4 columns, `:act` accent + "behind" on the Mise card) → move button transitions the card live. Spine confirmed end-to-end.
 - **Cosmetic follow-up:** card title + board masthead render in serif *italic* (reused Loom styling). The Sous design wants **upright** Instrument Serif + `em { font-style: normal }` — the "Sous visual mode" was scoped out of Slice A (spec §4). Add to visual-polish/Slice B.
 - Deferred to Slice B (per review): viewer model + per-viewer `WorkItemFacet` + AI facets; attention control (`:attention_set` event); concurrent-move row lock (M-1); `post_decision_card` logging in-context (M-2); reducer fallthrough clause (M-3). 5 credo `--strict` alias-order nits in Sous test files (project gate is non-strict).
