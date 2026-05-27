@@ -7,7 +7,8 @@ Ecto.Adapters.SQL.Sandbox.checkout(Slackex.Repo)
 
 for flag <- [
       :message_search,
-      :channel_summarization
+      :channel_summarization,
+      :sous
     ] do
   FunWithFlags.enable(flag)
 end
