@@ -76,4 +76,40 @@ defmodule Slackex.SousTest do
       assert Repo.aggregate(WorkItemEvent, :count) == 0
     end
   end
+
+  describe "move/3" do
+    setup %{user: u, channel: c} do
+      {:ok, wi} =
+        Sous.open_decision(%{
+          channel_id: c.id,
+          actor_id: u.id,
+          title: "Movable",
+          what: "w",
+          stakeholders: []
+        })
+
+      %{wi: wi}
+    end
+
+    test "moves to a new state and appends a :state_changed event", %{wi: wi, user: u} do
+      Phoenix.PubSub.subscribe(Slackex.PubSub, Sous.work_items_topic())
+
+      assert {:ok, moved} = Sous.move(wi.id, :pass, u.id)
+      assert moved.state == :pass
+      assert DateTime.compare(moved.moved_at, wi.moved_at) in [:gt, :eq]
+
+      assert_receive {:work_item_event, :state_changed, %WorkItem{state: :pass}}
+
+      events = Repo.all(from e in WorkItemEvent, where: e.work_item_id == ^wi.id, order_by: e.id)
+      assert Enum.map(events, & &1.type) == [:created, :state_changed]
+    end
+
+    test "rejects an unknown target state", %{wi: wi, user: u} do
+      assert {:error, :invalid_state} = Sous.move(wi.id, :bogus, u.id)
+    end
+
+    test "rejects a no-op move to the same state", %{wi: wi, user: u} do
+      assert {:error, :no_op} = Sous.move(wi.id, :mise, u.id)
+    end
+  end
 end

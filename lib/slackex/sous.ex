@@ -141,6 +141,61 @@ defmodule Slackex.Sous do
     end
   end
 
+  @doc """
+  Moves a work item to `to_state` (one of `WorkItem.states/0`), appending a
+  `:state_changed` event. Returns `{:ok, work_item}` or `{:error, reason}`.
+  """
+  def move(work_item_id, to_state, actor_id) do
+    if to_state in WorkItem.states() do
+      wi = Repo.get!(WorkItem, work_item_id)
+
+      if wi.state == to_state do
+        {:error, :no_op}
+      else
+        do_move(wi, to_state, actor_id)
+      end
+    else
+      {:error, :invalid_state}
+    end
+  end
+
+  defp do_move(%WorkItem{} = wi, to_state, actor_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    event = %WorkItemEvent{
+      id: Snowflake.generate(),
+      work_item_id: wi.id,
+      type: :state_changed,
+      payload: %{
+        "from" => Atom.to_string(wi.state),
+        "to" => Atom.to_string(to_state),
+        "moved_at" => DateTime.to_iso8601(now)
+      },
+      actor_user_id: actor_id
+    }
+
+    projected = Projection.apply_event(%{work_item: wi_to_attrs(wi), decision: nil}, event)
+
+    Multi.new()
+    |> Multi.insert(:event, WorkItemEvent.changeset(%WorkItemEvent{}, Map.from_struct(event)))
+    |> Multi.update(
+      :work_item,
+      WorkItem.changeset(wi, %{
+        state: projected.work_item.state,
+        moved_at: projected.work_item.moved_at
+      })
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{work_item: updated}} ->
+        broadcast_work_item(:state_changed, updated)
+        {:ok, updated}
+
+      {:error, _step, changeset, _} ->
+        {:error, changeset}
+    end
+  end
+
   defp card_fallback_text(%WorkItem{title: title}), do: "Decision: #{title}"
 
   defp wi_to_attrs(%WorkItem{} = wi) do
