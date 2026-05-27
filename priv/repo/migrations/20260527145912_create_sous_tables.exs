@@ -35,7 +35,10 @@ defmodule Slackex.Repo.Migrations.CreateSousTables do
 
     create table(:work_item_events, primary_key: false) do
       add :id, :bigint, primary_key: true
-      add :work_item_id, references(:work_items, on_delete: :delete_all, type: :bigint), null: false
+
+      add :work_item_id, references(:work_items, on_delete: :delete_all, type: :bigint),
+        null: false
+
       add :type, :string, null: false
       add :payload, :map, null: false, default: %{}
       add :actor_user_id, references(:users, on_delete: :nilify_all)

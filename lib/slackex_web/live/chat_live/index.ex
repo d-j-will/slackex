@@ -828,22 +828,9 @@ defmodule SlackexWeb.ChatLive.Index do
     {:noreply, push_patch(socket, to: path)}
   end
 
-  @impl true
-  def handle_event("analytics:" <> event_type, params, socket) do
-    user = socket.assigns.current_user
-
-    context = %{
-      user_id: user.id,
-      session_id: socket.assigns[:analytics_session_id],
-      is_bot: Map.get(user, :is_bot, false),
-      user: user
-    }
-
-    metadata = Map.drop(params, ["_target"])
-    _ = Slackex.Analytics.track(context, event_type, metadata)
-
-    {:noreply, socket}
-  end
+  # NOTE: `analytics:*` and `page:*` events from the :chat layout's shared JS
+  # hooks are handled centrally in SlackexWeb.AnalyticsTracker (on_mount), so
+  # every LiveView in the :chat live_session gets them without reimplementing.
 
   @impl true
   def handle_event("close_thread", _params, socket) do
@@ -985,18 +972,6 @@ defmodule SlackexWeb.ChatLive.Index do
       end
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("page:visible", _params, socket) do
-    ActiveTracker.mark_active(socket.assigns.current_user.id)
-    {:noreply, assign(socket, :page_visible, true)}
-  end
-
-  @impl true
-  def handle_event("page:hidden", _params, socket) do
-    ActiveTracker.mark_inactive(socket.assigns.current_user.id)
-    {:noreply, assign(socket, :page_visible, false)}
   end
 
   def handle_event("update_notification_level", %{"level" => level}, socket) do

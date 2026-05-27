@@ -60,4 +60,20 @@ defmodule SlackexWeb.SousLive.InServiceTest do
 
     assert {:error, {:redirect, %{to: "/chat"}}} = live(conn, ~p"/in-service")
   end
+
+  # Regression: the :chat layout mounts shared JS hooks (Analytics, AppBadge) that
+  # push analytics:* / page:* events to EVERY LiveView in the session. Before these
+  # were centralized in SlackexWeb.AnalyticsTracker, the board had no matching
+  # handle_event clause and crashed (FunctionClauseError) on the first click. JS
+  # hooks don't run in LiveView tests, so we push the events directly.
+  test "handles shared :chat-layout chrome events without crashing", %{conn: conn} do
+    {:ok, lv, _html} = live(conn, ~p"/in-service")
+
+    assert render_hook(lv, "analytics:click", %{"target" => "card"})
+    assert render_hook(lv, "page:visible", %{})
+    assert render_hook(lv, "page:hidden", %{})
+
+    # Still alive and rendering after the chrome events.
+    assert render(lv) =~ "In Service"
+  end
 end
