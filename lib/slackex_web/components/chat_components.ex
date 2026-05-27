@@ -283,7 +283,7 @@ defmodule SlackexWeb.ChatComponents do
             >
               <div class="flex items-center justify-between">
                 <span class="loom-modal-title font-semibold">{decision_wi.title}</span>
-                <.link href="/in-service" class="text-xs text-primary">
+                <.link navigate={~p"/in-service"} class="text-xs text-primary">
                   lives in: In Service →
                 </.link>
               </div>

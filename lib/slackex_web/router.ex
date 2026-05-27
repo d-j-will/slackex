@@ -101,6 +101,7 @@ defmodule SlackexWeb.Router do
       live "/chat/:slug/invite", ChatLive.Index, :invite
       live "/chat/invite/:code", ChatLive.Index, :redeem_invite
       live "/chat/:slug", ChatLive.Index, :show
+      live "/in-service", SousLive.InService, :index
     end
   end
 
