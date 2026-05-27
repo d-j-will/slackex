@@ -128,6 +128,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:link_previews, %{})
      |> assign(:show_summary_modal, false)
      |> assign(:show_decide, false)
+     |> assign(:card_messages, %{})
      |> assign(:summary_text, "")
      |> assign(:summary_state, :idle)
      |> assign(:summary_error, nil)
@@ -260,6 +261,7 @@ defmodule SlackexWeb.ChatLive.Index do
           |> Conversations.enter_channel(channel, can_send, role, target_message_id)
           |> Helpers.maybe_push_scroll_event(target_message_id)
           |> assign(:show_decide, false)
+          |> load_sous_cards(channel)
 
         {:noreply, socket}
 
@@ -331,6 +333,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:page_title, "Chat")
      |> assign(:oldest_message_id, nil)
      |> assign(:has_more_messages, false)
+     |> assign(:card_messages, %{})
      |> stream(:messages, [], reset: true)}
   end
 
@@ -1488,6 +1491,13 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  # A plain message just posted to this channel was linked to a Sous work item
+  # (ADR-002 two-step upgrade) — map its id to the work item so it renders as a
+  # decision card without a reload.
+  def handle_info({:decision_card, message_id, work_item}, socket) do
+    {:noreply, update(socket, :card_messages, &Map.put(&1, message_id, work_item))}
+  end
+
   @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
@@ -1527,6 +1537,19 @@ defmodule SlackexWeb.ChatLive.Index do
       true ->
         {:noreply, socket}
     end
+  end
+
+  # Loads the channel's decision cards (message_id => work_item) and subscribes
+  # to the Sous cards topic so a just-posted plain message upgrades to a card
+  # live (ADR-002). Re-subscribing on channel re-entry is harmless — PubSub
+  # dedups identical subscriptions per process.
+  defp load_sous_cards(socket, channel) do
+    _ =
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Slackex.PubSub, Slackex.Sous.cards_topic(channel.id))
+      end
+
+    assign(socket, :card_messages, Slackex.Sous.card_messages_for_channel(channel.id))
   end
 
   defp track_feature(socket, feature, metadata) do

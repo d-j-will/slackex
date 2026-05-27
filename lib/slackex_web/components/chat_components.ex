@@ -164,6 +164,9 @@ defmodule SlackexWeb.ChatComponents do
   attr :current_user_role, :string, default: nil
   attr :reactions, :list, default: []
   attr :link_previews, :list, default: []
+  # Map of message_id => Sous work item. When the current message's id is a key,
+  # a decision card is rendered below the message body (Slice A, ADR-002).
+  attr :card_messages, :map, default: %{}
   # Optional prefix for all DOM element IDs rendered by this component. Pass a
   # unique prefix (e.g. "thread-") when the same message is rendered in two
   # places simultaneously (e.g. both the message stream and the thread panel
@@ -271,6 +274,40 @@ defmodule SlackexWeb.ChatComponents do
             </div>
             <div :if={@link_previews != []} class="mt-1 space-y-2">
               <.link_preview_card :for={preview <- @link_previews} preview={preview} />
+            </div>
+            <% decision_wi = Map.get(@card_messages, @message.id) %>
+            <div
+              :if={decision_wi}
+              class="loom mt-2 rounded-lg border border-base-300 p-3 space-y-1"
+              data-decision-card
+            >
+              <div class="flex items-center justify-between">
+                <span class="loom-modal-title font-semibold">{decision_wi.title}</span>
+                <.link href="/in-service" class="text-xs text-primary">
+                  lives in: In Service →
+                </.link>
+              </div>
+              <p class="text-xs text-base-content/60">
+                DRI: {decision_wi.people["lead_name"] || "—"}
+                <span :if={decision_wi.people["stakeholders"] not in [nil, []]}>
+                  · {length(decision_wi.people["stakeholders"])} stakeholder(s)
+                </span>
+              </p>
+              <p :if={decision_wi.decision} class="text-sm">
+                <span class="font-medium">What:</span> {decision_wi.decision.what}
+              </p>
+              <p
+                :if={decision_wi.decision && decision_wi.decision.why not in [nil, ""]}
+                class="text-sm"
+              >
+                <span class="font-medium">Why:</span> {decision_wi.decision.why}
+              </p>
+              <p
+                :if={decision_wi.decision && decision_wi.decision.next not in [nil, ""]}
+                class="text-sm"
+              >
+                <span class="font-medium">Next:</span> {decision_wi.decision.next}
+              </p>
             </div>
           <% end %>
         <% end %>
@@ -519,6 +556,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :current_user_role, :string, default: nil
   attr :reactions, :map, default: %{}
   attr :link_previews, :map, default: %{}
+  attr :card_messages, :map, default: %{}
 
   def message_stream(assigns) do
     ~H"""
@@ -542,6 +580,7 @@ defmodule SlackexWeb.ChatComponents do
           current_user_role={@current_user_role}
           reactions={Map.get(@reactions, message.id, [])}
           link_previews={Map.get(@link_previews, message.id, [])}
+          card_messages={@card_messages}
         />
       </div>
     </div>

@@ -81,4 +81,20 @@ defmodule SlackexWeb.ChatLive.DecideTest do
 
     refute html =~ "Capture a decision"
   end
+
+  test "a posted decision renders as a card in the channel", %{conn: conn, channel: channel} do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    lv |> form("#message-form", %{message: %{content: "/decide"}}) |> render_submit()
+
+    lv
+    |> form("#decide-form", %{
+      decision: %{title: "Visible Card", what: "the what", why: "", next: ""}
+    })
+    |> render_submit()
+
+    assert render(lv) =~ "lives in: In Service"
+    assert render(lv) =~ "the what"
+    assert render(lv) =~ "DRI: alice"
+  end
 end
