@@ -14,9 +14,12 @@ _Last updated: 2026-05-27 (Europe/London). A session-limit warning fired during 
 
 **Dev note:** all 16 feature flags are currently enabled in the **dev** DB (so every surface is visible locally). Prod flag state is separate.
 
-## Flag cleanup (#1) — CODE DONE (commit `61cb69a`, 2026-05-27); deploy + DB-row deletion pending
+## Flag cleanup (#1) — ✅ COMPLETE (2026-05-27)
 
-The 6 un-flag candidates were all verified **Enabled in prod**, so removing their gates is behavior-preserving. Surgery committed to master (gates green: format, credo, dialyzer, 1475 tests). Remaining work is **deploy-gated** — see "Next" at the bottom of this section.
+Fully shipped and verified end-to-end:
+- Code un-flagged in `61cb69a` (6 features, −125 lines), deployed in **v0.9.17** (prod healthy, HTTP 200).
+- Prod orphan rows deleted + verified: the 6 un-flagged flags, the dead `show_cluster_node`, and a stray `message_stream` row (accidentally created in the admin UI — no code ever referenced it).
+- Prod `fun_with_flags_toggles` now holds exactly the 8 deliberately-flagged features: `catchup_on_reconnect`, `channel_summarization`, `dark_factory`, `incoming_webhooks`, `loom_redesign`, `message_search`, `push_notifications`, `website_analytics`. (`exclude_from_analytics` has no persisted row — defaults off — which is expected.)
 
 Inventory (original recommendation kept for reference):
 
@@ -32,9 +35,9 @@ Inventory (original recommendation kept for reference):
 
 **Keep flagged:** `loom_redesign` (active rollout), `incoming_webhooks` (Release-1 work outstanding), `dark_factory` (experimental), `push_notifications` (browser-dependent kill-switch), `website_analytics` + `exclude_from_analytics` (ops toggles).
 
-**Next (DEPLOY-GATED — do not reorder):** prod still runs **v0.9.16**, whose code reads these flags via `enabled?`. So the `fun_with_flags_toggles` rows must **not** be deleted yet — deleting now would flip the 6 features **OFF** in the running prod. Correct order:
-1. Tag a new version via `/deploy` so prod runs the flag-free code (`61cb69a`+).
-2. **Then** delete the rows at `/admin/flags` for the 6 un-flagged flags **plus** the dead `show_cluster_node` (and `new_ui` if present — not in prod as of 2026-05-27).
+**Done** — deploy-gated sequence executed correctly: deployed v0.9.17 (flag-free code) first, then deleted the prod rows. See the ✅ COMPLETE block at the top of this section.
+
+**Lesson worth keeping:** un-flagging a feature is only safe to follow with DB-row deletion *after* the flag-free code is live in prod — otherwise the running (old) code reads the now-missing flag as disabled and the feature vanishes. Always: ship code → verify deployed → then delete toggle rows.
 
 Both steps are prod-affecting → get explicit go-ahead before each.
 
