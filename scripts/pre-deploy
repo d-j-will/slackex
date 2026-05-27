@@ -17,8 +17,12 @@ echo "PASS: Tests"
 echo ""
 
 # 2. Formatting
+# MIX_ENV=test to match CI's quality job (which runs under MIX_ENV=test).
+# `mix format` resolves dep formatter configs (.formatter.exs import_deps and the
+# migrations subdirectory's ecto_sql import) from _build/$MIX_ENV, so dev and test
+# can disagree on migration files — this gate must mirror CI.
 echo "Step 2/7: Checking formatting..."
-mix format --check-formatted
+MIX_ENV=test mix format --check-formatted
 echo "PASS: Formatting"
 echo ""
 
