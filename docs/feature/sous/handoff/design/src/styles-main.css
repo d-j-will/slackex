@@ -1,0 +1,192 @@
+/* Tenun — Main channel pane: header, intro, messages, composer */
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  background: var(--bg-deep);
+  overflow: hidden;
+}
+
+/* ───── Channel header ───── */
+.ch-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px 14px 24px;
+  border-bottom: 0.5px solid var(--line);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+  flex: 0 0 auto;
+  gap: 14px;
+  min-width: 0;
+}
+.ch-head-l { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.ch-head--dense { padding: 10px 16px; }
+.ch-head-l { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.ch-head-title { display: flex; align-items: baseline; gap: 4px; }
+.ch-head-hash {
+  font-family: var(--ff-mono);
+  font-size: 18px;
+  color: var(--text-3);
+}
+.ch-head-name {
+  font-family: var(--ff-sans);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.012em;
+}
+.ch-head-divider {
+  width: 1px; height: 14px;
+  background: var(--line);
+  display: inline-block;
+}
+.ch-head-topic {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  min-width: 0;
+}
+.ch-head-topic span:last-child {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 50ch;
+}
+
+.ch-head-r { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; flex: 0 0 auto; }
+.ch-head-members { display: flex; align-items: center; gap: 6px; }
+.ch-head-avs { display: flex; }
+.ch-head-av {
+  width: 22px; height: 22px;
+  border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 600;
+  color: #1a160c;
+  margin-left: -4px;
+  border: 1.5px solid var(--bg-deep);
+}
+.ch-head-av:first-child { margin-left: 0; }
+.ch-head-av--more {
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-family: var(--ff-mono);
+  font-size: 9.5px;
+}
+.ch-head-count {
+  font-family: var(--ff-mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.ch-head-btn, .ch-head-icon {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  color: var(--text-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.ch-head-btn span { white-space: nowrap; }
+.ch-head-icon { padding: 6px 7px; }
+.ch-head-btn:hover, .ch-head-icon:hover { background: var(--surface-2); border-color: var(--line-strong); color: var(--text); }
+.ch-head-btn svg, .ch-head-icon svg { width: 13px; height: 13px; opacity: 0.7; }
+.ch-head-btn kbd { margin-left: 4px; }
+
+.ch-head-btn--ai {
+  background: linear-gradient(135deg, var(--accent-wash), transparent);
+  border-color: var(--accent-soft);
+  color: var(--text);
+  position: relative;
+}
+.ch-head-btn--ai:hover {
+  background: linear-gradient(135deg, var(--accent-wash), var(--accent-wash));
+  border-color: var(--accent);
+}
+.ch-head-spark {
+  width: 12px; height: 12px;
+  background:
+    radial-gradient(circle at center, var(--accent) 0 22%, transparent 25%),
+    conic-gradient(from 0deg, transparent 0 12%, var(--accent) 14% 18%, transparent 20% 37%,
+                   var(--accent) 39% 43%, transparent 45% 62%, var(--accent) 64% 68%,
+                   transparent 70% 87%, var(--accent) 89% 93%, transparent 95% 100%);
+  border-radius: 50%;
+  flex: 0 0 12px;
+  filter: drop-shadow(0 0 4px var(--accent-soft));
+}
+
+/* ───── Main scroll area ───── */
+.main-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 4px;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.main-scroll::-webkit-scrollbar { width: 10px; }
+.main-scroll::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* ───── Channel intro ───── */
+.ch-intro {
+  padding: 36px 28px 28px 24px;
+  border-bottom: 0.5px solid var(--line-2);
+  position: relative;
+}
+.ch-intro-mark {
+  display: inline-flex;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--accent-wash);
+  border: 0.5px solid var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+.ch-intro-title {
+  margin: 0 0 6px;
+  font-family: var(--ff-sans);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  color: var(--text);
+}
+.ch-intro-title span {
+  font-family: var(--ff-mono);
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--accent);
+  margin-left: 2px;
+  letter-spacing: -0.01em;
+}
+.ch-intro-sub {
+  margin: 0 0 16px;
+  color: var(--text-3);
+  font-size: 14px;
+  max-width: 70ch;
+}
+.ch-intro-sub em {
+  font-family: var(--ff-serif);
+  color: var(--text-2);
+}
+.ch-intro-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.ch-intro-actions button {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  color: var(--text-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.ch-intro-actions button span { white-space: nowrap; }
+.ch-intro-actions button:hover { background: var(--surface-2); color: var(--text); }
+.ch-intro-actions svg { width: 12px; height: 12px; opacity: 0.7; }

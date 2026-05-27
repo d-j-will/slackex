@@ -1,0 +1,594 @@
+/* Tenun — The Reduction · efdp's workbench
+   Quieter than the Tapestry: mono-forward, minimal color, lots of whitespace.
+   The five-lens band is the hero atom; everything else gets out of its way. */
+
+.tap-overlay.is-reduction .tap-shell {
+  background: var(--bg);
+}
+.tap-overlay.is-reduction .tap-bar { background: var(--bg-deep); }
+
+.red {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 56px 100px;
+  font-family: var(--ff-sans);
+}
+
+/* ─────────── Masthead ─────────── */
+.red-mast {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: flex-start;
+  padding-bottom: 28px;
+  border-bottom: 0.5px solid var(--line);
+  margin-bottom: 40px;
+}
+.red-mast-l { min-width: 0; }
+.red-mast-eyebrow {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-family: var(--ff-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  text-transform: lowercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 18px;
+}
+.red-mast-mark {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.red-mast-title {
+  margin: 0 0 14px;
+  font-family: var(--ff-sans);
+  font-size: 38px;
+  font-weight: 400;
+  letter-spacing: -0.018em;
+  color: var(--text);
+  line-height: 1.1;
+  text-wrap: balance;
+  max-width: 24ch;
+}
+.red-mast-title.is-serif {
+  font-family: var(--ff-serif);
+  font-size: 48px;
+  letter-spacing: -0.008em;
+}
+.red-mast-sub {
+  margin: 0;
+  font-family: var(--ff-mono);
+  font-size: 12px;
+  color: var(--text-3);
+  letter-spacing: 0.01em;
+}
+
+/* Lens legend */
+.lens-legend {
+  background: var(--bg-2);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+}
+.lens-legend-k {
+  font-size: 9.5px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  margin-bottom: 8px;
+}
+.lens-legend ul {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.lens-legend li {
+  display: grid;
+  grid-template-columns: 14px 90px 1fr;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-2);
+}
+.lens-legend-sym { color: var(--accent); font-size: 12px; text-align: center; }
+.lens-legend-label { color: var(--text); }
+.lens-legend-aud { color: var(--text-3); font-size: 10px; }
+.lens-legend-foot {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 0.5px dashed var(--line);
+  display: flex; align-items: center; gap: 12px;
+  font-size: 10px;
+  color: var(--text-3);
+}
+.lens-legend-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.lens-legend-dot--firm { background: var(--accent); box-shadow: 0 0 0 1.5px var(--accent-wash); }
+.lens-legend-dot--sketched { background: var(--text-3); border: 1px dashed var(--text-3); background: transparent; }
+.lens-legend-dot--open { background: transparent; border: 1px dotted var(--text-4); }
+
+/* ─────────── Today's reduction (hero card) ─────────── */
+.red-today {
+  margin-bottom: 56px;
+  padding: 28px 32px 32px;
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+}
+.red-today::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--accent), var(--copper));
+  border-radius: 3px 0 0 3px;
+}
+.red-today-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.red-today-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.03em;
+}
+.red-today-pulse {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: otl-pulse 2.4s ease-in-out infinite;
+}
+.red-today-actions { display: flex; align-items: center; gap: 8px; }
+.red-today-state {
+  font-family: var(--ff-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  margin-right: 6px;
+}
+.red-today-btn {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  background: var(--bg-2);
+  border: 0.5px solid var(--line);
+  color: var(--text-2);
+  transition: background .12s, color .12s;
+}
+.red-today-btn:hover { background: var(--surface-2); color: var(--text); }
+.red-today-btn--primary { background: var(--accent); color: #1a160c; border-color: var(--accent); font-weight: 600; }
+.red-today-btn--primary:hover { background: var(--accent); color: #1a160c; filter: brightness(1.08); }
+
+.red-today-title {
+  margin: 0 0 28px;
+  font-family: var(--ff-sans);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  color: var(--text);
+  line-height: 1.2;
+  max-width: 36ch;
+  text-wrap: balance;
+}
+.red-today-title.is-serif {
+  font-family: var(--ff-serif);
+  font-weight: 400;
+  font-size: 34px;
+}
+
+.red-today-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 36px;
+}
+
+/* Raw column */
+.red-raw { min-width: 0; }
+.red-raw-k {
+  font-family: var(--ff-mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  margin-bottom: 10px;
+}
+.red-raw-k--later { margin-top: 18px; }
+.red-raw-list, .red-raw-channels { list-style: none; margin: 0; padding: 0; }
+.red-raw-list li {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 6px 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+  border-top: 0.5px dashed var(--line-2);
+}
+.red-raw-list li:first-child { border-top: 0; padding-top: 0; }
+.red-raw-n {
+  font-family: var(--ff-serif);
+  font-size: 19px;
+  color: var(--text);
+  min-width: 32px;
+  line-height: 1;
+}
+.red-raw-channels li {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 3px 0;
+}
+
+.red-raw-note {
+  margin-top: 22px;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--accent-soft);
+}
+.red-raw-note-k {
+  font-family: var(--ff-mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  margin-bottom: 6px;
+}
+.red-raw-note p {
+  margin: 0;
+  font-family: var(--ff-serif);
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* ─────────── Lens band ─────────── */
+.red-lenses { display: flex; flex-direction: column; gap: 1px; }
+.red-lenses--today { background: var(--line); border-radius: var(--radius); overflow: hidden; }
+
+.lens {
+  display: grid;
+  grid-template-columns: 200px 1fr 6px;
+  gap: 20px;
+  padding: 14px 18px;
+  background: var(--bg-2);
+  position: relative;
+  transition: background .12s;
+}
+.red-lenses--today .lens { background: var(--surface); }
+.red-lenses--today .lens:hover { background: var(--surface-2); }
+.lens--dense {
+  grid-template-columns: 110px 1fr 5px;
+  padding: 9px 12px;
+  gap: 14px;
+}
+
+.lens-gutter { min-width: 0; }
+.lens-sym {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 14px;
+  margin-right: 7px;
+  font-family: var(--ff-mono);
+}
+.lens--dense .lens-sym { font-size: 12px; margin-right: 5px; }
+
+.lens-label {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+.lens--dense .lens-label { font-size: 10.5px; }
+
+.lens-audience {
+  display: flex; gap: 3px; flex-wrap: wrap;
+  margin-top: 5px;
+}
+.lens--dense .lens-audience { margin-top: 3px; }
+.lens-aud {
+  font-family: var(--ff-mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 0.5px solid var(--line);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lens-aud--everyone { color: var(--text-2); }
+.lens-aud--po { color: var(--copper); border-color: rgba(217,119,87,0.3); }
+.lens-aud--sme { color: var(--rose); border-color: rgba(201,138,166,0.3); }
+.lens-aud--jr { color: var(--jade); border-color: rgba(127,181,154,0.3); }
+.lens-aud--sr { color: var(--accent); border-color: var(--accent-soft); }
+.lens-aud--pr { color: #7c5cff; border-color: rgba(124,92,255,0.3); }
+.lens-aud--team { color: var(--text-2); }
+
+.lens-body { min-width: 0; }
+.lens-text {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text);
+  line-height: 1.55;
+}
+.lens--dense .lens-text { font-size: 12.5px; line-height: 1.5; }
+.lens-text--open {
+  font-family: var(--ff-serif);
+  color: var(--text-3);
+}
+.lens-text--sketched {
+  color: var(--text-2);
+}
+
+.lens-pickup {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 6px;
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 0.5px solid var(--line);
+}
+.lens-pickup-k {
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lens-pickup-role { color: var(--accent); }
+
+/* State dot at right edge */
+.lens-state-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  align-self: center;
+  background: var(--text-4);
+}
+.lens.lens-is-firm .lens-state-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-wash);
+}
+.lens.lens-is-sketched .lens-state-dot {
+  background: transparent;
+  border: 1px dashed var(--text-3);
+}
+.lens.lens-is-open .lens-state-dot {
+  background: transparent;
+  border: 1px dotted var(--text-4);
+}
+
+/* ─────────── Section headings ─────────── */
+.red-section-hd {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  border-bottom: 0.5px solid var(--line-2);
+}
+.red-section-title {
+  margin: 0;
+  font-family: var(--ff-sans);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+.red-section-title.is-serif {
+  font-family: var(--ff-serif);
+  font-weight: 400;
+  font-size: 24px;
+}
+.red-section-hint {
+  font-family: var(--ff-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  letter-spacing: 0.01em;
+}
+
+/* ─────────── In the pot — packaged ideas grid ─────────── */
+.red-pot { margin-bottom: 56px; }
+.red-pot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.pot {
+  background: var(--bg-2);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.pot--raw { border-style: dashed; }
+.pot-hd {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 12px 16px 10px;
+  gap: 10px;
+  border-bottom: 0.5px solid var(--line-2);
+  background: var(--surface);
+}
+.pot-hd-l { min-width: 0; }
+.pot-domain {
+  display: inline-block;
+  font-family: var(--ff-mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  margin-bottom: 4px;
+}
+.pot-title {
+  margin: 0;
+  font-family: var(--ff-sans);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+.pot-stage {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 0.5px solid var(--line);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex: 0 0 auto;
+}
+.pot-stage-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.pot-stage--packaged .pot-stage-dot { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+.pot-stage--packaged { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-wash); }
+.pot-stage--distilling .pot-stage-dot { background: var(--copper); animation: otl-pulse 1.8s ease-in-out infinite; }
+.pot-stage--distilling { color: var(--copper); border-color: rgba(217,119,87,0.3); }
+.pot-stage--raw .pot-stage-dot { background: var(--text-3); }
+.pot-stage--raw { color: var(--text-3); }
+
+.pot-lenses {
+  flex: 1;
+  background: var(--line-2);
+  display: flex; flex-direction: column; gap: 1px;
+}
+
+.pot-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 0.5px solid var(--line-2);
+  background: var(--surface);
+  gap: 12px;
+}
+.pot-foot-progress { display: flex; gap: 3px; align-items: center; }
+.pot-prog {
+  width: 22px; height: 4px;
+  border-radius: 2px;
+  background: var(--text-4);
+}
+.pot-prog--firm { background: var(--accent); }
+.pot-prog--sketched { background: var(--copper); }
+.pot-prog--open {
+  background: transparent;
+  border: 1px dashed var(--text-4);
+  height: 2px;
+}
+.pot-foot-actions { display: flex; gap: 6px; }
+.pot-act {
+  font-family: var(--ff-mono);
+  font-size: 10.5px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--bg-2);
+  border: 0.5px solid var(--line);
+  color: var(--text-2);
+  transition: background .12s, color .12s;
+}
+.pot-act:hover { background: var(--surface-2); color: var(--text); }
+.pot-act--primary { background: var(--accent); color: #1a160c; font-weight: 600; border-color: var(--accent); }
+.pot-act--primary:hover { background: var(--accent); color: #1a160c; filter: brightness(1.08); }
+
+/* ─────────── Tensions ─────────── */
+.red-tensions { margin-bottom: 56px; }
+.red-tension-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.red-tension {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 18px;
+  padding: 14px 18px;
+  background: var(--bg-2);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius);
+  align-items: flex-start;
+}
+.red-tension--high { border-left: 2px solid var(--copper); }
+.red-tension--med { border-left: 2px solid var(--accent-soft); }
+.red-tension-vis {
+  color: var(--text-3);
+}
+.red-tension-title {
+  font-family: var(--ff-sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+}
+.red-tension-why {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.55;
+  max-width: 80ch;
+}
+.red-tension-rel {
+  margin-top: 8px;
+  font-family: var(--ff-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.red-tension-rel-tag {
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 0.5px solid var(--line);
+  color: var(--text-2);
+}
+
+/* ─────────── Carried ─────────── */
+.red-carry-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.red-carry {
+  display: grid;
+  grid-template-columns: 4px 1fr 200px 60px;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 4px;
+  border-top: 0.5px solid var(--line-2);
+}
+.red-carry:first-child { border-top: 0; }
+.red-carry-strand {
+  width: 3px; height: 22px;
+  border-radius: 2px;
+  background: var(--text-4);
+}
+.red-carry.is-mine .red-carry-strand { background: var(--accent); }
+.red-carry-title { font-size: 13.5px; color: var(--text); font-weight: 500; }
+.red-carry-state {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+.red-carry-owner {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.red-carry-av {
+  width: 22px; height: 22px;
+  border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a160c;
+}
+.red-carry-since {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: right;
+}

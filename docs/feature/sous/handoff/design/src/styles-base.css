@@ -1,0 +1,155 @@
+/* Tenun — "Loom" visual system
+   Warm dark canvas, golden warp accent, weave motif throughout.
+   Type: Geist (body) + Geist Mono (code, timestamps) + Instrument Serif (italic AI moments).
+*/
+
+/* ─────────── Tokens (dark / default) ─────────── */
+:root {
+  --accent: #e8c547;
+  --accent-soft: rgba(232, 197, 71, 0.33);
+  --accent-wash: rgba(232, 197, 71, 0.08);
+
+  /* warm-charcoal palette */
+  --bg-deep:     #0b0a07;
+  --bg:          #131109;
+  --bg-2:        #16140d;
+  --surface:     #1b1810;
+  --surface-2:   #221e15;
+  --surface-3:   #2a2519;
+  --line:        rgba(232, 220, 185, 0.10);
+  --line-2:      rgba(232, 220, 185, 0.06);
+  --line-strong: rgba(232, 220, 185, 0.18);
+
+  --text:        #f2ecdc;
+  --text-2:      #b8af96;
+  --text-3:      #80785f;
+  --text-4:      #56503e;
+
+  --copper:  #d97757;
+  --jade:    #6fb59a;
+  --rose:    #c98aa6;
+  --mention: #ffe680;
+  --error:   #e07c6e;
+  --ok:      #7fb59a;
+
+  --sidebar-w: 280px;
+  --thread-w: 420px;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+
+  --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.32);
+  --shadow-2: 0 1px 0 rgba(255,255,255,0.05) inset, 0 16px 48px rgba(0,0,0,0.48);
+
+  --ff-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Inter", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+  --ff-mono: "Geist Mono", ui-monospace, "JetBrains Mono", "SF Mono", "Apple Color Emoji", "Segoe UI Emoji", monospace;
+  --ff-serif: "Instrument Serif", "Iowan Old Style", Georgia, "Apple Color Emoji", "Segoe UI Emoji", serif;
+
+  --fs-msg: 14.5px;
+  --lh-msg: 1.55;
+  --pad-msg-y: 8px;
+  --pad-msg-x: 18px;
+}
+
+.theme-light {
+  --bg-deep:     #f6f1e2;
+  --bg:          #fbf7eb;
+  --bg-2:        #f3eedd;
+  --surface:     #ffffff;
+  --surface-2:   #faf5e6;
+  --surface-3:   #efe9d6;
+  --line:        rgba(40, 32, 12, 0.10);
+  --line-2:      rgba(40, 32, 12, 0.06);
+  --line-strong: rgba(40, 32, 12, 0.18);
+
+  --text:        #1a160c;
+  --text-2:      #5a5240;
+  --text-3:      #8a8268;
+  --text-4:      #b5ad94;
+  --accent-wash: rgba(232, 197, 71, 0.20);
+}
+
+/* density adjustments */
+.density-compact { --pad-msg-y: 4px; --fs-msg: 13.5px; --lh-msg: 1.45; }
+.density-comfy   { --pad-msg-y: 12px; --fs-msg: 15px; --lh-msg: 1.65; }
+
+/* ─────────── Base ─────────── */
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--ff-sans);
+  font-size: var(--fs-msg);
+  line-height: var(--lh-msg);
+  color: var(--text);
+  background: var(--bg-deep);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
+  font-variant-ligatures: contextual;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: transparent; border: 0; cursor: pointer; padding: 0; }
+input, textarea { font: inherit; color: inherit; }
+a { color: inherit; }
+
+/* No italics anywhere — override the browser default for emphasis tags. */
+em, i, address, cite, dfn, var, blockquote { font-style: normal; }
+
+kbd {
+  font-family: var(--ff-mono);
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  border: 0.5px solid var(--line);
+  letter-spacing: 0.04em;
+}
+
+/* ─────────── App shell ─────────── */
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  height: 100vh;
+  background: var(--bg-deep);
+  color: var(--text);
+  position: relative;
+  overflow: hidden;
+}
+.app.has-thread { grid-template-columns: var(--sidebar-w) 1fr var(--thread-w); }
+
+/* Global weave texture — barely-there warp/weft pattern */
+.weave-bg {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(90deg,
+      transparent 0, transparent 11px,
+      rgba(232, 197, 71, 0.06) 11px, rgba(232, 197, 71, 0.06) 12px),
+    repeating-linear-gradient(0deg,
+      transparent 0, transparent 11px,
+      rgba(232, 197, 71, 0.025) 11px, rgba(232, 197, 71, 0.025) 12px);
+  opacity: 0;
+  mix-blend-mode: screen;
+  z-index: 0;
+}
+.weave-subtle .weave-bg { opacity: 1; }
+.weave-pronounced .weave-bg { opacity: 1; background-image:
+    repeating-linear-gradient(90deg,
+      transparent 0, transparent 9px,
+      rgba(232, 197, 71, 0.10) 9px, rgba(232, 197, 71, 0.10) 10px),
+    repeating-linear-gradient(0deg,
+      transparent 0, transparent 9px,
+      rgba(232, 197, 71, 0.045) 9px, rgba(232, 197, 71, 0.045) 10px);
+}
+.theme-light .weave-bg { mix-blend-mode: multiply; }
+.theme-light.weave-subtle .weave-bg { background-image:
+    repeating-linear-gradient(90deg,
+      transparent 0, transparent 11px,
+      rgba(120, 90, 0, 0.05) 11px, rgba(120, 90, 0, 0.05) 12px),
+    repeating-linear-gradient(0deg,
+      transparent 0, transparent 11px,
+      rgba(120, 90, 0, 0.02) 11px, rgba(120, 90, 0, 0.02) 12px);
+}
+
+.main, .sidebar, .thread-rail { position: relative; z-index: 1; }
