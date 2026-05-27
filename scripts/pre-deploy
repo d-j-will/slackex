@@ -4,42 +4,78 @@
 # Usage: scripts/pre-deploy
 #
 # Exits non-zero on first failure. Do not tag if any step fails.
+#
+# The QUALITY section (steps 1-9) mirrors the `quality` job in
+# .github/workflows/ci-deploy.yml, which runs under MIX_ENV=test. A clean
+# pre-deploy should therefore guarantee a green CI quality job. If you change
+# CI's quality job, update this script to match (and vice versa).
 
 set -e
+
+# Match CI's quality job env. `mix format` resolves dependency formatter configs
+# from _build/$MIX_ENV (the migrations subdirectory imports ecto_sql), so dev and
+# test can disagree on migration files — running under test keeps this gate
+# honest. Docker build + release boot (steps 10-12) use the Dockerfile's own prod
+# env and are unaffected by this shell setting.
+export MIX_ENV=test
 
 echo "=== Pre-deploy verification ==="
 echo ""
 
-# 1. Tests
-echo "Step 1/7: Running tests..."
-mix test --max-failures 3
-echo "PASS: Tests"
+# ---------------------------------------------------------------------------
+# Quality — mirrors .github/workflows/ci-deploy.yml `quality` job (MIX_ENV=test)
+# ---------------------------------------------------------------------------
+
+echo "Step 1/12: Compiling (--warnings-as-errors)..."
+mix compile --warnings-as-errors --force
+echo "PASS: Compile"
 echo ""
 
-# 2. Formatting
-# MIX_ENV=test to match CI's quality job (which runs under MIX_ENV=test).
-# `mix format` resolves dep formatter configs (.formatter.exs import_deps and the
-# migrations subdirectory's ecto_sql import) from _build/$MIX_ENV, so dev and test
-# can disagree on migration files — this gate must mirror CI.
-echo "Step 2/7: Checking formatting..."
-MIX_ENV=test mix format --check-formatted
+echo "Step 2/12: Checking formatting..."
+mix format --check-formatted
 echo "PASS: Formatting"
 echo ""
 
-# 3. Credo
-echo "Step 3/7: Running Credo..."
+echo "Step 3/12: Running Credo..."
 mix credo
 echo "PASS: Credo"
 echo ""
 
-# 4. Dialyzer
-echo "Step 4/7: Running Dialyzer..."
+echo "Step 4/12: Running Dialyzer..."
 mix dialyzer
 echo "PASS: Dialyzer"
 echo ""
 
-# 5. YAML validation
-echo "Step 5/7: Validating CI YAML..."
+echo "Step 5/12: Running tests (--warnings-as-errors)..."
+mix test --warnings-as-errors
+echo "PASS: Tests"
+echo ""
+
+echo "Step 6/12: Running contract tests..."
+mix test --only contract
+echo "PASS: Contract tests"
+echo ""
+
+echo "Step 7/12: Running e2e tests..."
+mix test --only e2e
+echo "PASS: E2E tests"
+echo ""
+
+echo "Step 8/12: Auditing dependencies..."
+mix hex.audit
+echo "PASS: hex.audit"
+echo ""
+
+echo "Step 9/12: Checking for unused deps..."
+mix deps.unlock --check-unused
+echo "PASS: deps.unlock --check-unused"
+echo ""
+
+# ---------------------------------------------------------------------------
+# Deploy readiness — beyond CI's quality job
+# ---------------------------------------------------------------------------
+
+echo "Step 10/12: Validating CI YAML..."
 for f in .github/workflows/*.yml; do
   ruby -ryaml -e "YAML.safe_load(File.read('$f'))" 2>&1
   if [ $? -ne 0 ]; then
@@ -50,14 +86,12 @@ done
 echo "PASS: YAML valid"
 echo ""
 
-# 6. Docker image builds
-echo "Step 6/7: Building Docker image..."
+echo "Step 11/12: Building Docker image..."
 docker build -t slackex:pre-deploy-check . >/dev/null 2>&1
 echo "PASS: Docker image builds"
 echo ""
 
-# 7. Docker image boots
-echo "Step 7/7: Verifying release boots..."
+echo "Step 12/12: Verifying release boots..."
 BOOT_OUTPUT=$(docker run --rm \
   -e SECRET_KEY_BASE=pre-deploy-check-key-that-is-at-least-64-bytes-long-for-phoenix-to-accept \
   -e DATABASE_URL=ecto://postgres:postgres@host/slackex_prod \
