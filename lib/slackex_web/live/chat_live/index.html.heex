@@ -364,6 +364,15 @@
   />
 
   <.live_component
+    :if={@show_decide and @active_channel}
+    module={SlackexWeb.ChatLive.DecideModalComponent}
+    id="decide-modal"
+    channel={@active_channel}
+    current_user={@current_user}
+    return_to={~p"/chat/#{@active_channel.slug}"}
+  />
+
+  <.live_component
     :if={@show_quick_switcher}
     module={QuickSwitcherModal}
     id="quick-switcher"

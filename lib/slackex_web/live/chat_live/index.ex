@@ -127,6 +127,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:summarization_enabled, FunWithFlags.enabled?(:channel_summarization))
      |> assign(:link_previews, %{})
      |> assign(:show_summary_modal, false)
+     |> assign(:show_decide, false)
      |> assign(:summary_text, "")
      |> assign(:summary_state, :idle)
      |> assign(:summary_error, nil)
@@ -258,6 +259,7 @@ defmodule SlackexWeb.ChatLive.Index do
           socket
           |> Conversations.enter_channel(channel, can_send, role, target_message_id)
           |> Helpers.maybe_push_scroll_event(target_message_id)
+          |> assign(:show_decide, false)
 
         {:noreply, socket}
 
@@ -349,23 +351,36 @@ defmodule SlackexWeb.ChatLive.Index do
          |> assign(:show_summary_modal, true)
          |> assign(:message_form, to_form(%{"content" => ""}, as: :message))}
 
+      {:decide} ->
+        {:noreply,
+         socket
+         |> assign(:show_decide, true)
+         |> assign(:message_form, to_form(%{"content" => ""}, as: :message))}
+
       {:unknown_command, cmd} ->
         {:noreply, put_flash(socket, :error, "Unknown command: /#{cmd}")}
 
       _ ->
-        cond do
-          socket.assigns.active_dm != nil ->
-            Helpers.send_message_to_dm(socket.assigns.active_dm, user, content, socket)
+        dispatch_message(socket, user, content)
+    end
+  end
 
-          socket.assigns.active_channel != nil and socket.assigns.can_send ->
-            Helpers.send_message_to_channel(socket.assigns.active_channel, user, content, socket)
+  # Routes a plain (non-command) message to the active DM or channel, honouring
+  # send permissions. Extracted from handle_event/3 to keep that clause's
+  # cyclomatic complexity within the project's credo budget.
+  defp dispatch_message(socket, user, content) do
+    cond do
+      socket.assigns.active_dm != nil ->
+        Helpers.send_message_to_dm(socket.assigns.active_dm, user, content, socket)
 
-          socket.assigns.active_channel != nil ->
-            {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
+      socket.assigns.active_channel != nil and socket.assigns.can_send ->
+        Helpers.send_message_to_channel(socket.assigns.active_channel, user, content, socket)
 
-          true ->
-            {:noreply, socket}
-        end
+      socket.assigns.active_channel != nil ->
+        {:noreply, put_flash(socket, :error, "You don't have permission to send messages.")}
+
+      true ->
+        {:noreply, socket}
     end
   end
 

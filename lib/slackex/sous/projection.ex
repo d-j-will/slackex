@@ -61,7 +61,16 @@ defmodule Slackex.Sous.Projection do
 
   defp to_atom(nil), do: nil
   defp to_atom(v) when is_atom(v), do: v
-  defp to_atom(v) when is_binary(v), do: String.to_existing_atom(v)
+
+  defp to_atom(v) when is_binary(v) do
+    # WorkItem's module attributes (@kinds, @states, @attentions) materialize
+    # every enum atom this projection round-trips. Ensure it is loaded so
+    # String.to_existing_atom never depends on incidental load order — the
+    # producer (Sous.open_decision) writes these strings, so the consumer here
+    # must be able to read them back regardless of which process runs first.
+    _ = Code.ensure_loaded?(Slackex.Sous.WorkItem)
+    String.to_existing_atom(v)
+  end
 
   defp to_dt(nil), do: nil
   defp to_dt(%DateTime{} = dt), do: dt
