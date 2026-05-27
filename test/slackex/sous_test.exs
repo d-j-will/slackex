@@ -40,7 +40,7 @@ defmodule Slackex.SousTest do
       assert decision.what == "Use an append-only log"
     end
 
-    test "the persisted row equals folding its event log (replay guard, invariant #7)", %{
+    test "the persisted row equals folding its full event log (replay guard, invariant #7)", %{
       user: u,
       channel: c
     } do
@@ -48,18 +48,46 @@ defmodule Slackex.SousTest do
         Sous.open_decision(%{
           channel_id: c.id,
           actor_id: u.id,
+          actor_username: u.username,
           title: "Replayable",
           what: "w",
-          stakeholders: []
+          why: "y",
+          next: "n",
+          stakeholders: [u.id]
         })
 
-      events = Repo.all(from e in WorkItemEvent, where: e.work_item_id == ^wi.id, order_by: e.id)
-      folded = Projection.fold(events).work_item
+      {:ok, _moved} = Sous.move(wi.id, :pass, u.id)
 
-      assert folded.state == wi.state
-      assert folded.title == wi.title
-      assert folded.kind == wi.kind
-      assert folded.attention == wi.attention
+      persisted = Repo.get!(WorkItem, wi.id) |> Repo.preload(:decision)
+
+      events =
+        Repo.all(from e in WorkItemEvent, where: e.work_item_id == ^wi.id, order_by: e.id)
+
+      assert Enum.map(events, & &1.type) == [:created, :state_changed]
+
+      folded = Projection.fold(events)
+
+      # Every projected work_item field must match the inline-maintained row.
+      for field <- [
+            :id,
+            :kind,
+            :state,
+            :title,
+            :facet_text,
+            :attention,
+            :people,
+            :channel_id,
+            :thread_root_message_id,
+            :card_message_id,
+            :moved_at
+          ] do
+        assert Map.get(folded.work_item, field) == Map.get(persisted, field),
+               "field #{field} diverged: folded=#{inspect(Map.get(folded.work_item, field))} persisted=#{inspect(Map.get(persisted, field))}"
+      end
+
+      assert folded.decision.what == persisted.decision.what
+      assert folded.decision.why == persisted.decision.why
+      assert folded.decision.next == persisted.decision.next
     end
 
     test "rolls back entirely when the decision is invalid", %{user: u, channel: c} do

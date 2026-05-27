@@ -1544,12 +1544,16 @@ defmodule SlackexWeb.ChatLive.Index do
   # live (ADR-002). Re-subscribing on channel re-entry is harmless — PubSub
   # dedups identical subscriptions per process.
   defp load_sous_cards(socket, channel) do
-    _ =
-      if connected?(socket) do
-        Phoenix.PubSub.subscribe(Slackex.PubSub, Slackex.Sous.cards_topic(channel.id))
-      end
+    if FunWithFlags.enabled?(:sous, for: socket.assigns.current_user) do
+      _ =
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(Slackex.PubSub, Slackex.Sous.cards_topic(channel.id))
+        end
 
-    assign(socket, :card_messages, Slackex.Sous.card_messages_for_channel(channel.id))
+      assign(socket, :card_messages, Slackex.Sous.card_messages_for_channel(channel.id))
+    else
+      assign(socket, :card_messages, %{})
+    end
   end
 
   defp track_feature(socket, feature, metadata) do

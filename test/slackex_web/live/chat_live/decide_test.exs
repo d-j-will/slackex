@@ -82,6 +82,33 @@ defmodule SlackexWeb.ChatLive.DecideTest do
     refute html =~ "Capture a decision"
   end
 
+  test "decision cards do not render when :sous is off", %{
+    conn: conn,
+    channel: channel,
+    alice: alice
+  } do
+    # Create a carded decision while the flag is ON (setup state).
+    {:ok, wi} =
+      Slackex.Sous.open_decision(%{
+        channel_id: channel.id,
+        actor_id: alice.id,
+        actor_username: alice.username,
+        title: "Hidden When Off",
+        what: "secret",
+        stakeholders: []
+      })
+
+    {:ok, _carded} = Slackex.Sous.post_decision_card(wi, alice.id)
+
+    # Now turn the flag off and mount the channel.
+    FunWithFlags.disable(:sous)
+    on_exit(fn -> FunWithFlags.enable(:sous) end)
+
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    refute render(lv) =~ "lives in: In Service"
+  end
+
   test "a posted decision renders as a card in the channel", %{conn: conn, channel: channel} do
     {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
 
