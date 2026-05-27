@@ -112,4 +112,34 @@ defmodule Slackex.SousTest do
       assert {:error, :no_op} = Sous.move(wi.id, :mise, u.id)
     end
   end
+
+  describe "queries" do
+    test "list_in_flight/0 groups work items by state", %{user: u, channel: c} do
+      {:ok, a} =
+        Sous.open_decision(%{
+          channel_id: c.id,
+          actor_id: u.id,
+          title: "A",
+          what: "w",
+          stakeholders: []
+        })
+
+      {:ok, b} =
+        Sous.open_decision(%{
+          channel_id: c.id,
+          actor_id: u.id,
+          title: "B",
+          what: "w",
+          stakeholders: []
+        })
+
+      {:ok, _} = Sous.move(b.id, :pass, u.id)
+
+      grouped = Sous.list_in_flight()
+      assert Enum.map(grouped[:mise], & &1.id) == [a.id]
+      assert Enum.map(grouped[:pass], & &1.id) == [b.id]
+      assert grouped[:order] == []
+      assert grouped[:walked] == []
+    end
+  end
 end

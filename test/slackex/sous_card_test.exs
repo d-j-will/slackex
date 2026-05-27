@@ -45,12 +45,15 @@ defmodule Slackex.SousCardTest do
     assert Enum.map(events, & &1.type) == [:created, :card_posted]
   end
 
-  # Task 10: enable once card_messages_for_channel/1 exists
-  # test "card_messages_for_channel/1 maps card_message_id => work_item", %{wi: wi, user: u, channel: c} do
-  #   {:ok, carded} = Sous.post_decision_card(wi, u.id)
-  #
-  #   map = Sous.card_messages_for_channel(c.id)
-  #   assert Map.has_key?(map, carded.card_message_id)
-  #   assert map[carded.card_message_id].id == wi.id
-  # end
+  test "card_messages_for_channel/1 maps card_message_id => work_item", %{
+    wi: wi,
+    user: u,
+    channel: c
+  } do
+    {:ok, carded} = Sous.post_decision_card(wi, u.id)
+
+    map = Sous.card_messages_for_channel(c.id)
+    assert Map.has_key?(map, carded.card_message_id)
+    assert map[carded.card_message_id].id == wi.id
+  end
 end

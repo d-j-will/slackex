@@ -13,6 +13,8 @@ defmodule Slackex.Sous do
     * "sous:cards:channel:\#{id}"  — channel-scoped; chat decision-card upgrade.
   """
 
+  import Ecto.Query
+
   alias Ecto.Multi
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.Messaging
@@ -194,6 +196,27 @@ defmodule Slackex.Sous do
       {:error, _step, changeset, _} ->
         {:error, changeset}
     end
+  end
+
+  @doc "All in-flight work items grouped by state. Every state key is present (possibly empty)."
+  def list_in_flight do
+    base = for s <- WorkItem.states(), into: %{}, do: {s, []}
+
+    WorkItem
+    |> order_by(asc: :inserted_at)
+    |> preload(:decision)
+    |> Repo.all()
+    |> Enum.group_by(& &1.state)
+    |> then(&Map.merge(base, &1))
+  end
+
+  @doc "Map of `card_message_id => work_item` (with decision preloaded) for a channel."
+  def card_messages_for_channel(channel_id) do
+    WorkItem
+    |> where([w], w.channel_id == ^channel_id and not is_nil(w.card_message_id))
+    |> preload(:decision)
+    |> Repo.all()
+    |> Map.new(fn wi -> {wi.card_message_id, wi} end)
   end
 
   defp card_fallback_text(%WorkItem{title: title}), do: "Decision: #{title}"
