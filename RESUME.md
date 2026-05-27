@@ -1,6 +1,6 @@
 # RESUME — where to pick up
 
-_Last updated: 2026-05-27 (Europe/London). A session-limit warning fired during the v0.9.16 deploy; this file is the continuity anchor._
+_Last updated: 2026-05-27 (Europe/London). Latest work: **Sous Slice A built on master** (committed, not pushed/deployed, UI not yet browser-verified) — see the Sous section below. This file is the continuity anchor._
 
 ## Just shipped — v0.9.16 (the Loom redesign)
 
@@ -41,12 +41,23 @@ Inventory (original recommendation kept for reference):
 
 Both steps are prod-affecting → get explicit go-ahead before each.
 
-## THEN: Sous — full brainstorm written, awaiting a scope decision
+## Sous — Slice A (event-stream tracer bullet) BUILT, not yet dogfooded/pushed (2026-05-27)
 
-- Sous is **not** a re-skin — it's a whole product (work-item event stream + 7 role lenses + 8 surfaces + new schema). Same warm-charcoal/gold palette as Loom but **Instrument Serif upright (no italics)**.
-- Full breakdown + recommended slicing: **`docs/feature/sous/sous-brainstorm.md`**.
-- Design bundle extracted at `/tmp/sous-design/` (README at `tenun/project/design_handoff_sous/README.md`; prototypes in `…/design/src/`).
-- Decision needed: which vertical slice to build first (the brainstorm recommends one).
+Decisions made: framing = **evolve Tenun behind a `:sous` flag** (not a new app); first slice = **A, the event-stream tracer bullet**; linkage = **Option Q** (ADR-002 — card posted via the existing Messaging facade, `WorkItem.card_message_id` set by a `:card_posted` event; **no** changes to the message write-behind hot path); attention seed = **`:act` only** (attention control deferred to Slice B).
+
+**What's built** (19 commits on master, range `fb4dfa1..5f62509`, behind `:sous`):
+- `Slackex.Sous` context: `WorkItem` + `Decision` + `WorkItemEvent` (append-only) + pure `Projection` reducer; `open_decision/1`, `post_decision_card/2`, `move/3`, `list_in_flight/0`, `card_messages_for_channel/1`.
+- `/decide` slash command → modal → creates a `:decision` work item (state `:mise`) + posts a rich decision card to chat.
+- **In Service** board LiveView at `/in-service` (four columns, attention treatments, per-card move buttons), flag-gated nav link.
+- 7 event-sourcing invariants honored; replay-guard test folds `:created`+`:state_changed` across all fields. Mandatory e2e integration test exercises chat→work-item→board via the real facade. Suite: **1505 tests, 0 failures**. Final code review passed (I-1 card-render gating + I-2 replay-guard strengthened and fixed).
+
+**State / how to pick up:**
+- **NOT pushed** to origin; **NOT deployed**. Committed on local `master`.
+- `:sous` is **OFF** in the dev DB and prod (brand-new flag). To dogfood: `MIX_ENV=dev mix run -e 'FunWithFlags.enable(:sous)'` (or `/admin/flags`), then `mix phx.server`, log in, run `/decide` in a channel, open `/in-service`.
+- **UI NOT browser-verified** — only LiveView/integration tests pass. Dogfood in a browser before pushing.
+- Deferred to Slice B (per review): viewer model + per-viewer `WorkItemFacet` + AI facets; attention control (`:attention_set` event); concurrent-move row lock (M-1); `post_decision_card` logging in-context (M-2); reducer fallthrough clause (M-3). 5 credo `--strict` alias-order nits in Sous test files (project gate is non-strict).
+
+**Key docs:** spec `docs/feature/sous/design/slice-a-event-stream-tracer-bullet.md`; ADR-001 (plaintext Decision fields), ADR-002 (write-behind reconciliation); plan `docs/superpowers/plans/2026-05-27-sous-slice-a-event-stream.md`; brainstorm `docs/feature/sous/sous-brainstorm.md`; handoff `docs/feature/sous/handoff/`.
 
 ## Loom follow-ups (deferred, lower priority)
 
