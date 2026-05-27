@@ -810,8 +810,21 @@ defmodule Slackex.Sous do
       "title" => attrs[:title],
       "state" => "mise",
       "facet_text" => attrs[:title],
-      "attention" => "watch",
-      "people" => %{"lead" => lead, "supporting" => [], "watching" => [], "stakeholders" => stakeholders},
+      # Slice A has no viewer model, so attention is a single stored value. A
+      # freshly-made decision demands attention → :act (accent edge + "behind"),
+      # so the board shows a real treatment from day one. (See the "attention
+      # variety" note at the head of Task 14 for how the other treatments become
+      # visible — a pending product decision.)
+      "attention" => "act",
+      # DRI name is snapshotted into the event (self-describing) so the card
+      # renders with no render-time user lookup.
+      "people" => %{
+        "lead" => lead,
+        "lead_name" => attrs[:actor_username],
+        "supporting" => [],
+        "watching" => [],
+        "stakeholders" => stakeholders
+      },
       "what" => attrs[:what],
       "why" => attrs[:why],
       "next" => attrs[:next],
@@ -1326,6 +1339,20 @@ defmodule SlackexWeb.ChatLive.DecideTest do
     grouped = Sous.list_in_flight()
     assert Enum.any?(grouped[:mise], &(&1.title == "Adopt ES"))
   end
+
+  test "submitting with a blank What re-renders the modal with an error", %{conn: conn, channel: channel} do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    lv |> form("#message-form", %{message: %{content: "/decide"}}) |> render_submit()
+
+    html =
+      lv
+      |> form("#decide-form", %{decision: %{title: "No what", what: "", why: "", next: ""}})
+      |> render_submit()
+
+    assert html =~ "Title and What are required."
+    assert Sous.list_in_flight()[:mise] == []
+  end
 end
 ```
 
@@ -1371,6 +1398,7 @@ defmodule SlackexWeb.ChatLive.DecideModalComponent do
       channel_id: channel.id,
       thread_root_message_id: socket.assigns[:thread_root_message_id],
       actor_id: actor.id,
+      actor_username: actor.username,
       title: params["title"],
       what: params["what"],
       why: params["why"],
@@ -1517,6 +1545,7 @@ Add to `test/slackex_web/live/chat_live/decide_test.exs`:
     # The card upgrade arrives via the "sous:cards:channel" broadcast → handle_info.
     assert render(lv) =~ "lives in: In Service"
     assert render(lv) =~ "the what"
+    assert render(lv) =~ "DRI: alice"
   end
 ```
 
@@ -1574,6 +1603,12 @@ In the content area (after the `<div data-message-content>` block, around line 2
                 <span class="loom-modal-title font-semibold">{decision_wi.title}</span>
                 <.link navigate={~p"/in-service"} class="text-xs text-primary">lives in: In Service →</.link>
               </div>
+              <p class="text-xs text-base-content/60">
+                DRI: {decision_wi.people["lead_name"] || "—"}
+                <span :if={decision_wi.people["stakeholders"] not in [nil, []]}>
+                  · {length(decision_wi.people["stakeholders"])} stakeholder(s)
+                </span>
+              </p>
               <p :if={decision_wi.decision} class="text-sm"><span class="font-medium">What:</span> {decision_wi.decision.what}</p>
               <p :if={decision_wi.decision && decision_wi.decision.why not in [nil, ""]} class="text-sm"><span class="font-medium">Why:</span> {decision_wi.decision.why}</p>
               <p :if={decision_wi.decision && decision_wi.decision.next not in [nil, ""]} class="text-sm"><span class="font-medium">Next:</span> {decision_wi.decision.next}</p>
@@ -1582,6 +1617,12 @@ In the content area (after the `<div data-message-content>` block, around line 2
 
 Where `message_bubble/1` is invoked in the message list, pass `card_messages={@card_messages}`.
 (Find the `<.message_bubble ... />` call site in `index.html.heex` and add the attribute.)
+
+> **Thread-panel scope:** if messages also render through a second path (the thread panel —
+> `thread_panel_component.ex`), the card will only appear in the main channel view unless
+> `card_messages` is threaded there too. For Slice A, decision cards in the **main channel view**
+> are sufficient; rendering them inside the thread panel is **out of scope** (note it, don't build
+> it). Confirm the main-channel call site is the one being modified.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -1600,6 +1641,14 @@ git commit -m "feat(sous): render decision cards in chat (two-step upgrade, ADR-
 ---
 
 ## Task 14: In Service board route + LiveView (flag-gated)
+
+> **Attention variety (pending product decision — see the wrap-up question).** The board implements
+> all four `attention_class/1` treatments. New decisions seed `:act` (Task 7), so the act treatment
+> is visible from day one. The other treatments (`watch`/`know`/`hidden`) are per-viewer concepts
+> that only become *meaningful* with Slice B's viewer model. If the team wants them exercisable in
+> Slice A, the agreed approach is a small attention control on each board card backed by an
+> `:attention_set` event (an additional command + projection clause + UI + test). Until that is
+> decided, this task ships the four treatments as styling with `:act` as the only seeded value.
 
 **Files:**
 - Create: `lib/slackex_web/live/sous_live/in_service.ex`

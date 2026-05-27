@@ -65,8 +65,14 @@ viewer; it does **not** imply per-user values (that arrives with `WorkItemFacet`
 
 Seed defaults at creation (no AI in Slice A):
 - `facet_text` ← the decision `title` (a plain restatement; the AI-generated facet is Slice B).
-- `attention` ← `:watch`.
+- `attention` ← `:act` — a freshly-made decision demands attention, so the board shows a real
+  treatment (accent edge + "behind") from day one rather than a uniform default.
 These are set in the `:created` event payload, not entered in the modal.
+
+> The board implements all four treatments (`act`/`watch`/`know`/`hidden`), but `watch`/`know`/`hidden`
+> are per-viewer concepts that only become *meaningful* with Slice B's viewer model. Making them
+> exercisable within Slice A (a small board-side attention control backed by an `:attention_set`
+> event) is a pending product decision — see the plan's Task 14 note.
 
 ## 4. Data model
 
