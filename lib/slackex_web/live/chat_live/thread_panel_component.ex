@@ -101,6 +101,7 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
             message={reply}
             current_user_id={@current_user.id}
             grouped={Map.get(reply, :grouped, false)}
+            id_prefix="thread-"
           />
         </div>
       </div>

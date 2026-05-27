@@ -201,5 +201,25 @@ defmodule SlackexWeb.ChatLive.ThreadTest do
       assert length(replies) == 1
       assert hd(replies).content == "DM thread reply"
     end
+
+    test "a reply rendered in both the main stream and the thread panel keeps unique DOM ids",
+         %{conn: conn, dm: dm, message: message, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/chat/dm/#{dm.id}")
+      render_patch(view, ~p"/chat/dm/#{dm.id}/thread/#{message.id}")
+
+      # Drive the real reply path: Messaging.send_reply broadcasts message.new on
+      # the DM topic (-> main :messages stream) AND thread.reply on the thread
+      # topic (-> thread panel). The reply then renders in BOTH containers; if
+      # they share a DOM id, render/1 raises "Duplicate id" (the CI flake).
+      {:ok, _reply} =
+        Slackex.Messaging.send_reply(dm.id, :dm, user.id, message.id, "DM dup-id reply")
+
+      # First render flushes message.new + thread.reply; the second flushes the
+      # thread-panel send_update so the reply is rendered in both containers.
+      _ = render(view)
+      html = render(view)
+
+      assert html =~ "DM dup-id reply"
+    end
   end
 end
