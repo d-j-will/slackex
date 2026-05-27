@@ -73,6 +73,15 @@ defmodule SlackexWeb.ChatLive.SidebarComponent do
 
       <%!-- Scrollable navigation --%>
       <nav class="flex-1 overflow-y-auto p-2 space-y-4">
+        <%!-- In Service board link (Sous feature) --%>
+        <.link
+          :if={FunWithFlags.enabled?(:sous, for: @current_user)}
+          navigate={~p"/in-service"}
+          class="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-base-content/80 hover:text-base-content hover:bg-base-300 rounded-lg transition-colors"
+        >
+          <span class="hero-clipboard-document-list size-4 shrink-0" /> In Service
+        </.link>
+
         <%!-- Channels section --%>
         <div>
           <div class="flex items-center justify-between px-2 py-1">
