@@ -9,9 +9,7 @@ defmodule Slackex.Links.LinkPreviewListenerTest do
       %{pid: pid}
     end
 
-    test "processes messages containing URLs when flag is enabled", %{pid: pid} do
-      FunWithFlags.enable(:link_previews)
-
+    test "processes messages containing URLs", %{pid: pid} do
       message = insert(:message, content: "Check https://pornhub.com")
 
       # Send the event and wait for GenServer to process it
@@ -26,20 +24,7 @@ defmodule Slackex.Links.LinkPreviewListenerTest do
     end
 
     test "ignores messages without URLs", %{pid: pid} do
-      FunWithFlags.enable(:link_previews)
-
       message = insert(:message, content: "Hello world!")
-
-      send(pid, {:messages_persisted, [message.id]})
-      _ = :sys.get_state(pid)
-
-      assert Repo.get_by(LinkPreview, message_id: message.id) == nil
-    end
-
-    test "does nothing when feature flag is disabled", %{pid: pid} do
-      FunWithFlags.disable(:link_previews)
-
-      message = insert(:message, content: "Check https://example.com")
 
       send(pid, {:messages_persisted, [message.id]})
       _ = :sys.get_state(pid)

@@ -137,12 +137,9 @@ defmodule SlackexWeb.ChatLive.Conversations do
     messages = MessageGrouping.annotate(messages)
 
     previews =
-      if socket.assigns.link_previews_enabled do
-        message_ids = Enum.map(messages, & &1.id)
-        Links.list_previews_for_messages(message_ids)
-      else
-        %{}
-      end
+      messages
+      |> Enum.map(& &1.id)
+      |> Links.list_previews_for_messages()
 
     socket
     |> assign(:typing_users, MapSet.new())

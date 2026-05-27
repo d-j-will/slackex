@@ -63,7 +63,6 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
         <.message_bubble
           message={@parent_message}
           current_user_id={@current_user.id}
-          markdown_enabled={assigns[:markdown_enabled] || false}
           id_prefix="thread-"
         />
       </div>
@@ -102,7 +101,6 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
             message={reply}
             current_user_id={@current_user.id}
             grouped={Map.get(reply, :grouped, false)}
-            markdown_enabled={assigns[:markdown_enabled] || false}
           />
         </div>
       </div>

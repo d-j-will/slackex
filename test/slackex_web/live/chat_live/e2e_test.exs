@@ -85,10 +85,6 @@ defmodule SlackexWeb.ChatLive.E2ETest do
   describe "link preview pipeline" do
     test "pipeline:events → LinkPreviewWorker runs → preview persisted → LiveView updates via PubSub",
          %{conn: conn} do
-      # Ensure the feature flag is enabled within the sandbox for this test.
-      FunWithFlags.enable(:link_previews)
-      on_exit(fn -> FunWithFlags.disable(:link_previews) end)
-
       # Stub MetadataParser HTTP for this test only — avoids real network calls.
       # Uses a module plug (not Req.Test ownership) so it works across globally
       # supervised GenServer processes like LinkPreviewListener.
@@ -172,10 +168,6 @@ defmodule SlackexWeb.ChatLive.E2ETest do
     test "reply triggers channel broadcast (reply_count_updated) and thread topic broadcast", %{
       conn: conn
     } do
-      # Enable the :threads feature flag for this test.
-      FunWithFlags.enable(:threads)
-      on_exit(fn -> FunWithFlags.disable(:threads) end)
-
       alice = insert(:user)
       bob = insert(:user)
       channel = insert(:channel) |> with_subscription(alice) |> with_subscription(bob)

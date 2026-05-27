@@ -1306,7 +1306,7 @@ defmodule SlackexWeb.ChatLiveTest do
       {:ok, _} = Chat.send_message(channel.id, alice.id, "Alice's message")
 
       {:ok, lv, html} = live(conn, ~p"/chat/#{channel.slug}")
-      assert html =~ "Alice&#39;s message"
+      assert html =~ "Alice’s message"
 
       # Bob sends a message via PubSub (exactly as ChannelServer would)
       bob_msg_id = System.unique_integer([:positive])
@@ -1332,7 +1332,7 @@ defmodule SlackexWeb.ChatLiveTest do
       html = render(lv)
 
       # Bob's message should appear
-      assert html =~ "Bob&#39;s reply here"
+      assert html =~ "Bob’s reply here"
 
       # Bob's message should NOT be grouped (different sender than Alice)
       # The sender name row has class "hidden" when grouped — verify it's visible

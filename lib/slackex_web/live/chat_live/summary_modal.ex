@@ -99,19 +99,11 @@ defmodule SlackexWeb.ChatLive.SummaryModal do
               <span :if={!@loom} class="loading loading-spinner loading-sm" />
               <span class="text-sm text-base-content/70">Generating summary...</span>
             </div>
-            <%= if @markdown_enabled do %>
-              <div class="prose prose-sm max-w-none">{Slackex.Markdown.to_html(@summary_text)}</div>
-            <% else %>
-              <div class="prose prose-sm max-w-none whitespace-pre-wrap">{@summary_text}</div>
-            <% end %>
+            <div class="prose prose-sm max-w-none">{Slackex.Markdown.to_html(@summary_text)}</div>
           <% end %>
 
           <%= if @summary_state == :complete do %>
-            <%= if @markdown_enabled do %>
-              <div class="prose prose-sm max-w-none">{Slackex.Markdown.to_html(@summary_text)}</div>
-            <% else %>
-              <div class="prose prose-sm max-w-none whitespace-pre-wrap">{@summary_text}</div>
-            <% end %>
+            <div class="prose prose-sm max-w-none">{Slackex.Markdown.to_html(@summary_text)}</div>
           <% end %>
 
           <%= if @summary_state == :error do %>

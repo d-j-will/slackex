@@ -125,12 +125,6 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:search_open, false)
      |> assign(:search_enabled, FunWithFlags.enabled?(:message_search))
      |> assign(:summarization_enabled, FunWithFlags.enabled?(:channel_summarization))
-     |> assign(:reactions_enabled, FunWithFlags.enabled?(:reactions))
-     |> assign(:threads_enabled, FunWithFlags.enabled?(:threads))
-     |> assign(:channel_management_enabled, FunWithFlags.enabled?(:channel_management))
-     |> assign(:quick_switcher_enabled, FunWithFlags.enabled?(:quick_switcher))
-     |> assign(:link_previews_enabled, FunWithFlags.enabled?(:link_previews))
-     |> assign(:markdown_enabled, FunWithFlags.enabled?(:markdown_rendering))
      |> assign(:link_previews, %{})
      |> assign(:show_summary_modal, false)
      |> assign(:summary_text, "")
@@ -1038,10 +1032,7 @@ defmodule SlackexWeb.ChatLive.Index do
           divider_label: divider_label
         })
 
-      _ =
-        if socket.assigns.link_previews_enabled do
-          Phoenix.PubSub.subscribe(Slackex.PubSub, "link_previews:#{message.id}")
-        end
+      _ = Phoenix.PubSub.subscribe(Slackex.PubSub, "link_previews:#{message.id}")
 
       socket =
         socket

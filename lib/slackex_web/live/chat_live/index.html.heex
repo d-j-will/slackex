@@ -39,7 +39,7 @@
   <div class="flex-1 flex min-w-0">
     <div class={[
       "flex-1 flex flex-col min-w-0 overflow-hidden",
-      (@threads_enabled and @thread_parent) && "hidden md:flex"
+      @thread_parent && "hidden md:flex"
     ]}>
       <%= if @active_channel do %>
         <.conversation_header
@@ -108,33 +108,31 @@
                 <span class="hidden sm:inline">Summarize</span>
               </button>
             <% end %>
-            <%= if @channel_management_enabled do %>
-              <.link
-                patch={~p"/chat/#{@active_channel.slug}/members"}
-                class="btn btn-ghost btn-xs gap-1"
-                aria-label="View members"
-              >
-                <span class="hero-user-group size-4" />
-                <span class="text-xs">{@member_count}</span>
-              </.link>
-              <.link
-                patch={~p"/chat/#{@active_channel.slug}/pins"}
-                class="btn btn-ghost btn-xs gap-1"
-                aria-label="View pinned messages"
-              >
-                <span class="hero-bookmark size-4" />
-                <span :if={@pin_count > 0} class="text-xs">{@pin_count}</span>
-              </.link>
-              <.link
-                :if={@user_role in ["owner", "admin"]}
-                patch={~p"/chat/#{@active_channel.slug}/invite"}
-                class="btn btn-ghost btn-xs gap-1"
-                aria-label="Invite people"
-              >
-                <span class="hero-link size-4" />
-                <span class="hidden sm:inline text-xs">Invite</span>
-              </.link>
-            <% end %>
+            <.link
+              patch={~p"/chat/#{@active_channel.slug}/members"}
+              class="btn btn-ghost btn-xs gap-1"
+              aria-label="View members"
+            >
+              <span class="hero-user-group size-4" />
+              <span class="text-xs">{@member_count}</span>
+            </.link>
+            <.link
+              patch={~p"/chat/#{@active_channel.slug}/pins"}
+              class="btn btn-ghost btn-xs gap-1"
+              aria-label="View pinned messages"
+            >
+              <span class="hero-bookmark size-4" />
+              <span :if={@pin_count > 0} class="text-xs">{@pin_count}</span>
+            </.link>
+            <.link
+              :if={@user_role in ["owner", "admin"]}
+              patch={~p"/chat/#{@active_channel.slug}/invite"}
+              class="btn btn-ghost btn-xs gap-1"
+              aria-label="Invite people"
+            >
+              <span class="hero-link size-4" />
+              <span class="hidden sm:inline text-xs">Invite</span>
+            </.link>
             <%= if @search_enabled do %>
               <button
                 phx-click="toggle_search"
@@ -169,12 +167,7 @@
           editing_message_id={@editing_message_id}
           current_user_role={@user_role}
           reactions={@reactions}
-          reactions_enabled={@reactions_enabled}
-          threads_enabled={@threads_enabled}
-          channel_management_enabled={@channel_management_enabled}
           link_previews={@link_previews}
-          link_previews_enabled={@link_previews_enabled}
-          markdown_enabled={@markdown_enabled}
         />
         <.typing_indicator users={MapSet.to_list(@typing_users)} />
 
@@ -249,11 +242,7 @@
             in_dm={true}
             editing_message_id={@editing_message_id}
             reactions={@reactions}
-            reactions_enabled={@reactions_enabled}
-            threads_enabled={@threads_enabled}
             link_previews={@link_previews}
-            link_previews_enabled={@link_previews_enabled}
-            markdown_enabled={@markdown_enabled}
           />
           <.typing_indicator users={MapSet.to_list(@typing_users)} />
           <.compose_area message_form={@message_form} placeholder={"Message #{@page_title}"} />
@@ -274,12 +263,11 @@
 
     <%!-- Thread panel --%>
     <.live_component
-      :if={@threads_enabled and @thread_parent}
+      :if={@thread_parent}
       module={ThreadPanelComponent}
       id="thread-panel"
       parent_message={@thread_parent}
       current_user={@current_user}
-      markdown_enabled={@markdown_enabled}
       loom={@loom}
     />
   </div>
@@ -316,7 +304,7 @@
   />
 
   <.live_component
-    :if={@channel_management_enabled and @live_action == :members and @active_channel}
+    :if={@live_action == :members and @active_channel}
     module={ChannelMembersModal}
     id="channel-members-modal"
     channel={@active_channel}
@@ -324,7 +312,7 @@
   />
 
   <.live_component
-    :if={@channel_management_enabled and @live_action == :pinned and @active_channel}
+    :if={@live_action == :pinned and @active_channel}
     module={PinnedMessagesModal}
     id="pinned-messages-modal"
     channel={@active_channel}
@@ -332,7 +320,7 @@
   />
 
   <.live_component
-    :if={@channel_management_enabled and @live_action == :invite and @active_channel}
+    :if={@live_action == :invite and @active_channel}
     module={InviteLinkModal}
     id="invite-link-modal"
     channel={@active_channel}
@@ -372,12 +360,11 @@
     summary_text={@summary_text}
     summary_state={@summary_state}
     summary_error={@summary_error}
-    markdown_enabled={@markdown_enabled}
     loom={@loom}
   />
 
   <.live_component
-    :if={@quick_switcher_enabled and @show_quick_switcher}
+    :if={@show_quick_switcher}
     module={QuickSwitcherModal}
     id="quick-switcher"
     channels={@channels}

@@ -163,12 +163,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
   attr :reactions, :list, default: []
-  attr :reactions_enabled, :boolean, default: false
-  attr :threads_enabled, :boolean, default: false
-  attr :channel_management_enabled, :boolean, default: false
   attr :link_previews, :list, default: []
-  attr :link_previews_enabled, :boolean, default: false
-  attr :markdown_enabled, :boolean, default: false
   # Optional prefix for all DOM element IDs rendered by this component. Pass a
   # unique prefix (e.g. "thread-") when the same message is rendered in two
   # places simultaneously (e.g. both the message stream and the thread panel
@@ -194,7 +189,7 @@ defmodule SlackexWeb.ChatComponents do
       |> assign(:is_editing, Map.get(message, :editing, false) == true)
       |> assign(
         :rendered_content,
-        render_content(Map.get(message, :content, ""), assigns.markdown_enabled)
+        render_content(Map.get(message, :content, ""))
       )
 
     ~H"""
@@ -267,36 +262,26 @@ defmodule SlackexWeb.ChatComponents do
               </div>
             </div>
           <% else %>
-            <%= if @markdown_enabled do %>
-              <div
-                data-message-content
-                class="text-sm text-base-content/90 break-words prose prose-sm max-w-none"
-              >
-                {@rendered_content}
-                <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
-              </div>
-            <% else %>
-              <p
-                data-message-content
-                class="text-sm text-base-content/90 break-words whitespace-pre-wrap"
-              >
-                {@rendered_content}<span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
-              </p>
-            <% end %>
-            <div :if={@link_previews_enabled and @link_previews != []} class="mt-1 space-y-2">
+            <div
+              data-message-content
+              class="text-sm text-base-content/90 break-words prose prose-sm max-w-none"
+            >
+              {@rendered_content}
+              <span :if={@is_edited} class="text-xs text-base-content/40 ml-1">(edited)</span>
+            </div>
+            <div :if={@link_previews != []} class="mt-1 space-y-2">
               <.link_preview_card :for={preview <- @link_previews} preview={preview} />
             </div>
           <% end %>
         <% end %>
         <.reaction_bar
-          :if={@reactions_enabled}
           reactions={@reactions}
           current_user_id={@current_user_id}
           message_id={@message.id}
         />
         <button
           :if={
-            @threads_enabled and Map.get(@message, :reply_count, 0) > 0 and
+            Map.get(@message, :reply_count, 0) > 0 and
               is_nil(Map.get(@message, :parent_message_id))
           }
           phx-click="open_thread"
@@ -315,7 +300,6 @@ defmodule SlackexWeb.ChatComponents do
       >
         <button
           :for={emoji <- ~w(👍 😂 ❤️ 👀)}
-          :if={@reactions_enabled}
           phx-click="toggle_reaction"
           phx-value-message-id={@message.id}
           phx-value-emoji={emoji}
@@ -325,7 +309,6 @@ defmodule SlackexWeb.ChatComponents do
           {emoji}
         </button>
         <div
-          :if={@reactions_enabled}
           id={"#{@id_prefix}emoji-picker-#{@message.id}"}
           phx-hook="EmojiPicker"
           class="relative"
@@ -341,7 +324,7 @@ defmodule SlackexWeb.ChatComponents do
           </button>
         </div>
         <button
-          :if={@threads_enabled and is_nil(Map.get(@message, :parent_message_id))}
+          :if={is_nil(Map.get(@message, :parent_message_id))}
           phx-click="open_thread"
           phx-value-message-id={@message.id}
           class="btn btn-ghost btn-xs btn-circle"
@@ -350,10 +333,7 @@ defmodule SlackexWeb.ChatComponents do
           <span class="hero-chat-bubble-left size-4" />
         </button>
         <button
-          :if={
-            @channel_management_enabled and @can_pin and
-              is_nil(Map.get(@message, :parent_message_id))
-          }
+          :if={@can_pin and is_nil(Map.get(@message, :parent_message_id))}
           phx-click="pin_message"
           phx-value-message-id={@message.id}
           class="btn btn-ghost btn-xs btn-circle"
@@ -435,8 +415,7 @@ defmodule SlackexWeb.ChatComponents do
   defp message_deleted?(message), do: Map.get(message, :deleted_at) != nil
   defp message_edited?(message), do: Map.get(message, :edited_at) != nil
 
-  defp render_content(content, true), do: Slackex.Markdown.to_html(content)
-  defp render_content(content, _false), do: content
+  defp render_content(content), do: Slackex.Markdown.to_html(content)
 
   defp own_message?(message, current_user_id) do
     Map.get(message, :sender_id) == current_user_id
@@ -539,12 +518,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :editing_message_id, :integer, default: nil
   attr :current_user_role, :string, default: nil
   attr :reactions, :map, default: %{}
-  attr :reactions_enabled, :boolean, default: false
-  attr :threads_enabled, :boolean, default: false
-  attr :channel_management_enabled, :boolean, default: false
   attr :link_previews, :map, default: %{}
-  attr :link_previews_enabled, :boolean, default: false
-  attr :markdown_enabled, :boolean, default: false
 
   def message_stream(assigns) do
     ~H"""
@@ -567,12 +541,7 @@ defmodule SlackexWeb.ChatComponents do
           editing_message_id={@editing_message_id}
           current_user_role={@current_user_role}
           reactions={Map.get(@reactions, message.id, [])}
-          reactions_enabled={@reactions_enabled}
-          threads_enabled={@threads_enabled}
-          channel_management_enabled={@channel_management_enabled}
           link_previews={Map.get(@link_previews, message.id, [])}
-          link_previews_enabled={@link_previews_enabled}
-          markdown_enabled={@markdown_enabled}
         />
       </div>
     </div>

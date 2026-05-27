@@ -10,7 +10,6 @@ defmodule SlackexWeb.ChatLive.ThreadTest do
 
   setup %{conn: conn} do
     Redix.command!(:redix_0, ["FLUSHDB"])
-    FunWithFlags.enable(:threads)
     %{conn: conn, user: user} = register_and_log_in_user(%{conn: conn})
     %{conn: conn, user: user}
   end
@@ -201,33 +200,6 @@ defmodule SlackexWeb.ChatLive.ThreadTest do
       replies = Chat.list_thread(message.id)
       assert length(replies) == 1
       assert hd(replies).content == "DM thread reply"
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # Feature flag: threads must be enabled for the panel to appear
-  # ---------------------------------------------------------------------------
-
-  describe "threads feature flag" do
-    setup %{user: user} do
-      bob = insert(:user, username: "bob_flag")
-      {:ok, channel} = Chat.create_channel(user.id, %{name: "flag-channel"})
-      Chat.join_channel(bob.id, channel.id)
-      {:ok, message} = Chat.send_message(channel.id, bob.id, "flag test message")
-      %{channel: channel, message: message}
-    end
-
-    test "thread panel does not render when :threads flag is disabled", %{
-      conn: conn,
-      channel: channel,
-      message: message
-    } do
-      FunWithFlags.disable(:threads)
-
-      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
-      html = render_patch(view, ~p"/chat/#{channel.slug}/thread/#{message.id}")
-
-      refute html =~ ~s(id="thread-panel")
     end
   end
 end

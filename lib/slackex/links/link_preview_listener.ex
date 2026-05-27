@@ -4,7 +4,6 @@ defmodule Slackex.Links.LinkPreviewListener do
   `LinkPreviewWorker` jobs when messages containing URLs are persisted.
 
   Mirrors the pattern from `Slackex.Embeddings.PersistenceListener`.
-  Only active when the `:link_previews` feature flag is enabled.
   """
 
   use GenServer
@@ -33,9 +32,7 @@ defmodule Slackex.Links.LinkPreviewListener do
 
   @impl GenServer
   def handle_info({:messages_persisted, message_ids}, state) when is_list(message_ids) do
-    if FunWithFlags.enabled?(:link_previews) do
-      process_messages(message_ids)
-    end
+    process_messages(message_ids)
 
     {:noreply, state}
   end
