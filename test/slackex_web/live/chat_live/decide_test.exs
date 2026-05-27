@@ -9,6 +9,11 @@ defmodule SlackexWeb.ChatLive.DecideTest do
     Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, {:shared, self()})
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, :manual) end)
 
+    # FunWithFlags state is shared (not sandboxed), so a test that disables
+    # :sous would leak into siblings. Re-enable per test (setup runs before
+    # each test since async: false) so order-independence holds.
+    FunWithFlags.enable(:sous)
+
     alice = insert(:user, username: "alice")
     {:ok, channel} = Slackex.Chat.create_channel(alice.id, %{name: "deploys"})
     conn = log_in_user(conn, alice)
@@ -59,5 +64,21 @@ defmodule SlackexWeb.ChatLive.DecideTest do
 
     assert html =~ "Title and What are required."
     assert Sous.list_in_flight()[:mise] == []
+  end
+
+  test "/decide does nothing when the :sous flag is off", %{conn: conn, channel: channel} do
+    FunWithFlags.disable(:sous)
+    # Restore on exit so the disable never leaks to other test files (this is
+    # the global flag store, not a per-test sandbox).
+    on_exit(fn -> FunWithFlags.enable(:sous) end)
+
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    html =
+      lv
+      |> form("#message-form", %{message: %{content: "/decide"}})
+      |> render_submit()
+
+    refute html =~ "Capture a decision"
   end
 end

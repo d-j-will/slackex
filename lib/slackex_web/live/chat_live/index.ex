@@ -352,10 +352,16 @@ defmodule SlackexWeb.ChatLive.Index do
          |> assign(:message_form, to_form(%{"content" => ""}, as: :message))}
 
       {:decide} ->
-        {:noreply,
-         socket
-         |> assign(:show_decide, true)
-         |> assign(:message_form, to_form(%{"content" => ""}, as: :message))}
+        if FunWithFlags.enabled?(:sous, for: user) do
+          {:noreply,
+           socket
+           |> assign(:show_decide, true)
+           |> assign(:message_form, to_form(%{"content" => ""}, as: :message))}
+        else
+          # Flag off: keep the feature invisible — behave like an unrecognised
+          # command rather than leaking the existence of /decide.
+          {:noreply, put_flash(socket, :error, "Unknown command: /decide")}
+        end
 
       {:unknown_command, cmd} ->
         {:noreply, put_flash(socket, :error, "Unknown command: /#{cmd}")}
