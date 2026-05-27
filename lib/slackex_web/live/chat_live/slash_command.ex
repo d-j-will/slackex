@@ -8,10 +8,12 @@ defmodule SlackexWeb.ChatLive.SlashCommand do
   ## Supported Commands
 
     * `/summarize [range]` — summarize channel (24h, 7d, 30d)
+    * `/decide` — capture a decision
   """
 
   @type result ::
           {:summarize, String.t()}
+          | {:decide}
           | {:unknown_command, String.t()}
           | :not_command
 
@@ -27,6 +29,8 @@ defmodule SlackexWeb.ChatLive.SlashCommand do
     case String.split(rest, ~r/\s+/, parts: 2) do
       ["summarize"] -> {:summarize, "24h"}
       ["summarize", range] -> {:summarize, String.trim(range)}
+      ["decide"] -> {:decide}
+      ["decide", _rest] -> {:decide}
       [command | _] -> {:unknown_command, command}
       [] -> :not_command
     end

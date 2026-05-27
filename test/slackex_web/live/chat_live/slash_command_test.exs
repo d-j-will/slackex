@@ -31,5 +31,15 @@ defmodule SlackexWeb.ChatLive.SlashCommandTest do
     test "handles whitespace" do
       assert {:summarize, "7d"} = SlashCommand.parse("  /summarize  7d  ")
     end
+
+    test "/decide parses to {:decide}" do
+      assert SlashCommand.parse("/decide") == {:decide}
+      assert SlashCommand.parse("  /decide  ") == {:decide}
+    end
+
+    test "non-decide input is unaffected" do
+      assert SlashCommand.parse("/summarize") == {:summarize, "24h"}
+      assert SlashCommand.parse("hello") == :not_command
+    end
   end
 end
