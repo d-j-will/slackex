@@ -146,6 +146,10 @@ Sous.set_attention(work_item_id, viewer_id, attention, actor_id)
 - **Atomicity** (Slice A invariant #2): event + facet row commit in one Multi.
 - **Self-describing payload** with string keys (invariant #3).
 - **Append-only** (invariant #5) — no deletes / updates of `WorkItemEvent`.
+- **Concurrent triage = last-write-wins on the row, but the log is honest.** Two near-simultaneous
+  `set_attention/4` calls for the same `(work_item, viewer)` both append `:attention_set` events
+  (the log captures both intentions in event-id order); the `WorkItemFacet` upsert reflects the
+  **last** committed event. No optimistic locking in B1 — this is the deliberate B1 semantics.
 
 ## 6. Event-sourcing invariants (binding — extend Slice A's seven)
 
@@ -163,6 +167,13 @@ Slice A's seven invariants (spec §6) carry through unchanged for the event-stre
     `Slackex.Sous.ViewerPreference` (a behaviour-backed module). LiveViews/components never
     touch the underlying store directly. Backed by `LocalStorage` in B1; swap-tested against an
     `InMemoryStore` (see §9) to prove the seam is real, not theoretical.
+11. **Viewers are immutable in B1.** Once seeded, viewer rows are not deleted, renamed (the slug
+    PK is stable), or added at runtime — role management is B-later (§2 out of scope). This
+    closes a replay correctness question: with immutable viewers, an `:attention_set` event's
+    `viewer_id` is guaranteed to reference an existing `Viewer` row on replay (no orphaned ids).
+    If role management later lands, this invariant gets explicit revisit: either declare past
+    events tolerate orphaned `viewer_id`s (reducer skips them) or migrate the log alongside the
+    role-deletion command.
 
 ## 7. UI surfaces
 
@@ -184,12 +195,19 @@ Slice A's seven invariants (spec §6) carry through unchanged for the event-stre
   → `%{work_item_id => attention}` (one query). With `active_viewer_id = nil`, returns `%{}`
   (everything resolves to default `:watch` → shared shape).
 - Per-column rendering:
-  - Within a column, sort by attention rank `act > watch > know`, then by `inserted_at desc`.
-  - `:act` cards add the accent edge + "behind" tag (existing Slice-A treatment).
-  - `:know` cards add `border-dashed` + `opacity-60` + a compact (single-line) treatment.
+  - Sort by attention rank `act > watch > know`, then `inserted_at desc`.
+  - `:act` cards: accent edge + "behind" tag (existing Slice-A treatment).
+  - `:know` cards render **compact**: **title only** (single line) + the existing card overflow
+    menu; the facet line and inline state-move buttons are omitted (act on `:know` cards via the
+    drawer or the overflow menu). CSS: `border-dashed` + `opacity-60`.
   - `:hidden` cards are omitted; the column footer shows **"+N not at your altitude"**, which
     toggles a session-only assign `:show_hidden_<column>` (booleans). When toggled on, hidden
     cards render with `opacity-40` + a dashed-italic label.
+- **Behavior change from Slice A** (name it explicitly). Slice A sorted columns by
+  `inserted_at desc` only. B1 introduces the attention-rank sort *within* each column. With the
+  **null default lens** (no viewer picked) every card resolves to `:watch` and the sort falls
+  back to pure recency — identical to Slice A's behavior. The reshaping is therefore entirely
+  opt-in by picking a lens; users who never touch the switcher see exactly the Slice-A board.
 - On a live `:attention_set` broadcast for the active viewer, the board re-pulls the facet map
   and re-renders.
 
@@ -249,6 +267,10 @@ Targeted regressions (red-before-green, like Slice A):
    reshaped/hidden).
 9. **Selector UX:** opening the prism's attention pill shows four options; selecting one emits
    the event and updates the row.
+10. **Lazy-default behavior (invariant #8 is behavioural, not just structural).** With no triage
+    and no `WorkItemFacet` rows, mount the board, switch to a non-null viewer, render the full
+    column set: every card resolves to `:watch` (no nil errors, no missing-key crashes, sort
+    falls through to recency). Tiny test, but it pins the lazy-row contract.
 
 ## 10. Migrations (deploy-safe, via `/new-migration`)
 
@@ -257,9 +279,14 @@ Targeted regressions (red-before-green, like Slice A):
 - `create table(:work_item_facets, primary_key: false)` — composite PK
   `(work_item_id, viewer_id)`; `attention` enum-as-string default `"watch"`; `facet_text` text
   null. Indexes: `(viewer_id, work_item_id)` for the per-viewer board query.
-- `alter table(:work_items)` — **drop columns `attention` and `facet_text`**. Note in the
-  migration: `:sous` is off in prod, no real data; safe destructive change. The `/new-migration`
-  hook may warn — the warning is acknowledged here.
+- `alter table(:work_items)` — **drop columns `attention` and `facet_text`**. The migration
+  module should carry a doc comment with the safety analysis: *":sous flag is off in prod (no
+  rows have meaningful attention/facet_text values); B1 supersedes the single-viewer placeholder.
+  Safe destructive change."* The `/new-migration` safety hook is **expected to warn** on
+  `remove :attention` / `remove :facet_text` — acknowledge the warning with that comment. If the
+  hook **blocks** (not just warns), split into expand/contract (one migration stops writing/
+  reading the columns; a second migration drops them after deploy) rather than working around the
+  hook.
 
 ## 11. Module layout
 
