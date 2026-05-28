@@ -27,7 +27,6 @@ defmodule SlackexWeb.SousLive.FacetDrawerTest do
     %{conn: log_in_user(conn, user), user: user, wi: wi}
   end
 
-  @tag :pending_b1_task13
   test "clicking a card opens the drawer with the atom + a prism per seeded viewer", %{
     conn: conn,
     wi: wi
@@ -45,7 +44,6 @@ defmodule SlackexWeb.SousLive.FacetDrawerTest do
     end
   end
 
-  @tag :pending_b1_task13
   test "selecting an attention in a prism's 4-pill selector triages that viewer", %{
     conn: conn,
     wi: wi,

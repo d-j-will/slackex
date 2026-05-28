@@ -26,10 +26,7 @@ defmodule Slackex.Sous.ViewerPreference do
   end
 
   defp store do
-    Application.get_env(
-      :slackex,
-      :viewer_preference_store,
+    Application.get_env(:slackex, :viewer_preference_store) ||
       Slackex.Sous.ViewerPreference.LocalStorage
-    )
   end
 end

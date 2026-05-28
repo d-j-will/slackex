@@ -45,7 +45,6 @@ defmodule SlackexWeb.SousLive.ViewerPreferenceSeamTest do
     %{conn: log_in_user(conn, user), user: user, wi: wi}
   end
 
-  @tag :pending_b1_task13
   test "the In Service board renders against the InMemoryStore — no LocalStorage hook in play", %{
     conn: conn
   } do
