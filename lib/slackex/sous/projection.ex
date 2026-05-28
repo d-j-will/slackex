@@ -74,6 +74,29 @@ defmodule Slackex.Sous.Projection do
     Map.put(state, :facets, Map.put(facets, viewer_id, new_facet))
   end
 
+  # B2 invariants #15, #16, #17:
+  #   * Last-write-wins on each field (#15)
+  #   * Lazy row creation with `attention: :watch` default (#16)
+  #   * Pure fold — never calls the LLM during replay (#17). The :facet_generated
+  #     event payload carries the canonical text; replay reads it as-is.
+  # Generation always clears the stale marker.
+  def apply_event(state, %WorkItemEvent{type: :facet_generated, payload: p}) do
+    facets = Map.get(state, :facets, %{})
+    viewer_id = get(p, "viewer_id")
+
+    existing = Map.get(facets, viewer_id, %{attention: :watch, facet_text: nil})
+
+    new_facet =
+      existing
+      |> Map.put(:facet_text, get(p, "facet_text"))
+      |> Map.put(:facet_model, get(p, "model"))
+      |> Map.put(:facet_prompt_version, get(p, "prompt_version"))
+      |> Map.put(:facet_generated_at, to_dt(get(p, "generated_at")))
+      |> Map.put(:facet_stale_at, nil)
+
+    Map.put(state, :facets, Map.put(facets, viewer_id, new_facet))
+  end
+
   defp get(map, key), do: Map.get(map, key)
 
   defp to_atom(nil), do: nil
