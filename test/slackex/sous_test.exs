@@ -29,8 +29,6 @@ defmodule Slackex.SousTest do
 
       assert wi.kind == :decision
       assert wi.state == :mise
-      assert wi.attention == :act
-      assert wi.facet_text == "Adopt event sourcing"
       assert wi.channel_id == c.id
 
       events = Repo.all(from e in WorkItemEvent, where: e.work_item_id == ^wi.id, order_by: e.id)
@@ -73,8 +71,6 @@ defmodule Slackex.SousTest do
             :kind,
             :state,
             :title,
-            :facet_text,
-            :attention,
             :people,
             :channel_id,
             :thread_root_message_id,

@@ -51,12 +51,6 @@ defmodule SlackexWeb.SousLive.InService do
     {:noreply, assign(socket, :grouped, Sous.list_in_flight())}
   end
 
-  # Attention → CSS treatment (spec §7).
-  defp attention_class(:act), do: "border-l-4 border-primary"
-  defp attention_class(:watch), do: "border border-base-300"
-  defp attention_class(:know), do: "border border-dashed border-base-300 opacity-60"
-  defp attention_class(:hidden), do: "hidden"
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -70,12 +64,10 @@ defmodule SlackexWeb.SousLive.InService do
           <h2 class="text-sm uppercase tracking-wide text-base-content/60">{label}</h2>
           <div
             :for={wi <- @grouped[state]}
-            class={["rounded-lg bg-base-100 p-3", attention_class(wi.attention)]}
+            class="rounded-lg bg-base-100 p-3 border border-base-300"
             data-work-item={wi.id}
           >
             <p class="font-semibold">{wi.title}</p>
-            <p :if={wi.attention == :act} class="text-xs text-primary">behind</p>
-            <p class="text-xs text-base-content/60">{wi.facet_text}</p>
             <div class="mt-2 flex flex-wrap gap-1">
               <button
                 :for={{target, target_label} <- @columns}

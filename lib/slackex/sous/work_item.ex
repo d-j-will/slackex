@@ -3,6 +3,9 @@ defmodule Slackex.Sous.WorkItem do
   The work-item projection (authoritative read model). Maintained inline by
   `Slackex.Sous` commands via `Slackex.Sous.Projection`; every field is
   reconstructable from the `work_item_events` log (spec §6, invariant #6).
+
+  B1: per-viewer `attention` (and later `facet_text`) live on
+  `Slackex.Sous.WorkItemFacet`, not here.
   """
 
   use Ecto.Schema
@@ -13,15 +16,12 @@ defmodule Slackex.Sous.WorkItem do
   @primary_key {:id, :integer, autogenerate: false}
 
   @states [:order, :mise, :pass, :walked]
-  @attentions [:act, :watch, :know, :hidden]
   @kinds [:decision]
 
   schema "work_items" do
     field :kind, Ecto.Enum, values: @kinds
     field :state, Ecto.Enum, values: @states
     field :title, :string
-    field :facet_text, :string
-    field :attention, Ecto.Enum, values: @attentions, default: :watch
     field :people, :map, default: %{}
     field :channel_id, :integer
     field :thread_root_message_id, :integer
@@ -31,10 +31,14 @@ defmodule Slackex.Sous.WorkItem do
 
     has_one :decision, Slackex.Sous.Decision, foreign_key: :work_item_id, references: :id
     has_many :events, Slackex.Sous.WorkItemEvent, foreign_key: :work_item_id, references: :id
+    # B1: `has_many :facets, Slackex.Sous.WorkItemFacet, ...` is added in T3.
+    # Declaring it here before the WorkItemFacet schema exists crashes every
+    # `Repo.insert(%WorkItem{})` at runtime — `surface_changes/3` calls
+    # `WorkItemFacet.__schema__(:primary_key)` and raises `UndefinedFunctionError`.
+    # The forward reference is not a "just a compile warning" — it is fatal.
   end
 
   def states, do: @states
-  def attentions, do: @attentions
   def kinds, do: @kinds
 
   def changeset(work_item, attrs) do
@@ -44,8 +48,6 @@ defmodule Slackex.Sous.WorkItem do
       :kind,
       :state,
       :title,
-      :facet_text,
-      :attention,
       :people,
       :channel_id,
       :thread_root_message_id,

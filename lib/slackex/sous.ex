@@ -47,12 +47,9 @@ defmodule Slackex.Sous do
       "kind" => "decision",
       "title" => attrs[:title],
       "state" => "mise",
-      "facet_text" => attrs[:title],
-      # Slice A has no viewer model, so attention is a single stored value. A
-      # freshly-made decision demands attention → :act (accent edge + "behind"),
-      # so the board shows a real treatment from day one. Attention stays :act for
-      # Slice A (no attention control — deferred to Slice B).
-      "attention" => "act",
+      # B1 (invariant #9): per-viewer attention lives on work_item_facets and is
+      # set via :attention_set events. The Slice-A single-viewer facet/attention
+      # keys are no longer written into new :created payloads.
       # DRI name is snapshotted into the event (self-describing) so the card
       # renders with no render-time user lookup.
       "people" => %{
@@ -227,8 +224,6 @@ defmodule Slackex.Sous do
       kind: wi.kind,
       state: wi.state,
       title: wi.title,
-      facet_text: wi.facet_text,
-      attention: wi.attention,
       people: wi.people,
       channel_id: wi.channel_id,
       thread_root_message_id: wi.thread_root_message_id,

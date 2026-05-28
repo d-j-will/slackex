@@ -13,7 +13,6 @@ defmodule Slackex.Sous.WorkItemTest do
         kind: :decision,
         state: :mise,
         title: "Adopt event sourcing",
-        attention: :watch,
         moved_at: DateTime.utc_now()
       })
 
