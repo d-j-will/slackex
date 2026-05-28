@@ -146,6 +146,47 @@ defmodule Slackex.Sous.FacetWorkerTest do
     assert length(events) == 1
   end
 
+  describe "failure visibility (Task 12)" do
+    test "persistent LLM error -> 3 attempts -> :discarded + warning logged", %{wi: wi} do
+      Application.put_env(:slackex, :llm_client, Slackex.Sous.FacetWorkerTest.ErrorClient)
+
+      log =
+        capture_log(fn ->
+          Oban.Testing.with_testing_mode(:manual, fn ->
+            {:ok, _job} = Oban.insert(FacetWorker.new(args(wi.id, "cto")))
+            # Drive the retry loop to completion (max_attempts = 3 -> discard).
+            _ =
+              Oban.drain_queue(
+                queue: :facets,
+                with_recursion: true,
+                with_scheduled: true
+              )
+          end)
+        end)
+
+      # The job exhausted retries -> discarded state in oban_jobs.
+      states =
+        Repo.all(
+          from j in Oban.Job,
+            where:
+              j.worker == "Slackex.Sous.FacetWorker" and
+                fragment("?->>'work_item_id'", j.args) == ^to_string(wi.id),
+            select: j.state
+        )
+
+      assert "discarded" in states
+
+      # Warning logged on every attempt (3 total).
+      assert log =~ "LLM call failed"
+
+      # And no :facet_generated event was written.
+      assert Repo.aggregate(
+               from(e in WorkItemEvent, where: e.type == :facet_generated),
+               :count
+             ) == 0
+    end
+  end
+
   defmodule ErrorClient do
     @moduledoc false
     @behaviour Slackex.AI.LLMClient
