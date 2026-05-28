@@ -235,6 +235,16 @@ defmodule SlackexWeb.SousLive.InService do
           socket
       end
 
+    # If the drawer is open for the moved work item, refresh its row cache so
+    # the user sees the :stale pill state immediately. (Drawer keeps its own
+    # subscription to facets_topic(wi_id); but :state_changed flows through
+    # work_items_topic, so we refresh here.)
+    socket =
+      case socket.assigns.drawer_work_item do
+        %{id: id} when id == wi.id -> refresh_drawer_rows(socket, wi.id)
+        _ -> socket
+      end
+
     {:noreply, socket}
   end
 
