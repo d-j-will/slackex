@@ -152,13 +152,6 @@ if config_env() == :prod do
     }
   end
 
-  # Sous B2 facet model. No compile-time default — provider model IDs vary
-  # across vendors (Anthropic / DeepInfra / OpenAI), so we don't hardcode a
-  # stale string. When unset, FacetWorker still works because LLMClient.complete/2
-  # falls back to the configured client's default; if the LLM is not configured
-  # at all the worker discards via `configured?/0`.
-  config :slackex, :llm_facet_model, System.get_env("LLM_FACET_MODEL")
-
   # OpenTelemetry — allow runtime override of collector endpoint
   if otel_endpoint = System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
     config :opentelemetry_exporter,
@@ -254,3 +247,10 @@ if config_env() == :prod do
   #
   # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
 end
+
+# Sous B2 facet model — read for ALL environments (dev/test/prod). Provider
+# model IDs vary across vendors (Anthropic / DeepInfra / OpenAI), so we don't
+# hardcode a stale string. When unset, FacetWorker still works because
+# LLMClient.complete/2 falls back to the configured client's default; if the
+# LLM is not configured at all the worker discards via `configured?/0`.
+config :slackex, :llm_facet_model, System.get_env("LLM_FACET_MODEL")
