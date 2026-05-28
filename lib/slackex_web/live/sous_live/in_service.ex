@@ -52,6 +52,7 @@ defmodule SlackexWeb.SousLive.InService do
         |> assign(:drawer_enqueued, MapSet.new())
         |> assign(:drawer_failed, MapSet.new())
         |> assign(:drawer_facets_topic, nil)
+        |> assign(:stale_map, MapSet.new())
         |> Slackex.Sous.ViewerPreference.load()
 
       {:ok, socket}
@@ -72,6 +73,7 @@ defmodule SlackexWeb.SousLive.InService do
       socket
       |> Slackex.Sous.ViewerPreference.put(viewer_id)
       |> assign(:facet_map, Sous.facets_for_viewer(viewer_id))
+      |> assign(:stale_map, Sous.stale_facets_for_viewer(viewer_id))
 
     {:noreply, socket}
   end
@@ -84,6 +86,7 @@ defmodule SlackexWeb.SousLive.InService do
       socket
       |> Slackex.Sous.ViewerPreference.put(viewer_id)
       |> assign(:facet_map, Sous.facets_for_viewer(viewer_id))
+      |> assign(:stale_map, Sous.stale_facets_for_viewer(viewer_id))
 
     {:noreply, socket}
   end
@@ -212,6 +215,29 @@ defmodule SlackexWeb.SousLive.InService do
     {:noreply, socket}
   end
 
+  def handle_info({:work_item_event, :state_changed, wi}, socket) do
+    # :state_changed marks every existing facet row for this work item as stale
+    # (Sous.move/3 + invariant #14). Refresh the stale_map if there's an active
+    # viewer so the board card's subtle dot indicator appears.
+    socket = assign(socket, :grouped, Sous.list_in_flight())
+
+    socket =
+      cond do
+        is_nil(socket.assigns.active_viewer_id) ->
+          socket
+
+        # Only re-query if the active viewer had a row for this work item
+        # (cheap: one Map lookup against existing facets_for_viewer keys).
+        Map.has_key?(socket.assigns.facet_map, wi.id) ->
+          assign(socket, :stale_map, MapSet.put(socket.assigns.stale_map, wi.id))
+
+        true ->
+          socket
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_info({:work_item_event, _type, _wi}, socket) do
     {:noreply, assign(socket, :grouped, Sous.list_in_flight())}
   end
@@ -245,6 +271,15 @@ defmodule SlackexWeb.SousLive.InService do
 
         _ ->
           socket
+      end
+
+    # If the active viewer matches, the row no longer has facet_stale_at
+    # (generation always clears stale), so remove from the indicator set.
+    socket =
+      if socket.assigns.active_viewer_id == viewer_id do
+        assign(socket, :stale_map, MapSet.delete(socket.assigns.stale_map, wi_id))
+      else
+        socket
       end
 
     {:noreply, socket}
@@ -446,7 +481,15 @@ defmodule SlackexWeb.SousLive.InService do
             phx-click="open_drawer"
             phx-value-id={wi.id}
           >
-            <p class="font-semibold">{wi.title}</p>
+            <div class="flex items-start justify-between gap-2">
+              <p class="font-semibold">{wi.title}</p>
+              <span
+                :if={MapSet.member?(@stale_map, wi.id)}
+                data-stale-indicator={wi.id}
+                aria-label="facet stale"
+                class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-warning shrink-0"
+              />
+            </div>
             <p :if={attention_for(wi, @facet_map) == :act} class="text-xs text-primary">behind</p>
 
             <div :if={attention_for(wi, @facet_map) != :know} class="mt-2 flex flex-wrap gap-1">

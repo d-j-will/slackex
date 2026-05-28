@@ -250,6 +250,26 @@ defmodule Slackex.Sous do
 
   def facets_for_viewer(nil), do: %{}
 
+  @doc """
+  B2: MapSet of `work_item_id` for which `viewer_id` has a row whose
+  `facet_stale_at` is set (board-card subtle dot indicator, spec §7.3).
+  Rows that don't exist (`:never_generated` for the viewer) are NOT included —
+  they are the common case (no row yet) and would surface the indicator on
+  every card; spec wording reads "stale or never-generated" but cost-wise we
+  scope to stale here (the more meaningful signal). If we want never_generated
+  later, we'd need a separate query against the viewers table.
+  """
+  def stale_facets_for_viewer(viewer_id) when is_binary(viewer_id) do
+    Repo.all(
+      from f in WorkItemFacet,
+        where: f.viewer_id == ^viewer_id and not is_nil(f.facet_stale_at),
+        select: f.work_item_id
+    )
+    |> MapSet.new()
+  end
+
+  def stale_facets_for_viewer(nil), do: MapSet.new()
+
   defp do_set_attention(work_item_id, viewer_id, attention, actor_id) do
     event = %WorkItemEvent{
       id: Snowflake.generate(),
