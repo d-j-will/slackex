@@ -13,13 +13,6 @@ defmodule Slackex.Sous.Projection do
 
   alias Slackex.Sous.WorkItemEvent
 
-  # B1 (invariant #8/#9): the @attentions atom set lives here so the projection
-  # can `String.to_existing_atom/1` payload strings even after the Slice-A
-  # `@attentions` attribute moved off WorkItem. Until T3 (`WorkItemFacet`) lands,
-  # this module is the only producer that materialises these atoms.
-  @attention_atoms [:act, :watch, :know, :hidden]
-  def attention_atoms, do: @attention_atoms
-
   @type state :: %{work_item: map() | nil, decision: map() | nil, facets: map()}
 
   @spec initial() :: state()
@@ -87,13 +80,11 @@ defmodule Slackex.Sous.Projection do
   defp to_atom(v) when is_atom(v), do: v
 
   defp to_atom(v) when is_binary(v) do
-    # WorkItem's module attributes (@kinds, @states) materialize every enum atom
-    # this projection round-trips. Ensure it is loaded so String.to_existing_atom
-    # never depends on incidental load order — the producer (Sous.open_decision)
-    # writes these strings, so the consumer here must be able to read them back
-    # regardless of which process runs first. B1: attention atoms are kept alive
-    # by @attention_atoms above (Slice-A's @attentions moved off WorkItem).
+    # WorkItem/WorkItemFacet module attributes materialise every enum atom this
+    # projection round-trips. Ensure they are loaded so String.to_existing_atom
+    # never depends on incidental load order.
     _ = Code.ensure_loaded?(Slackex.Sous.WorkItem)
+    _ = Code.ensure_loaded?(Slackex.Sous.WorkItemFacet)
     String.to_existing_atom(v)
   end
 

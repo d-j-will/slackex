@@ -31,11 +31,7 @@ defmodule Slackex.Sous.WorkItem do
 
     has_one :decision, Slackex.Sous.Decision, foreign_key: :work_item_id, references: :id
     has_many :events, Slackex.Sous.WorkItemEvent, foreign_key: :work_item_id, references: :id
-    # B1: `has_many :facets, Slackex.Sous.WorkItemFacet, ...` is added in T3.
-    # Declaring it here before the WorkItemFacet schema exists crashes every
-    # `Repo.insert(%WorkItem{})` at runtime — `surface_changes/3` calls
-    # `WorkItemFacet.__schema__(:primary_key)` and raises `UndefinedFunctionError`.
-    # The forward reference is not a "just a compile warning" — it is fatal.
+    has_many :facets, Slackex.Sous.WorkItemFacet, foreign_key: :work_item_id, references: :id
   end
 
   def states, do: @states
