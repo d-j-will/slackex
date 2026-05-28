@@ -13,7 +13,7 @@ defmodule Slackex.Sous.WorkItemEvent do
 
   @primary_key {:id, :integer, autogenerate: false}
 
-  @types [:created, :state_changed, :card_posted]
+  @types [:created, :state_changed, :card_posted, :attention_set]
 
   schema "work_item_events" do
     field :work_item_id, :integer
