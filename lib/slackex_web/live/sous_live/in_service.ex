@@ -211,7 +211,9 @@ defmodule SlackexWeb.SousLive.InService do
         attention_for(wi, fm) == :hidden and not Map.get(sh, state, false)
       end)
       |> Enum.sort_by(fn wi ->
-        {Map.fetch!(@attention_rank, attention_for(wi, fm)), wi.id}
+        # Spec §7.2: attention rank ascending, then `inserted_at desc` within rank.
+        # Snowflake IDs are time-ordered, so `-wi.id` reverses to newest-first.
+        {Map.fetch!(@attention_rank, attention_for(wi, fm)), -wi.id}
       end)
 
     hidden_count =

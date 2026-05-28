@@ -287,7 +287,7 @@ defmodule Slackex.Sous do
     base = for s <- WorkItem.states(), into: %{}, do: {s, []}
 
     WorkItem
-    |> order_by(asc: :inserted_at)
+    |> order_by(desc: :inserted_at)
     |> preload(:decision)
     |> Repo.all()
     |> Enum.group_by(& &1.state)
