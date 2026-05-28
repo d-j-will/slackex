@@ -31,6 +31,13 @@ defmodule Slackex.Sous do
   def cards_topic(channel_id), do: "sous:cards:channel:#{channel_id}"
 
   @doc """
+  Per-work-item B2 facet topic. Low fan-out: subscribers are the open Drawer
+  (and optionally the board for that work item). Mirrors the `cards_topic/1`
+  pattern but scoped to the work item, not the channel.
+  """
+  def facets_topic(work_item_id), do: "sous:facets:#{work_item_id}"
+
+  @doc """
   Creates a `:decision` work item in state `:mise` from a chat context.
 
   Required attrs: `:channel_id`, `:actor_id`, `:title`, `:what`.
@@ -175,6 +182,8 @@ defmodule Slackex.Sous do
 
     projected = Projection.apply_event(%{work_item: wi_to_attrs(wi), decision: nil}, event)
 
+    now_stale = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
     Multi.new()
     |> Multi.insert(:event, WorkItemEvent.changeset(%WorkItemEvent{}, Map.from_struct(event)))
     |> Multi.update(
@@ -183,6 +192,13 @@ defmodule Slackex.Sous do
         state: projected.work_item.state,
         moved_at: projected.work_item.moved_at
       })
+    )
+    # Invariant #14: :state_changed marks B2 facet rows stale; it does NOT enqueue.
+    # The next drawer-open is the only trigger that re-generates.
+    |> Multi.update_all(
+      :invalidate_facets,
+      from(f in WorkItemFacet, where: f.work_item_id == ^wi.id),
+      set: [facet_stale_at: now_stale]
     )
     |> Repo.transaction()
     |> case do
@@ -292,6 +308,146 @@ defmodule Slackex.Sous do
     |> Repo.all()
     |> Enum.group_by(& &1.state)
     |> then(&Map.merge(base, &1))
+  end
+
+  @doc """
+  Returns all `Viewer` rows in switcher (position asc) order. B-later role-mgmt
+  UI may filter; B2 returns everyone.
+  """
+  def list_viewers do
+    Repo.all(Viewer.order_by_position())
+  end
+
+  @doc "Fetches a viewer by id. Returns the struct or `nil`. Used by FacetWorker."
+  def get_viewer(viewer_id) when is_binary(viewer_id), do: Repo.get(Viewer, viewer_id)
+  def get_viewer(_), do: nil
+
+  @doc "Fetches a work item by id. Returns the struct or `nil`. Used by FacetWorker."
+  def get_work_item(work_item_id) when is_integer(work_item_id),
+    do: Repo.get(WorkItem, work_item_id)
+
+  def get_work_item(_), do: nil
+
+  @doc """
+  Fetches the `Decision` row for a work item by `work_item_id` (Decision's PK).
+  Returns the struct or `nil`. Used by FacetWorker.
+  """
+  def get_decision(work_item_id) when is_integer(work_item_id),
+    do: Repo.get_by(Decision, work_item_id: work_item_id)
+
+  def get_decision(_), do: nil
+
+  @doc """
+  B2 `state_version/1`: count of `:state_changed` events for the work item.
+
+  Read **once at enqueue time** by the Drawer, embedded in `FacetWorker` job args,
+  and copied verbatim into the `:facet_generated` event payload. Never re-queried
+  by the worker — the Oban uniqueness key is hashed over args at enqueue, so
+  re-querying would silently break dedup (spec §3 + invariant referenced in §4).
+  """
+  @spec state_version(integer()) :: integer()
+  def state_version(work_item_id) when is_integer(work_item_id) do
+    Repo.aggregate(
+      from(e in WorkItemEvent,
+        where: e.work_item_id == ^work_item_id and e.type == :state_changed
+      ),
+      :count
+    )
+  end
+
+  @doc """
+  All `WorkItemFacet` rows for a work item. The Drawer composes pill states
+  via `WorkItemFacet.state/3`.
+  """
+  def facets_for_work_item(work_item_id) when is_integer(work_item_id) do
+    Repo.all(from f in WorkItemFacet, where: f.work_item_id == ^work_item_id)
+  end
+
+  @doc """
+  Sole writer of `facet_text` (B2 invariant #12 / Slice-A invariant #5 extended).
+
+  `attrs` is map-shaped (per Ecto changeset convention, survives field additions):
+    * `:facet_text` (string, required)
+    * `:model` (string)
+    * `:prompt_version` (integer)
+    * `:state_version` (integer — copied verbatim into the event payload; do NOT
+       re-query here; the FacetWorker passes it through from `job.args`).
+
+  Atomic Multi:
+    1. Append `:facet_generated` event with full payload.
+    2. Upsert the `WorkItemFacet` row (lazy `:watch` default for the attention
+       field if no row existed — invariant #16; clears `facet_stale_at`).
+    3. Broadcast `{:sous, :facet_generated, work_item_id, viewer_id}` on the
+       per-work-item facets topic on success.
+  """
+  def set_facet_text(work_item_id, viewer_id, attrs)
+      when is_integer(work_item_id) and is_binary(viewer_id) and is_map(attrs) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    event_payload = %{
+      "viewer_id" => viewer_id,
+      "facet_text" => Map.fetch!(attrs, :facet_text),
+      "model" => Map.get(attrs, :model),
+      "prompt_version" => Map.get(attrs, :prompt_version),
+      "generated_at" => DateTime.to_iso8601(now),
+      "state_version" => Map.fetch!(attrs, :state_version)
+    }
+
+    event = %WorkItemEvent{
+      id: Snowflake.generate(),
+      work_item_id: work_item_id,
+      type: :facet_generated,
+      payload: event_payload,
+      actor_user_id: nil
+    }
+
+    # Invariant #4 — derive the row through the same Projection.apply_event the
+    # replay path uses. The lazy default `:watch` is applied here for rows that
+    # never had attention set (invariant #16).
+    projected = Projection.apply_event(%{facets: %{}}, event)
+
+    facet_attrs =
+      projected.facets[viewer_id]
+      |> Map.put(:work_item_id, work_item_id)
+      |> Map.put(:viewer_id, viewer_id)
+
+    Multi.new()
+    |> Multi.insert(:event, WorkItemEvent.changeset(%WorkItemEvent{}, Map.from_struct(event)))
+    |> Multi.insert(
+      :facet,
+      WorkItemFacet.changeset(%WorkItemFacet{}, facet_attrs),
+      on_conflict:
+        {:replace,
+         [
+           :facet_text,
+           :facet_model,
+           :facet_prompt_version,
+           :facet_generated_at,
+           :facet_stale_at,
+           :updated_at
+         ]},
+      conflict_target: [:work_item_id, :viewer_id]
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, _} ->
+        # Re-fetch so the returned struct reflects the merged row (the upsert
+        # `on_conflict: {:replace, [...B2 fields...]}` preserves the pre-existing
+        # `:attention` value, which the changeset-built struct doesn't know about).
+        facet = Repo.get_by!(WorkItemFacet, work_item_id: work_item_id, viewer_id: viewer_id)
+
+        _ =
+          Phoenix.PubSub.broadcast(
+            @pubsub,
+            facets_topic(work_item_id),
+            {:sous, :facet_generated, work_item_id, viewer_id}
+          )
+
+        {:ok, facet}
+
+      {:error, _step, changeset, _} ->
+        {:error, changeset}
+    end
   end
 
   @doc "Map of `card_message_id => work_item` (with decision preloaded) for a channel."
