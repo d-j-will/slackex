@@ -19,7 +19,7 @@ defmodule Slackex.Sous do
   alias Slackex.Infrastructure.Snowflake
   alias Slackex.Messaging
   alias Slackex.Repo
-  alias Slackex.Sous.{Decision, Projection, WorkItem, WorkItemEvent}
+  alias Slackex.Sous.{Decision, Projection, Viewer, WorkItem, WorkItemEvent, WorkItemFacet}
 
   @pubsub Slackex.PubSub
   @work_items_topic "sous:work_items"
@@ -189,6 +189,93 @@ defmodule Slackex.Sous do
       {:ok, %{work_item: updated}} ->
         broadcast_work_item(:state_changed, updated)
         {:ok, updated}
+
+      {:error, _step, changeset, _} ->
+        {:error, changeset}
+    end
+  end
+
+  @doc """
+  Sets the attention of `viewer_id` for `work_item_id` to `attention`. Appends a
+  `:attention_set` event and upserts the `WorkItemFacet` row (last-write-wins).
+
+  `attention` must be in `WorkItemFacet.attentions/0`; `viewer_id` must reference
+  an existing `Viewer` row (immutable in B1, invariant #11).
+  """
+  def set_attention(work_item_id, viewer_id, attention, actor_id) do
+    cond do
+      attention not in WorkItemFacet.attentions() ->
+        {:error, :invalid_attention}
+
+      not Repo.exists?(from v in Viewer, where: v.id == ^viewer_id) ->
+        {:error, :invalid_viewer}
+
+      not Repo.exists?(from w in WorkItem, where: w.id == ^work_item_id) ->
+        {:error, :invalid_work_item}
+
+      true ->
+        do_set_attention(work_item_id, viewer_id, attention, actor_id)
+    end
+  end
+
+  @doc """
+  Per-viewer attention map for the In Service board.
+  Returns `%{work_item_id => attention_atom}` for rows where this viewer has
+  been triaged; absence = default `:watch` (the caller resolves).
+  """
+  def facets_for_viewer(viewer_id) when is_binary(viewer_id) do
+    from(f in WorkItemFacet,
+      where: f.viewer_id == ^viewer_id,
+      select: {f.work_item_id, f.attention}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  def facets_for_viewer(nil), do: %{}
+
+  defp do_set_attention(work_item_id, viewer_id, attention, actor_id) do
+    event = %WorkItemEvent{
+      id: Snowflake.generate(),
+      work_item_id: work_item_id,
+      type: :attention_set,
+      payload: %{
+        "viewer_id" => viewer_id,
+        "attention" => Atom.to_string(attention),
+        "actor_user_id" => actor_id
+      },
+      actor_user_id: actor_id
+    }
+
+    # Invariant #4 (one reducer, two uses): derive the row attrs through the
+    # same Projection.apply_event the replay path uses.
+    projected = Projection.apply_event(%{facets: %{}}, event)
+
+    facet_attrs =
+      projected.facets[viewer_id]
+      |> Map.put(:work_item_id, work_item_id)
+      |> Map.put(:viewer_id, viewer_id)
+
+    Multi.new()
+    |> Multi.insert(:event, WorkItemEvent.changeset(%WorkItemEvent{}, Map.from_struct(event)))
+    |> Multi.insert(
+      :facet,
+      WorkItemFacet.changeset(%WorkItemFacet{}, facet_attrs),
+      on_conflict: {:replace, [:attention, :updated_at]},
+      conflict_target: [:work_item_id, :viewer_id]
+    )
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{facet: facet}} ->
+        _ =
+          Phoenix.PubSub.broadcast(
+            @pubsub,
+            @work_items_topic,
+            {:work_item_event, :attention_set,
+             %{work_item_id: work_item_id, viewer_id: viewer_id, attention: attention}}
+          )
+
+        {:ok, facet}
 
       {:error, _step, changeset, _} ->
         {:error, changeset}

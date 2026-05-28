@@ -55,17 +55,22 @@ defmodule Slackex.SousTest do
         })
 
       {:ok, _moved} = Sous.move(wi.id, :pass, u.id)
+      {:ok, _} = Sous.set_attention(wi.id, "cto", :act, u.id)
+      {:ok, _} = Sous.set_attention(wi.id, "ceo", :hidden, u.id)
 
       persisted = Repo.get!(WorkItem, wi.id) |> Repo.preload(:decision)
+      facet_rows = Repo.all(from f in Slackex.Sous.WorkItemFacet, where: f.work_item_id == ^wi.id)
+      events = Repo.all(from e in WorkItemEvent, where: e.work_item_id == ^wi.id, order_by: e.id)
 
-      events =
-        Repo.all(from e in WorkItemEvent, where: e.work_item_id == ^wi.id, order_by: e.id)
-
-      assert Enum.map(events, & &1.type) == [:created, :state_changed]
+      assert Enum.map(events, & &1.type) == [
+               :created,
+               :state_changed,
+               :attention_set,
+               :attention_set
+             ]
 
       folded = Projection.fold(events)
 
-      # Every projected work_item field must match the inline-maintained row.
       for field <- [
             :id,
             :kind,
@@ -78,12 +83,17 @@ defmodule Slackex.SousTest do
             :moved_at
           ] do
         assert Map.get(folded.work_item, field) == Map.get(persisted, field),
-               "field #{field} diverged: folded=#{inspect(Map.get(folded.work_item, field))} persisted=#{inspect(Map.get(persisted, field))}"
+               "field #{field} diverged"
       end
 
       assert folded.decision.what == persisted.decision.what
       assert folded.decision.why == persisted.decision.why
       assert folded.decision.next == persisted.decision.next
+
+      # Facets: folded.facets must mirror the persisted rows (lazy default = no row).
+      persisted_facets = Map.new(facet_rows, fn f -> {f.viewer_id, f.attention} end)
+      folded_facets = Map.new(folded.facets, fn {vid, %{attention: a}} -> {vid, a} end)
+      assert folded_facets == persisted_facets
     end
 
     test "rolls back entirely when the decision is invalid", %{user: u, channel: c} do
