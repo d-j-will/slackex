@@ -10,6 +10,11 @@
 
 **Source of truth:** spec `docs/feature/sous/design/slice-b1-role-lens-and-facet-drawer.md`. Carries forward Slice A's seven invariants + adds B1's four (#8–#11).
 
+> **Plan notes (discovered during the first execution — fix these if re-running):**
+> 1. **T1, T4, T6, T7, and the small "partial T13" strip MUST land as ONE commit.** They're mutually entangled (T4↔T7 via `Sous.wi_to_attrs/1`; T6↔T7 via the test field-iteration list); no sub-ordering keeps the full-suite pre-commit gate green at every step. Treat T1+T4+T6+T7+partial-T13 as a single combined task ("B1 prep + migration") with two commits at most: a code-strip commit then the migration commit.
+> 2. **The `has_many :facets, Slackex.Sous.WorkItemFacet` on `WorkItem` (T4) is a runtime crash, not just a compile warning, until `WorkItemFacet` exists.** `Repo.insert` validation traverses associations via `Relation.surface_changes/3` → `WorkItemFacet.__schema__(:primary_key)` → `UndefinedFunctionError`. Add the `has_many :facets` line as part of **T3** (alongside creating `WorkItemFacet`), not T4.
+> 3. **`@attention_atoms [:act, :watch, :know, :hidden]` must be materialised somewhere** so `Projection.apply_event(:attention_set)`'s `String.to_existing_atom/1` doesn't crash. T3 should put this module attribute on `WorkItemFacet` (the natural home) — the prep commit puts it temporarily on `Projection` as a stopgap; T3 should move it to `WorkItemFacet` and remove it from `Projection`.
+
 **Conventions to honor (from CLAUDE.md / project memory):**
 - Never use `unless`; use `if` with an inverted condition.
 - Snowflake PK schemas use `@primary_key {:id, :integer, autogenerate: false}` and derive `inserted_at` from the id.
