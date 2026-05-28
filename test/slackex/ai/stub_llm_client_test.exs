@@ -47,4 +47,50 @@ defmodule Slackex.AI.StubLLMClientTest do
       assert Slackex.AI.LLMClient in behaviours
     end
   end
+
+  describe "complete/2 with opts[:purpose] = :sous_facet (B2 branch)" do
+    alias Slackex.Sous.{Decision, FacetPrompt, Viewer, WorkItem}
+
+    defp build_facet_messages do
+      viewer = %Viewer{
+        id: "cto",
+        name: "CTO",
+        color: "#7c5cff",
+        focus: ["shipping", "risks", "decisions"]
+      }
+
+      work_item = %WorkItem{id: 1, kind: :decision, state: :mise, title: "Bridge", people: %{}}
+
+      decision = %Decision{
+        work_item_id: 1,
+        what: "Adopt FooBar",
+        why: "Latency",
+        next: "Spike"
+      }
+
+      FacetPrompt.build(viewer, work_item, decision)
+    end
+
+    test "returns viewer-distinguishable, deterministic facet text" do
+      messages = build_facet_messages()
+      {:ok, text} = StubLLMClient.complete(messages, purpose: :sous_facet)
+
+      assert text =~ "[stub:CTO]"
+      assert text =~ "Adopt FooBar"
+      assert text =~ "shipping, risks, decisions"
+    end
+
+    test "same input -> identical output (CI determinism guarantee)" do
+      messages = build_facet_messages()
+      {:ok, a} = StubLLMClient.complete(messages, purpose: :sous_facet)
+      {:ok, b} = StubLLMClient.complete(messages, purpose: :sous_facet)
+      assert a == b
+    end
+
+    test "no purpose opt -> unchanged canned-summary behaviour" do
+      messages = [%{role: "user", content: "Anything"}]
+      {:ok, text} = StubLLMClient.complete(messages, [])
+      assert text =~ "Here is a summary"
+    end
+  end
 end
