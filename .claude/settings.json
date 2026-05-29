@@ -2,78 +2,100 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Bash",
         "hooks": [
           {
-            "type": "command",
-            "command": "scripts/hooks/remind-spec-update.sh"
+            "command": "scripts/hooks/remind-spec-update.sh",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash",
         "hooks": [
           {
-            "type": "command",
-            "command": "scripts/hooks/block-no-verify.sh"
+            "command": "scripts/hooks/block-no-verify.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/block-caddy-reload.sh"
+            "command": "scripts/hooks/block-caddy-reload.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/block-bare-docker-pull.sh"
+            "command": "scripts/hooks/block-bare-docker-pull.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/block-iterative-fixes.sh"
+            "command": "scripts/hooks/block-iterative-fixes.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/pre-commit-checks.sh"
+            "command": "scripts/hooks/pre-commit-checks.sh",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "Bash"
       },
       {
-        "matcher": "Write",
         "hooks": [
           {
-            "type": "command",
-            "command": "scripts/hooks/check-migration-safety.sh"
+            "command": "scripts/hooks/check-migration-safety.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/block-prod-compose-build.sh"
+            "command": "scripts/hooks/block-prod-compose-build.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/warn-listener-wiring.sh"
+            "command": "scripts/hooks/warn-listener-wiring.sh",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "Write"
       },
       {
-        "matcher": "Edit",
         "hooks": [
           {
-            "type": "command",
-            "command": "scripts/hooks/check-migration-safety.sh"
+            "command": "scripts/hooks/check-migration-safety.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/check-ci-deploy-patterns.sh"
+            "command": "scripts/hooks/check-ci-deploy-patterns.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/block-prod-compose-build.sh"
+            "command": "scripts/hooks/block-prod-compose-build.sh",
+            "type": "command"
           },
           {
-            "type": "command",
-            "command": "scripts/hooks/warn-listener-wiring.sh"
+            "command": "scripts/hooks/warn-listener-wiring.sh",
+            "type": "command"
           }
-        ]
+        ],
+        "matcher": "Edit"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
       }
     ]
   }

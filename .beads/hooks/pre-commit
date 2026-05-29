@@ -1,0 +1,99 @@
+#!/bin/sh
+# Pre-commit hook: YAML lint + Elixir format check + fast test
+#
+# Install: ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+
+# Fail if tracked files have unstaged changes — prevents committing
+# a partial rename/refactor where some files were modified on disk
+# but never staged. CI sees only what git tracks, not the working tree.
+UNSTAGED=$(git diff --name-only -- '*.ex' '*.exs')
+if [ -n "$UNSTAGED" ]; then
+  echo ""
+  echo "Pre-commit: ERROR — unstaged changes to tracked Elixir files:"
+  echo "$UNSTAGED"
+  echo ""
+  echo "Stage them (git add) or stash them before committing."
+  echo "This prevents CI failures from partial renames or refactors."
+  exit 1
+fi
+
+STAGED_YML=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ya?ml$')
+STAGED_EX=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ex|exs)$')
+
+# YAML validation (uses Ruby which ships with macOS)
+if [ -n "$STAGED_YML" ]; then
+  echo "Pre-commit: validating YAML..."
+  for f in $STAGED_YML; do
+    ruby -ryaml -e "YAML.safe_load(File.read('$f'), permitted_classes: [], permitted_symbols: [], aliases: true)" 2>&1
+    if [ $? -ne 0 ]; then
+      echo ""
+      echo "YAML validation failed: $f"
+      exit 1
+    fi
+  done
+  echo "Pre-commit: YAML valid."
+fi
+
+# Elixir checks (only if .ex/.exs files staged)
+if [ -n "$STAGED_EX" ]; then
+  # MIX_ENV=test to match CI's quality job. `mix format` resolves dep formatter
+  # configs (.formatter.exs import_deps / the migrations subdirectory's ecto_sql
+  # import) from _build/$MIX_ENV, so dev and test can disagree on migration files.
+  echo "Pre-commit: checking formatting..."
+  MIX_ENV=test mix format --check-formatted
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "Formatting check failed. Run 'MIX_ENV=test mix format' and re-stage."
+    exit 1
+  fi
+
+  echo "Pre-commit: running Credo..."
+  mix credo
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "Credo check failed. Fix issues before committing."
+    exit 1
+  fi
+
+  echo "Pre-commit: running Dialyzer..."
+  mix dialyzer
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "Dialyzer check failed. Fix type issues before committing."
+    exit 1
+  fi
+
+  echo "Pre-commit: running tests (--max-failures 1)..."
+  mix test --max-failures 1
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "Tests failed. Fix failures before committing."
+    exit 1
+  fi
+fi
+
+echo "Pre-commit: all checks passed."
+
+# --- BEGIN BEADS INTEGRATION v1.0.4 ---
+# This section is managed by beads. Do not remove these markers.
+if command -v bd >/dev/null 2>&1; then
+  export BD_GIT_HOOK=1
+  _bd_timeout=${BEADS_HOOK_TIMEOUT:-300}
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_bd_timeout" bd hooks run pre-commit "$@"
+    _bd_exit=$?
+    if [ $_bd_exit -eq 124 ]; then
+      echo >&2 "beads: hook 'pre-commit' timed out after ${_bd_timeout}s — continuing without beads"
+      _bd_exit=0
+    fi
+  else
+    bd hooks run pre-commit "$@"
+    _bd_exit=$?
+  fi
+  if [ $_bd_exit -eq 3 ]; then
+    echo >&2 "beads: database not initialized — skipping hook 'pre-commit'"
+    _bd_exit=0
+  fi
+  if [ $_bd_exit -ne 0 ]; then exit $_bd_exit; fi
+fi
+# --- END BEADS INTEGRATION v1.0.4 ---

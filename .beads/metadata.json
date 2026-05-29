@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "slackex",
+  "project_id": "60b66854-58a1-4420-aae4-c65c551c024c"
+}
