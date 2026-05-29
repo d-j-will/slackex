@@ -1,0 +1,4 @@
+#!/bin/bash
+# Git pre-push hook: headless Claude Code check for common issues
+
+claude -p "Check for common issues: 1) Any unstaged files? 2) Do all tests pass? 3) Are all new features behind feature flags? 4) Any functions not available in our CI Elixir version? Report pass/fail." --allowedTools "Bash,Read,Grep"
