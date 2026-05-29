@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
+# Load .env if present (local dev env vars; not committed)
+if [ -f .env ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source .env
+  set +a
+fi
+
 # Ensure Docker services are running
 if ! docker compose ps --status running postgres 2>/dev/null | grep -q postgres; then
   echo "Starting Docker services..."

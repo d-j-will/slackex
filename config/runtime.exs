@@ -139,19 +139,6 @@ if config_env() == :prod do
     }
   end
 
-  # LLM API config — defaults to DeepInfra with Gemma-3-4b-it.
-  # Uses EMBEDDING_API_KEY (same DeepInfra key for both embeddings and chat completions).
-  # Override with LLM_API_URL / LLM_MODEL / LLM_MAX_TOKENS for other providers.
-  if llm_api_key = System.get_env("EMBEDDING_API_KEY") do
-    config :slackex, :llm_api, %{
-      api_url: System.get_env("LLM_API_URL", "https://api.deepinfra.com/v1/openai"),
-      model: System.get_env("LLM_MODEL", "google/gemma-3-4b-it"),
-      api_key: llm_api_key,
-      max_tokens: String.to_integer(System.get_env("LLM_MAX_TOKENS", "1024")),
-      temperature: 0.3
-    }
-  end
-
   # OpenTelemetry — allow runtime override of collector endpoint
   if otel_endpoint = System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
     config :opentelemetry_exporter,
@@ -246,6 +233,20 @@ if config_env() == :prod do
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
   # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+end
+
+# LLM API config — read for ALL environments (dev/test/prod). Defaults to DeepInfra
+# with Gemma-3-4b-it. Uses EMBEDDING_API_KEY (same DeepInfra key for both embeddings
+# and chat completions). Override with LLM_API_URL / LLM_MODEL / LLM_MAX_TOKENS for
+# other providers.
+if llm_api_key = System.get_env("EMBEDDING_API_KEY") do
+  config :slackex, :llm_api, %{
+    api_url: System.get_env("LLM_API_URL", "https://api.deepinfra.com/v1/openai"),
+    model: System.get_env("LLM_MODEL", "google/gemma-3-4b-it"),
+    api_key: llm_api_key,
+    max_tokens: String.to_integer(System.get_env("LLM_MAX_TOKENS", "1024")),
+    temperature: 0.3
+  }
 end
 
 # Sous B2 facet model — read for ALL environments (dev/test/prod). Provider
