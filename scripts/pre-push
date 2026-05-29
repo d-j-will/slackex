@@ -1,4 +1,10 @@
 #!/bin/bash
-# Git pre-push hook: headless Claude Code check for common issues
+# Git pre-push hook: headless Claude Code check for common issues.
+#
+# SECURITY: --allowedTools is Read,Grep only — NO Bash. A pre-push hook runs
+# unattended with your host environment (secrets, SSH keys, .env) in scope, so
+# granting an autonomous `claude -p` a shell here is an arbitrary-code-execution
+# risk (agent permission bypass). The check only reads files and reports; run
+# any command it suggests yourself. Do not add Bash back.
 
-claude -p "Check for common issues: 1) Any unstaged files? 2) Do all tests pass? 3) Are all new features behind feature flags? 4) Any functions not available in our CI Elixir version? Report pass/fail." --allowedTools "Bash,Read,Grep"
+claude -p "Read-only pre-push review. Inspect the working tree and report pass/fail (do NOT run commands): 1) Any unstaged or untracked files that look like they should be committed? 2) Are all new user-facing features gated behind a feature flag (grep for FunWithFlags usage in changed areas)? 3) Any stdlib functions used that may not exist in the CI Elixir version in .tool-versions? Report findings; suggest commands for the human to run rather than running them." --allowedTools "Read,Grep"
