@@ -1,0 +1,303 @@
+events:
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-04-09T00:31:53Z'
+- d: 'NOT_APPLICABLE: migration step has no tests'
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 01-01
+  t: '2026-04-09T00:31:57Z'
+- d: 'NOT_APPLICABLE: migration step has no tests'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 01-01
+  t: '2026-04-09T00:31:58Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-04-09T00:31:59Z'
+- d: 'PASS: already committed as 71bf5b8'
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-01
+  t: '2026-04-09T00:32:00Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 05-01
+  t: '2026-04-09T11:19:30Z'
+- d: PASS
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 05-01
+  t: '2026-04-09T11:19:36Z'
+- d: PASS
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 05-01
+  t: '2026-04-09T11:19:37Z'
+- d: PASS
+  p: GREEN
+  s: EXECUTED
+  sid: 05-01
+  t: '2026-04-09T11:19:38Z'
+- d: PASS
+  p: COMMIT
+  s: EXECUTED
+  sid: 05-01
+  t: '2026-04-09T11:20:46Z'
+- d: PASS
+  p: PREPARE
+  s: EXECUTED
+  sid: 05-02
+  t: '2026-04-09T11:21:56Z'
+- d: 'NOT_APPLICABLE: verification-only step has no new code'
+  p: RED_ACCEPTANCE
+  s: SKIPPED
+  sid: 05-02
+  t: '2026-04-09T11:21:56Z'
+- d: 'NOT_APPLICABLE: verification-only step has no new code'
+  p: RED_UNIT
+  s: SKIPPED
+  sid: 05-02
+  t: '2026-04-09T11:21:56Z'
+- d: 'PASS: 1430 tests 0 failures, credo clean, dialyzer clean'
+  p: GREEN
+  s: EXECUTED
+  sid: 05-02
+  t: '2026-04-09T11:21:56Z'
+- d: 'NOT_APPLICABLE: no code changes in verification step'
+  p: COMMIT
+  s: SKIPPED
+  sid: 05-02
+  t: '2026-04-09T11:21:56Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-04-09T11:22:32Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-04-09T11:22:32Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 01-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-01
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-02
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-04-09T11:22:33Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-03
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 02-04
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 02-04
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 02-04
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 02-04
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 02-04
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-01
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 03-02
+  t: '2026-04-09T11:22:34Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 04-01
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 04-01
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 04-01
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 04-01
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 04-01
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: pre-existing implementation verified 2026-04-09'
+  p: PREPARE
+  s: EXECUTED
+  sid: 04-02
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_ACCEPTANCE
+  s: EXECUTED
+  sid: 04-02
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: pre-existing tests verified passing'
+  p: RED_UNIT
+  s: EXECUTED
+  sid: 04-02
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: 33 factory tests 0 failures'
+  p: GREEN
+  s: EXECUTED
+  sid: 04-02
+  t: '2026-04-09T11:22:35Z'
+- d: 'PASS: committed in prior session 2026-03-29'
+  p: COMMIT
+  s: EXECUTED
+  sid: 04-02
+  t: '2026-04-09T11:22:35Z'
+phases: []
+schema_version: '3.0'

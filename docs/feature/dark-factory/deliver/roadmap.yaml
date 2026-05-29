@@ -1,0 +1,219 @@
+roadmap:
+  project_id: dark-factory
+  created_at: '2026-04-09T00:26:03Z'
+  total_steps: 12
+  phases: 5
+phases:
+- id: '01'
+  name: Database and Schemas
+  steps:
+  - id: 01-01
+    name: Migration for factory_runs and factory_events tables
+    description: Create factory_runs and factory_events tables with indexes. factory_runs tracks pipeline lifecycle; factory_events is an append-only audit log.
+    criteria:
+      - factory_runs table exists with status, spec_path, claim_token, heartbeat, attempt, and result columns
+      - factory_events table exists with event_type, from/to status, message, and metadata columns
+      - Indexes on factory_runs(status), factory_runs(queued_by_id), factory_runs(status, queued_by_id)
+      - Migration is reversible (rollback succeeds)
+    files_to_modify:
+      - priv/repo/migrations/TIMESTAMP_create_factory_tables.exs
+    test_file: null
+    dependencies: []
+    estimated_hours: 0.5
+  - id: 01-02
+    name: Ecto schemas for Run and Event
+    description: Define Run schema with queue_changeset and status constants. Define Event schema with changeset for status_change, progress, and error event types.
+    criteria:
+      - Run schema maps all factory_runs columns including belongs_to user and channel
+      - Event schema maps all factory_events columns with belongs_to factory_run
+      - Run.queue_changeset validates required fields and spec_path length
+      - Run.statuses/0 returns the full state machine status list
+      - Schemas compile with zero warnings
+    files_to_modify:
+      - lib/slackex/factory/run.ex
+      - lib/slackex/factory/event.ex
+    test_file: null
+    dependencies:
+      - '01-01'
+    estimated_hours: 0.5
+- id: '02'
+  name: Factory Context Module
+  steps:
+  - id: 02-01
+    name: Queue and list functions
+    description: Create Factory context with queue_run (Multi insert run + event), list_pending (FIFO, max 5), list_pending_verification, list_runs (filterable), and list_events.
+    criteria:
+      - queue_run creates run in queued status with initial status_change event atomically
+      - list_pending returns max 5 queued runs in FIFO order scoped to bot user
+      - list_runs filters by status and excludes terminal states by default
+      - queue_run rejects missing required fields
+    files_to_modify:
+      - lib/slackex/factory.ex
+      - test/slackex/factory_test.exs
+    test_file: test/slackex/factory_test.exs
+    dependencies:
+      - '01-02'
+    estimated_hours: 1
+  - id: 02-02
+    name: Atomic claim_run with optimistic locking
+    description: Implement claim_run using update_all with WHERE status=queued for atomic claiming. Generates claim_token, sets claimed_at and last_heartbeat_at. Broadcasts PubSub event.
+    criteria:
+      - claim_run transitions queued to implementing and returns claim_token
+      - Concurrent claims on same run — only one succeeds, other gets :already_claimed
+      - Status_change event appended on successful claim
+      - PubSub broadcast {:factory_run_updated, run} sent on claim
+    files_to_modify:
+      - lib/slackex/factory.ex
+      - test/slackex/factory_test.exs
+    test_file: test/slackex/factory_test.exs
+    dependencies:
+      - '02-01'
+    estimated_hours: 1
+  - id: 02-03
+    name: Heartbeat, submit_result, and cancel_run
+    description: Implement heartbeat (token-validated, optional progress event), submit_result (success -> awaiting_verification, failure -> retry or needs_review), and cancel_run (by token or by owner).
+    criteria:
+      - Heartbeat updates last_heartbeat_at; rejects invalid token
+      - submit_result success transitions to awaiting_verification with branch_name and tier1_result
+      - submit_result failure increments attempt when retries remain; transitions to needs_review when exhausted
+      - cancel_run works by claim_token or by owner; rejects cancel on terminal states
+      - All transitions broadcast PubSub and append events
+    files_to_modify:
+      - lib/slackex/factory.ex
+      - test/slackex/factory_test.exs
+    test_file: test/slackex/factory_test.exs
+    dependencies:
+      - '02-02'
+    estimated_hours: 1.5
+  - id: 02-04
+    name: Verification claim and submit
+    description: Implement claim_verification (atomic, new token, awaiting_verification -> verifying_tier2) and submit_verification (pass -> completed, fail -> needs_review). list_pending_verification returns spec and branch only.
+    criteria:
+      - claim_verification transitions awaiting_verification to verifying_tier2 with new claim_token
+      - submit_verification pass sets completed status, completed_at, and tier2_result
+      - submit_verification fail transitions to needs_review (never retries)
+      - list_pending_verification excludes tier1_result and previous claim_token
+    files_to_modify:
+      - lib/slackex/factory.ex
+      - test/slackex/factory_test.exs
+    test_file: test/slackex/factory_test.exs
+    dependencies:
+      - '02-03'
+    estimated_hours: 1
+- id: '03'
+  name: Lifecycle and Notifications
+  steps:
+  - id: 03-01
+    name: LifecycleWorker Oban cron for timeout enforcement
+    description: Add release_stale_claims/0 to Factory context (releases implementing -> queued, verifying_tier2 -> awaiting_verification when heartbeat exceeds timeout). Create Oban cron worker running every 2 minutes, gated by :dark_factory flag.
+    criteria:
+      - Stale implementing run reverts to queued with claim_token/claimed_at cleared
+      - Stale verifying_tier2 run reverts to awaiting_verification
+      - Runs within timeout window are not released
+      - LifecycleWorker skips execution when :dark_factory flag disabled
+      - Cron entry added to Oban config
+    files_to_modify:
+      - lib/slackex/factory.ex
+      - lib/slackex/factory/lifecycle_worker.ex
+      - config/config.exs
+      - test/slackex/factory/lifecycle_worker_test.exs
+    test_file: test/slackex/factory/lifecycle_worker_test.exs
+    dependencies:
+      - '02-04'
+    estimated_hours: 1.5
+  - id: 03-02
+    name: ChannelNotifier PubSub subscriber GenServer
+    description: Create GenServer that subscribes to factory:events PubSub topic and posts formatted status updates to the run's channel thread. First message creates the thread; subsequent messages reply. Supervised with restart :temporary.
+    criteria:
+      - ChannelNotifier posts a message to run's channel on each PubSub event
+      - First event creates a thread; subsequent events reply to that thread
+      - Notifier skips posting when :dark_factory flag disabled
+      - Notifier failure does not crash the application (restart :temporary)
+    files_to_modify:
+      - lib/slackex/factory/channel_notifier.ex
+      - lib/slackex/application.ex
+    test_file: test/slackex/factory/channel_notifier_test.exs
+    dependencies:
+      - '02-01'
+    estimated_hours: 1
+- id: '04'
+  name: MCP Integration
+  steps:
+  - id: 04-01
+    name: FactoryTools module and server dispatch wiring
+    description: Create FactoryTools module with 10 tool definitions and handlers delegating to Factory context. Wire into MCP Server dispatch — tools/list includes factory tools when flag enabled, tools/call routes factory_* methods to FactoryTools.
+    criteria:
+      - 10 factory tools appear in tools/list when :dark_factory enabled
+      - Factory tools hidden from tools/list when :dark_factory disabled
+      - tools/call for factory tools returns error when :dark_factory disabled
+      - All tool handlers delegate to Factory context (no business logic in tools layer)
+    files_to_modify:
+      - lib/slackex_web/mcp/factory_tools.ex
+      - lib/slackex_web/mcp/server.ex
+    test_file: test/slackex_web/mcp/factory_tools_test.exs
+    dependencies:
+      - '02-04'
+    estimated_hours: 1.5
+  - id: 04-02
+    name: MCP integration tests — full pipeline via HTTP
+    description: End-to-end MCP integration test exercising queue -> list -> claim -> heartbeat -> submit -> verify -> complete via JSON-RPC HTTP calls. Also tests cancel and feature flag guard.
+    criteria:
+      - Full pipeline completes via MCP HTTP round-trip (queue through completed)
+      - Cancel by owner works via MCP
+      - Factory tools excluded from tools/list when flag disabled
+      - tools/call returns error for factory tools when flag disabled
+    files_to_modify:
+      - test/slackex_web/mcp/factory_tools_test.exs
+    test_file: test/slackex_web/mcp/factory_tools_test.exs
+    dependencies:
+      - '04-01'
+    estimated_hours: 1
+- id: '05'
+  name: Integration Wiring and Verification
+  steps:
+  - id: 05-01
+    name: Pipeline and wiring integration tests
+    description: Create pipeline_test.exs for full state machine traversal (WS-1 through WS-4) and PubSub wiring assertions (IC-1). Create channel_notifier_test.exs for IC-2 wiring. Add feature flag guard tests for LifecycleWorker and ChannelNotifier (IC-4).
+    criteria:
+      - Full pipeline test exercises queue -> claim -> submit -> verify -> completed
+      - Failure + retry and failure exhausted paths tested end-to-end
+      - PubSub broadcasts verified for each state transition
+      - ChannelNotifier integration test verifies queue_run triggers channel message
+      - Feature flag guards tested for LifecycleWorker and ChannelNotifier
+    files_to_modify:
+      - test/slackex/factory/pipeline_test.exs
+      - test/slackex/factory/channel_notifier_test.exs
+      - test/slackex_web/mcp/factory_tools_test.exs
+    test_file: test/slackex/factory/pipeline_test.exs
+    dependencies:
+      - '03-01'
+      - '03-02'
+      - '04-02'
+    estimated_hours: 2
+  - id: 05-02
+    name: Dialyzer, credo, and full test suite verification
+    description: Run dialyzer, credo --strict, and full test suite. Fix any warnings or issues. Verify no regressions in existing tests.
+    criteria:
+      - Dialyzer passes with zero errors
+      - Credo --strict passes with no new issues
+      - Full test suite passes with no regressions
+      - Feature flag guards confirmed across all entry points
+    files_to_modify: []
+    test_file: null
+    dependencies:
+      - '05-01'
+    estimated_hours: 0.5
+implementation_scope:
+  source_directories:
+    - lib/slackex/factory/
+    - lib/slackex_web/mcp/
+  test_directories:
+    - test/slackex/factory/
+    - test/slackex_web/mcp/
+  excluded_patterns:
+    - _build/**
+    - deps/**
+validation:
+  status: pending
+  reviewer: solution-architect-reviewer
+  approved_at: null

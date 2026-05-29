@@ -1,0 +1,87 @@
+journey:
+  name: clarification
+  date: "2026-04-09"
+  jobs: [B, F]
+  personas:
+    primary: human-operator
+    secondary: implementing-agent
+    tertiary: coordinator-agent
+
+  steps:
+    - id: ambiguity-detected
+      actor: implementing-agent
+      action: "Encounters ambiguity while reading spec or implementing"
+      examples:
+        - "Missing acceptance criteria for edge case"
+        - "'Support large files' without size limit"
+        - "Conflicting constraints between spec sections"
+      emotion: uncertainty
+
+    - id: confidence-assessment
+      actor: implementing-agent
+      action: "Evaluate: does wrong guess change >1 test case?"
+      outputs:
+        high_confidence: "Assume + document in PR description"
+        low_confidence: "Must ask clarification"
+      design_principle: "Prevents human from becoming bottleneck on trivial questions"
+
+    - id: clarification-request
+      actor: implementing-agent
+      action: "Send to coordinator: {clarify, run_id, identifier, question}"
+      relay: "Coordinator posts to thread via reply_to_thread"
+      format: "[CLARIFY:${run_id}:${section}:${subsection}:${item}]"
+      outputs: ["${clarification_id}", "thread message"]
+      emotion: reassurance
+      coordinator_state: "Agent marked as 'clarifying'"
+
+    - id: waiting
+      actor: coordinator
+      action: "Continue heartbeating, monitor for response, other agents unaffected"
+      preserved: ["worktree partial work", "other agent progress", "claim alive"]
+      timeout: "2 hours (configurable)"
+      open_question: "Does clarifying agent count toward concurrency limit?"
+
+    - id: timeout-fallback
+      actor: coordinator
+      trigger: "No response within timeout"
+      action: "Post timeout notice, instruct agent to assume or fail"
+      options:
+        - "Make reasonable assumption, document prominently in PR"
+        - "Submit failure with 'blocked on clarification' if too fundamental"
+
+    - id: human-responds
+      actor: human
+      action: "Read clarification in thread, reply with answer"
+      emotion: collaborative
+      open_question: "Response matching strategy: require [RE:CLARIFY:...] prefix, positional, or confirmation?"
+
+    - id: response-forwarded
+      actor: coordinator
+      action: "Detect reply via search_messages polling, forward to agent via SendMessage"
+      outputs: ["Agent receives answer", "Agent state: clarifying -> implementing"]
+
+    - id: agent-resumes
+      actor: implementing-agent
+      action: "Incorporate answer, continue implementation"
+      emotion: confidence-restored
+
+    - id: spec-refinement
+      actor: coordinator
+      trigger: "Run completes (any terminal state)"
+      action: "Collect [CLARIFY:...] Q&A pairs, propose spec amendments"
+      format: "[SPEC-AMENDMENT:${run_id}]"
+      approval: "Human must explicitly approve each amendment"
+      outputs: ["Updated spec (if approved)", "Reduced future clarifications"]
+      emotion: satisfaction
+
+  multi_clarification:
+    description: "Agent may ask multiple questions per run, tracked independently"
+    schema:
+      run_id:
+        clarifications:
+          - id: "${section}:${subsection}:${item}"
+            status: "pending|answered|timed_out"
+            question: "string"
+            answer: "string (when answered)"
+            asked_at: "datetime"
+            answered_at: "datetime (when answered)"

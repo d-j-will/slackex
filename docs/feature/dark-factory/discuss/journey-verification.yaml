@@ -1,0 +1,105 @@
+journey:
+  name: independent-verification
+  date: "2026-04-09"
+  jobs: [H]
+  personas:
+    primary: human-operator
+    secondary: verification-agent
+    tertiary: coordinator-agent
+
+  isolation_boundary:
+    agent_sees:
+      - "Spec text at ${spec_commit_sha}"
+      - "CLAUDE.md, docs/engineering-principles.md"
+      - "docs/rca/ incident history"
+      - "Implementation code (ONLY after generating scenarios)"
+    agent_never_sees:
+      - "Implementing agent's conversation or plan"
+      - "Tier 1 test results"
+      - "Progress messages from implementation thread"
+      - "Implementation reasoning or decision rationale"
+    enforcement:
+      phase1: "Prompt-based (agent instructed to read spec first)"
+      phase2: "Restricted MCP token scope (physically cannot access)"
+
+  steps:
+    - id: verification-available
+      actor: coordinator
+      action: "Poll list_verification_work, discover awaiting_verification runs"
+      inputs: ["${bot_user_id}"]
+      outputs: ["run list: spec_path, spec_commit_sha, branch_name (NO tier1_result)"]
+
+    - id: claim-verification
+      actor: coordinator
+      action: "claim_verification_work(run_id)"
+      outputs: ["${claim_token}", "${spec_path}", "${spec_commit_sha}", "${branch_name}"]
+      state_transition: "awaiting_verification -> verifying_tier2"
+      thread_message: "Verification started"
+
+    - id: read-spec-only
+      actor: verification-agent
+      action: "Read spec at ${spec_path} at ${spec_commit_sha}. Read CLAUDE.md, engineering principles, RCA docs."
+      critical: "Do NOT read implementation code yet"
+      outputs: ["Understanding of spec requirements + project failure modes"]
+
+    - id: generate-scenarios
+      actor: verification-agent
+      action: "Generate Given/When/Then scenarios from spec alone"
+      categories:
+        - name: boundary-values
+          source: "Spec requirements"
+          examples: ["Empty inputs", "Maximum sizes", "Zero counts"]
+        - name: concurrency
+          source: "Spec + project patterns"
+          examples: ["Simultaneous operations on same data"]
+        - name: error-recovery
+          source: "Spec + engineering principles"
+          examples: ["Dependency fails mid-operation"]
+        - name: data-integrity
+          source: "Spec data model"
+          examples: ["Create -> read -> update -> verify round-trips"]
+        - name: nil-id-ghosts
+          source: "docs/rca/ + CLAUDE.md"
+          examples: ["on_conflict: :nothing returns nil id"]
+        - name: swallowed-errors
+          source: "docs/rca/ + hookify rules"
+          examples: ["Oban perform/1 discards return value"]
+        - name: missing-wiring
+          source: "docs/rca/ pipeline events"
+          examples: ["PubSub topic subscribed but never broadcast"]
+        - name: partition-key-omissions
+          source: "Project patterns"
+          examples: ["Join without (message_id, message_inserted_at)"]
+      outputs: ["Set of Given/When/Then scenarios"]
+
+    - id: run-scenarios
+      actor: verification-agent
+      action: "Checkout factory/verify-run-{id} from origin/${branch_name}. Write tests. Run."
+      inputs: ["${branch_name}", "generated scenarios"]
+      outputs: ["${scenarios_run}", "${scenarios_passed}", "failure details"]
+      coordinator_action: "Heartbeats on behalf of verification agent"
+
+    - id: push-verification-branch
+      actor: verification-agent
+      action: "Push factory/verify-run-{id} as review artifact"
+      outputs: ["Verification branch with scenario tests"]
+      design_principle: "Scenarios are valuable artifacts even when all pass"
+
+    - id: submit-verification
+      actor: coordinator
+      action: "submit_verification(run_id, claim_token, passed, scenarios_run, scenarios_passed, details)"
+      pass:
+        state_transition: "verifying_tier2 -> completed"
+        thread_message: "Tier 2 passed (${scenarios_passed}/${scenarios_run}) — ready for review"
+        emotion: strong-confidence
+      fail:
+        state_transition: "verifying_tier2 -> needs_review"
+        thread_message: "Tier 2 failed (${scenarios_passed}/${scenarios_run}) — needs review"
+        emotion: concern-but-validation
+        never_retries: true
+
+    - id: human-review
+      actor: human
+      action: "Review branch + verification results"
+      completed_path: "Merge branch or open PR"
+      needs_review_path: "Examine failures -> fix manually, adjust spec + requeue, or abandon"

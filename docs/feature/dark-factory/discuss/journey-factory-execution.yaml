@@ -1,0 +1,97 @@
+journey:
+  name: factory-execution
+  date: "2026-04-09"
+  jobs: [A, C, G, D, E]
+  personas:
+    primary: human-operator
+    secondary: coordinator-agent
+
+  steps:
+    - id: queue-work
+      actor: human
+      action: "Write spec, call queue_factory_run(spec_path, channel_id)"
+      inputs: ["${spec_path}", "${channel_id}"]
+      outputs: ["${run_id}", "${thread_message_id}"]
+      emotion: intentional
+      state_transition: "-> queued"
+
+    - id: coordinator-polls
+      actor: coordinator
+      action: "Call list_factory_work periodically"
+      inputs: ["${bot_user_id}"]
+      outputs: ["list of queued runs"]
+      emotion: anticipation
+      failure: "Coordinator not running -> work sits in queue"
+
+    - id: claim-and-spawn
+      actor: coordinator
+      action: "claim_factory_work(run_id, commit_sha), spawn worktree agent"
+      inputs: ["${run_id}", "${commit_sha}"]
+      outputs: ["${claim_token}", "${worktree_path}", "${agent_id}"]
+      emotion: confidence
+      state_transition: "queued -> implementing"
+      failure: "Race condition -> {:error, :already_claimed} -> skip"
+
+    - id: agent-implements
+      actor: implementing-agent
+      action: "Read spec, plan, TDD implement in worktree"
+      inputs: ["${spec_path}", "${worktree_path}"]
+      outputs: ["code changes", "passing tests"]
+      emotion: trust
+      triggers_journey: "clarification (on ambiguity)"
+
+    - id: heartbeat
+      actor: coordinator
+      action: "factory_heartbeat(run_id, claim_token, message) every 5 min"
+      inputs: ["${run_id}", "${claim_token}"]
+      outputs: ["thread progress messages"]
+      emotion: calm-confidence
+      cadence: "heartbeat_timeout_minutes / 2"
+
+    - id: pre-deploy-checks
+      actor: implementing-agent
+      action: "Run scripts/pre-deploy (tests, format, credo, dialyzer)"
+      inputs: ["${worktree_path}"]
+      outputs: ["all checks green", "${branch_name}"]
+      emotion: thoroughness
+      failure: "Checks fail -> iterate. Exhausted -> submit failure."
+
+    - id: submit-result
+      actor: coordinator
+      action: "submit_factory_result(run_id, claim_token, success, branch_name)"
+      inputs: ["${run_id}", "${claim_token}", "${branch_name}"]
+      outputs: ["status: awaiting_verification"]
+      emotion: relief
+      state_transition: "implementing -> awaiting_verification"
+      failure_path:
+        attempts_remain: "stays implementing, attempt incremented"
+        exhausted: "implementing -> needs_review"
+
+    - id: verification
+      actor: verification-agent
+      action: "See journey: independent-verification"
+      state_transition: "awaiting_verification -> verifying_tier2 -> completed|needs_review"
+
+    - id: human-review
+      actor: human
+      action: "Review branch, merge or request fix"
+      inputs: ["${branch_name}", "thread summary", "tier2_result"]
+      outputs: ["merged branch or fix request"]
+      emotion: satisfaction
+
+    - id: cleanup
+      actor: coordinator
+      action: "Remove worktree, propose spec amendments from clarification Q&A"
+      inputs: ["${worktree_path}", "clarification history"]
+      outputs: ["clean workspace", "proposed spec amendments"]
+      triggers_journey: "clarification step 8 (spec refinement)"
+
+  crash_recovery:
+    trigger: "Coordinator session dies"
+    consequence: "All heartbeats stop -> LifecycleWorker releases stale claims after timeout"
+    recovery:
+      - "Human restarts coordinator"
+      - "Coordinator discovers orphaned .factory/run-* worktrees"
+      - "Matching queued run? Re-claim, re-use worktree"
+      - "No match? Clean up worktree"
+    open_question: "Should coordinator persist run_id->claim_token locally for seamless resume?"
