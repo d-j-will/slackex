@@ -1,6 +1,6 @@
 # RESUME — where to pick up
 
-_Last updated: 2026-05-28 (Europe/London). Latest work: **Sous Slice B1 deployed as v0.9.21** — role-lens viewer model + per-(viewer, work_item) attention triage + Facet Drawer (no AI; per-role facet text deferred to B2). Behind `:sous` flag (off in prod). See the Sous section below. Slice A shipped earlier (v0.9.19 + v0.9.20). This file is the continuity anchor._
+_Last updated: 2026-05-30 (Europe/London). Latest work: **Sous Slice B2 — AI per-role facet text** built (14 commits) + functionally verified in dev via Tidewave, deploying now. Generates right-sized prose per viewer/role through an isolated Oban pipeline (`:facets` queue) on drawer-open; `:state_changed` marks facets stale without re-generating. Behind `:sous` flag (off in prod). Slice B1 shipped as v0.9.21; Slice A as v0.9.19+v0.9.20. This file is the continuity anchor._
 
 ## Just shipped — v0.9.16 (the Loom redesign)
 
@@ -40,6 +40,26 @@ Inventory (original recommendation kept for reference):
 **Lesson worth keeping:** un-flagging a feature is only safe to follow with DB-row deletion *after* the flag-free code is live in prod — otherwise the running (old) code reads the now-missing flag as disabled and the feature vanishes. Always: ship code → verify deployed → then delete toggle rows.
 
 Both steps are prod-affecting → get explicit go-ahead before each.
+
+## Sous — Slice B2 (AI per-role facet text) BUILT + verified in dev, deploying (2026-05-30)
+
+**What it does:** fills `WorkItemFacet.facet_text` with right-sized prose per viewer/role — "same atom, different prisms." Opening the Facet Drawer auto-enqueues one `FacetWorker` job per viewer whose row is `:never_generated`/`:stale`; the worker calls `LLMClient.complete/2` (`purpose: :sous_facet`, max_tokens 200), then writes a `:facet_generated` event + updates the row via the existing Projection. `:state_changed` marks facets stale (`facet_stale_at`) but **never** enqueues — the next drawer-open is the trigger (cost containment, invariant #14).
+
+**What's built** (14 commits, range `779fab7..45b1b4e`, behind `:sous`): migration (4 facet cols) → `FacetPrompt` (pure, `@prompt_version 1`) → `WorkItemFacet` `state/3` 5-state derivation → `:facet_generated` event → Projection clause (lazy row, invariant #16) → `Sous.{set_facet_text/3, state_version/1, invalidate_facets/1}` hooked into `move/3` → `StubLLMClient` additive `:sous_facet` branch → `FacetWorker` (`:facets` queue, conc 3; `state_version` read **once from args**, never re-queried; Oban `unique:` `fields:[:worker,:args]` + 4 keys) → Drawer lazy-enqueue + 5 pill states + retry-glyph gesture grammar → board card stale indicator → mandatory cross-context integration test → failure-visibility test. New invariants **#12–#17**. Suite: **1591 tests, 0 failures** (54 new). Spec `docs/feature/sous/design/slice-b2-ai-facet-text.md` (2-pass advisor review); plan `docs/superpowers/plans/2026-05-28-sous-slice-b2-ai-facets.md`.
+
+**Functionally verified in dev (2026-05-30, via Tidewave against live BEAM):** ran the real `FacetWorker` against the "Sous" decision → all 7 viewers `:ok`, 7 genuinely distinct lenses (CEO=risk/win, CTO=scope-complexity, Architect=stack/integration, Product=layered-visibility, etc.). DeepInfra Gemma-3-4B confirmed working end-to-end.
+
+**Config gotcha fixed (commit `45b1b4e`):** the `:llm_api` runtime config block had been wrapped in `if config_env() == :prod do` since `903c3c5` (March) — so LLM features (summarization AND Sous B2) silently degraded in dev because `EMBEDDING_API_KEY` never reached the running server. Now read in all envs. Also: **`bin/server` now sources `.env`** — dev LLM recipe is just "paste key in `.env` → `bin/server`" (NOT `mix phx.server`, which doesn't source it). `.env` is gitignored; `EMBEDDING_API_KEY` is the DeepInfra key (misnamed for historical reasons — it's the chat-completion key, same as the prod GH secret).
+
+**Deferred (B-later / follow-ups):**
+- **Model/prompt quality upgrade** — Gemma-3-4B strains at the top: the CSM facet leaked scaffolding ("Okay, here's a paragraph…"). Fix is a firmer system prompt (`@prompt_version` bump → all rows auto-stale → regenerate on next drawer-open, no migration) and/or `LLM_FACET_MODEL=<better-model>` env override. **Explicitly deferred** — functionally fine, just the cheap-model ceiling.
+- Thread-context in the prompt (prompt sees decision body only); role-management UI; streaming facet text into the Drawer; eager background generation; multi-model routing; telemetry. All B-later (spec §2 + §13).
+- Board indicator scoped to `:stale` only (not `:never_generated`) — subagent product call; flip if the literal spec wording is wanted (needs a Viewers×WorkItem query at mount).
+- OpentelemetryOban handler detach in 3 test files (upstream `DateTime.to_iso8601(nil)` crash on Inline-mode jobs) — pre-existing infra interaction, documented in test setups.
+
+**To dogfood in prod:** `/admin/flags` → `:sous` → enable for your actor. Prod uses `StubClient` for embeddings but the LLM chat path is the real OpenAICompatibleClient → DeepInfra (prod `EMBEDDING_API_KEY` secret is set). Optionally set `LLM_FACET_MODEL` in prod env for better facet quality.
+
+---
 
 ## Sous — Slice A (event-stream tracer bullet) BUILT, not yet dogfooded/pushed (2026-05-27)
 
