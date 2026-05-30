@@ -69,8 +69,7 @@ defmodule SlackexWeb.SousLive.FacetDrawerComponent do
         :generating
 
       true ->
-        row = Map.get(assigns.facet_rows, viewer_id)
-        WorkItemFacet.state(row, MapSet.new(), viewer_id)
+        WorkItemFacet.state(Map.get(assigns.facet_rows, viewer_id))
     end
   end
 
@@ -138,8 +137,6 @@ defmodule SlackexWeb.SousLive.FacetDrawerComponent do
             </div>
             <div class="flex flex-wrap gap-1">
               <% current = current_attention(@facet_rows, v.id) %>
-              <% current =
-                if Map.has_key?(@facets, v.id), do: Map.get(@facets, v.id, current), else: current %>
               <button
                 :for={a <- WorkItemFacet.attentions()}
                 type="button"

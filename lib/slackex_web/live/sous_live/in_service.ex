@@ -47,7 +47,6 @@ defmodule SlackexWeb.SousLive.InService do
         |> assign(:facet_map, %{})
         |> assign(:show_hidden, %{order: false, mise: false, pass: false, walked: false})
         |> assign(:drawer_work_item, nil)
-        |> assign(:drawer_facets, %{})
         |> assign(:drawer_facet_rows, %{})
         |> assign(:drawer_enqueued, MapSet.new())
         |> assign(:drawer_failed, MapSet.new())
@@ -144,7 +143,6 @@ defmodule SlackexWeb.SousLive.InService do
     {:noreply,
      socket
      |> assign(:drawer_work_item, wi)
-     |> assign(:drawer_facets, attention_map(facet_rows))
      |> assign(:drawer_facet_rows, facet_rows)
      |> assign(:drawer_enqueued, enqueued)
      |> assign(:drawer_failed, failed)
@@ -152,19 +150,11 @@ defmodule SlackexWeb.SousLive.InService do
   end
 
   # Manual retry of a :failed facet (the only user gesture that enqueues; B2 §7.2).
+  # The drawer component targets the LV root via `phx-target={@myself}` → component
+  # handle_event → `send(self(), {:retry_facet, ...})`; this clause covers the
+  # test/JS bridge that pushes the event straight to the root.
   def handle_event("retry_facet", %{"viewer_id" => viewer_id}, socket) do
-    case socket.assigns.drawer_work_item do
-      nil ->
-        {:noreply, socket}
-
-      wi ->
-        _ = enqueue_one(wi.id, viewer_id)
-
-        enqueued = MapSet.put(socket.assigns.drawer_enqueued, viewer_id)
-        failed = MapSet.delete(socket.assigns.drawer_failed, viewer_id)
-
-        {:noreply, socket |> assign(:drawer_enqueued, enqueued) |> assign(:drawer_failed, failed)}
-    end
+    {:noreply, enqueue_retry(socket, viewer_id)}
   end
 
   # Bridge for tests / future JS that push triage_attention to the LV root rather
@@ -253,18 +243,7 @@ defmodule SlackexWeb.SousLive.InService do
   end
 
   def handle_info({:retry_facet, viewer_id}, socket) do
-    case socket.assigns.drawer_work_item do
-      nil ->
-        {:noreply, socket}
-
-      wi ->
-        _ = enqueue_one(wi.id, viewer_id)
-
-        enqueued = MapSet.put(socket.assigns.drawer_enqueued, viewer_id)
-        failed = MapSet.delete(socket.assigns.drawer_failed, viewer_id)
-
-        {:noreply, socket |> assign(:drawer_enqueued, enqueued) |> assign(:drawer_failed, failed)}
-    end
+    {:noreply, enqueue_retry(socket, viewer_id)}
   end
 
   def handle_info({:sous, :facet_generated, wi_id, viewer_id}, socket) do
@@ -275,7 +254,6 @@ defmodule SlackexWeb.SousLive.InService do
 
           socket
           |> assign(:drawer_facet_rows, facet_rows)
-          |> assign(:drawer_facets, attention_map(facet_rows))
           |> assign(:drawer_enqueued, MapSet.delete(socket.assigns.drawer_enqueued, viewer_id))
           |> assign(:drawer_failed, MapSet.delete(socket.assigns.drawer_failed, viewer_id))
 
@@ -303,7 +281,6 @@ defmodule SlackexWeb.SousLive.InService do
     {:noreply,
      socket
      |> assign(:drawer_work_item, nil)
-     |> assign(:drawer_facets, %{})
      |> assign(:drawer_facet_rows, %{})
      |> assign(:drawer_enqueued, MapSet.new())
      |> assign(:drawer_failed, MapSet.new())
@@ -372,25 +349,32 @@ defmodule SlackexWeb.SousLive.InService do
   end
 
   # B2: returns %{viewer_id => %WorkItemFacet{}} for the work item. The Drawer
-  # derives attention (Map.get(...).attention || :watch) AND pill state via
-  # WorkItemFacet.state/3 from the row, so we keep the row map authoritative.
+  # derives both attention (row.attention || :watch) and pill state via
+  # WorkItemFacet.state/1 from the row, so we keep the row map authoritative.
   defp facet_rows_for(wi_id) do
     Repo.all(from f in WorkItemFacet, where: f.work_item_id == ^wi_id)
     |> Map.new(fn f -> {f.viewer_id, f} end)
   end
 
-  defp attention_map(facet_rows) do
-    facet_rows
-    |> Enum.map(fn {vid, row} -> {vid, row.attention || :watch} end)
-    |> Map.new()
+  defp refresh_drawer_rows(socket, wi_id) do
+    assign(socket, :drawer_facet_rows, facet_rows_for(wi_id))
   end
 
-  defp refresh_drawer_rows(socket, wi_id) do
-    rows = facet_rows_for(wi_id)
+  # Shared by the retry handle_event (test/JS bridge) and the handle_info that
+  # the drawer component bubbles to. Enqueues a fresh worker and flips the
+  # viewer from :failed → :generating optimistically.
+  defp enqueue_retry(socket, viewer_id) do
+    case socket.assigns.drawer_work_item do
+      nil ->
+        socket
 
-    socket
-    |> assign(:drawer_facet_rows, rows)
-    |> assign(:drawer_facets, attention_map(rows))
+      wi ->
+        _ = enqueue_one(wi.id, viewer_id)
+
+        socket
+        |> assign(:drawer_enqueued, MapSet.put(socket.assigns.drawer_enqueued, viewer_id))
+        |> assign(:drawer_failed, MapSet.delete(socket.assigns.drawer_failed, viewer_id))
+    end
   end
 
   # Lazy-on-open enqueue (B2 spec §5 step 3): one FacetWorker per viewer whose
@@ -414,10 +398,7 @@ defmodule SlackexWeb.SousLive.InService do
       MapSet.member?(failed, v.id) ->
         acc
 
-      WorkItemFacet.state(Map.get(facet_rows, v.id), MapSet.new(), v.id) in [
-        :never_generated,
-        :stale
-      ] ->
+      WorkItemFacet.state(Map.get(facet_rows, v.id)) in [:never_generated, :stale] ->
         _ = enqueue_one(wi_id, v.id, prompt_v, state_v)
         MapSet.put(acc, v.id)
 
@@ -536,7 +517,6 @@ defmodule SlackexWeb.SousLive.InService do
         id="facet-drawer"
         work_item={@drawer_work_item}
         viewers={@viewers}
-        facets={@drawer_facets}
         facet_rows={@drawer_facet_rows}
         enqueued={@drawer_enqueued}
         failed={@drawer_failed}

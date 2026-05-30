@@ -59,24 +59,18 @@ defmodule Slackex.Sous.WorkItemFacetTest do
     assert get_field(cs, :facet_generated_at) == now
   end
 
-  describe "state/3 pill-state derivation" do
-    test "viewer in enqueued_set -> :generating (wins over any row state)" do
-      fresh_row = %WorkItemFacet{
-        facet_text: "text",
-        facet_prompt_version: 1,
-        facet_stale_at: nil
-      }
-
-      assert WorkItemFacet.state(fresh_row, MapSet.new(["cto"]), "cto") == :generating
-    end
+  describe "state/1 pill-state derivation" do
+    # `:generating`, `:failed`, `:not_configured` are runtime states layered on
+    # by the LiveView/component from socket state — not derivable from the row,
+    # so they are not exercised here.
 
     test "nil row -> :never_generated" do
-      assert WorkItemFacet.state(nil, MapSet.new(), "cto") == :never_generated
+      assert WorkItemFacet.state(nil) == :never_generated
     end
 
     test "row with nil facet_text -> :never_generated" do
       row = %WorkItemFacet{facet_text: nil, facet_prompt_version: nil}
-      assert WorkItemFacet.state(row, MapSet.new(), "cto") == :never_generated
+      assert WorkItemFacet.state(row) == :never_generated
     end
 
     test "row with facet_text + facet_stale_at set -> :stale" do
@@ -86,7 +80,7 @@ defmodule Slackex.Sous.WorkItemFacetTest do
         facet_stale_at: DateTime.utc_now()
       }
 
-      assert WorkItemFacet.state(row, MapSet.new(), "cto") == :stale
+      assert WorkItemFacet.state(row) == :stale
     end
 
     test "row with prompt_version below current -> :stale" do
@@ -96,7 +90,7 @@ defmodule Slackex.Sous.WorkItemFacetTest do
         facet_stale_at: nil
       }
 
-      assert WorkItemFacet.state(row, MapSet.new(), "cto") == :stale
+      assert WorkItemFacet.state(row) == :stale
     end
 
     test "row with facet_text + current prompt_version + no stale_at -> :fresh" do
@@ -106,7 +100,7 @@ defmodule Slackex.Sous.WorkItemFacetTest do
         facet_stale_at: nil
       }
 
-      assert WorkItemFacet.state(row, MapSet.new(), "cto") == :fresh
+      assert WorkItemFacet.state(row) == :fresh
     end
   end
 end

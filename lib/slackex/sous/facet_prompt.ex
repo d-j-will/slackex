@@ -3,7 +3,7 @@ defmodule Slackex.Sous.FacetPrompt do
   Pure prompt-template generator for Sous Slice B2 facet text. Keyed by `viewer.id`.
 
   Bumping `@prompt_version` auto-stales all rows below the new version (see
-  `WorkItemFacet.state/3`). Viewers are immutable in B1 (invariant #11) so a
+  `WorkItemFacet.state/1`). Viewers are immutable in B1 (invariant #11) so a
   module-constant template is defensible; when role-management UI lands, this
   moves to a `Viewer.prompt_template` field (B-later, spec §13).
   """
@@ -12,7 +12,7 @@ defmodule Slackex.Sous.FacetPrompt do
 
   @prompt_version 1
 
-  @doc "Current prompt template version. Bumping invalidates older facets via `state/3`."
+  @doc "Current prompt template version. Bumping invalidates older facets via `state/1`."
   @spec prompt_version() :: integer()
   def prompt_version, do: @prompt_version
 

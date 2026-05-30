@@ -47,21 +47,21 @@ defmodule Slackex.Sous.WorkItemFacet do
   end
 
   @doc """
-  Pure pill-state derivation for the Facet Drawer (spec §4).
+  Pure pill-state derivation from a facet row (spec §4).
 
   Branches in order:
-    1. `viewer_id` is in `enqueued_set` -> `:generating` (LiveView assign)
-    2. `row == nil` OR `row.facet_text == nil` -> `:never_generated`
-    3. `row.facet_stale_at != nil` -> `:stale`
-    4. `row.facet_prompt_version < FacetPrompt.prompt_version()` -> `:stale`
-    5. otherwise -> `:fresh`
+    1. `row == nil` OR `row.facet_text == nil` -> `:never_generated`
+    2. `row.facet_stale_at != nil` -> `:stale`
+    3. `row.facet_prompt_version < FacetPrompt.prompt_version()` -> `:stale`
+    4. otherwise -> `:fresh`
 
-  `:failed` is owned by the LiveView (Oban job state) — not derived here.
+  The runtime states (`:generating`, `:failed`, `:not_configured`) are layered
+  on top of this by the caller (Drawer component / LiveView) from socket state —
+  they are not derivable from the persisted row.
   """
-  @spec state(%__MODULE__{} | nil, MapSet.t(String.t()), String.t()) :: atom()
-  def state(row_or_nil, enqueued_set, viewer_id) do
+  @spec state(%__MODULE__{} | nil) :: atom()
+  def state(row_or_nil) do
     cond do
-      MapSet.member?(enqueued_set, viewer_id) -> :generating
       is_nil(row_or_nil) or is_nil(row_or_nil.facet_text) -> :never_generated
       not is_nil(row_or_nil.facet_stale_at) -> :stale
       row_or_nil.facet_prompt_version < Slackex.Sous.FacetPrompt.prompt_version() -> :stale

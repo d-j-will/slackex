@@ -377,7 +377,7 @@ defmodule Slackex.Sous do
 
   @doc """
   All `WorkItemFacet` rows for a work item. The Drawer composes pill states
-  via `WorkItemFacet.state/3`.
+  via `WorkItemFacet.state/1`.
   """
   def facets_for_work_item(work_item_id) when is_integer(work_item_id) do
     Repo.all(from f in WorkItemFacet, where: f.work_item_id == ^work_item_id)
