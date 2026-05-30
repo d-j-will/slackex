@@ -55,3 +55,7 @@ npm-debug.log
 .dolt/
 *.db
 .beads-credential-key
+
+# Agent session scratch / handoff notes (kept locally, not shipped)
+RESUME.md
+progress.txt
