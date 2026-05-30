@@ -7,8 +7,10 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Chat.MessageGrouping
   alias Slackex.Messaging
   alias Slackex.Notifications.ActiveTracker
+  alias Slackex.Notifications.DeviceTokens
   alias Slackex.Notifications.OnlineTracker
   alias Slackex.Notifications.Preference
+  alias Slackex.Notifications.PushHealth
   alias Slackex.Search
   alias SlackexWeb.ChatLive.BrowseChannelsModal
   alias SlackexWeb.ChatLive.ChannelMembersModal
@@ -150,7 +152,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:page_visible, true)
      |> stream(:messages, [])
      |> maybe_put_catchup_flash(catchup_summary)
-     |> then(fn s -> assign(s, :push_health, derive_push_health(s)) end)
+     |> assign_push_health()
      |> Helpers.push_initial_badge()}
   end
 
@@ -863,14 +865,19 @@ defmodule SlackexWeb.ChatLive.Index do
         %{"permission" => permission, "subscribed" => subscribed} = params,
         socket
       ) do
-    socket = maybe_heal_device_token(socket, subscribed, Map.get(params, "subscription"))
+    _ =
+      DeviceTokens.maybe_heal(
+        socket.assigns.current_user.id,
+        subscribed,
+        Map.get(params, "subscription")
+      )
 
     socket =
       socket
       |> assign(:push_permission, permission)
       |> assign(:push_subscribed, subscribed)
 
-    {:noreply, assign(socket, :push_health, derive_push_health(socket))}
+    {:noreply, assign_push_health(socket)}
   end
 
   def handle_event("enable_push", _params, socket) do
@@ -897,22 +904,7 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("push:register_subscription", %{"subscription" => subscription_json}, socket) do
-    user = socket.assigns.current_user
-
-    attrs = %{
-      "user_id" => user.id,
-      "token" => subscription_json,
-      "platform" => "web_push",
-      "device_name" => "PWA"
-    }
-
-    alias Slackex.Notifications.DeviceToken
-    alias Slackex.Repo
-
-    existing = Repo.get_by(DeviceToken, token: subscription_json, user_id: user.id)
-    base = existing || %DeviceToken{}
-
-    case DeviceToken.changeset(base, attrs) |> Repo.insert_or_update() do
+    case DeviceTokens.register(socket.assigns.current_user.id, subscription_json) do
       {:ok, _token} ->
         {:noreply, assign(socket, :push_subscribed, true)}
 
@@ -922,22 +914,15 @@ defmodule SlackexWeb.ChatLive.Index do
   end
 
   def handle_event("push:remove_subscription", %{"subscription" => subscription_json}, socket) do
-    user = socket.assigns.current_user
-    alias Slackex.Notifications.DeviceToken
-    alias Slackex.Repo
-
-    case Repo.get_by(DeviceToken, token: subscription_json, user_id: user.id) do
-      nil -> :ok
-      token -> Repo.delete(token)
-    end
+    :ok = DeviceTokens.remove(socket.assigns.current_user.id, subscription_json)
 
     socket = assign(socket, :push_subscribed, false)
-    {:noreply, assign(socket, :push_health, derive_push_health(socket))}
+    {:noreply, assign_push_health(socket)}
   end
 
   def handle_event("push:unsubscribed", _params, socket) do
     socket = assign(socket, :push_subscribed, false)
-    {:noreply, assign(socket, :push_health, derive_push_health(socket))}
+    {:noreply, assign_push_health(socket)}
   end
 
   def handle_event("push:error", %{"reason" => reason}, socket) do
@@ -1551,54 +1536,17 @@ defmodule SlackexWeb.ChatLive.Index do
   defp maybe_put_catchup_flash(socket, msg),
     do: Phoenix.LiveView.put_flash(socket, :info, msg)
 
-  # Auto-heal: when the browser still holds a push subscription but our
-  # DeviceToken row was lost (deploy hiccup, expired-cleanup desync, etc.),
-  # re-register it on the next push:status check so the UI's "Enabled"
-  # badge actually reflects deliverability.
-  defp maybe_heal_device_token(socket, true, subscription_json)
-       when is_binary(subscription_json) do
-    user = socket.assigns.current_user
-    alias Slackex.Notifications.DeviceToken
-    alias Slackex.Repo
+  # Adapts socket assigns into PushHealth.derive/3 and assigns the result. The
+  # socket→values translation stays in the web layer; the derivation and the
+  # DeviceToken persistence it depends on live in Slackex.Notifications.
+  defp assign_push_health(socket) do
+    health =
+      PushHealth.derive(
+        socket.assigns.push_permission,
+        socket.assigns.push_subscribed,
+        socket.assigns.current_user.id
+      )
 
-    if Repo.get_by(DeviceToken, token: subscription_json, user_id: user.id) do
-      socket
-    else
-      require Logger
-      Logger.info("Auto-healing missing device token for user #{user.id}")
-
-      attrs = %{
-        "user_id" => user.id,
-        "token" => subscription_json,
-        "platform" => "web_push",
-        "device_name" => "PWA"
-      }
-
-      _ = DeviceToken.changeset(%DeviceToken{}, attrs) |> Repo.insert()
-      socket
-    end
-  end
-
-  defp maybe_heal_device_token(socket, _subscribed, _subscription), do: socket
-
-  defp derive_push_health(socket) do
-    cond do
-      socket.assigns.push_permission == "denied" ->
-        :browser_blocked
-
-      socket.assigns.push_subscribed and device_token_exists?(socket.assigns.current_user.id) ->
-        :ok
-
-      true ->
-        :not_set_up
-    end
-  end
-
-  defp device_token_exists?(user_id) do
-    import Ecto.Query
-
-    Slackex.Repo.exists?(
-      from dt in Slackex.Notifications.DeviceToken, where: dt.user_id == ^user_id
-    )
+    assign(socket, :push_health, health)
   end
 end
