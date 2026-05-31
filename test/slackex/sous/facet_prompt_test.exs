@@ -56,7 +56,7 @@ defmodule Slackex.Sous.FacetPromptTest do
     assert a == b
   end
 
-  test "prompt_version/0 returns 1" do
-    assert FacetPrompt.prompt_version() == 1
+  test "prompt_version/0 returns 2" do
+    assert FacetPrompt.prompt_version() == 2
   end
 end

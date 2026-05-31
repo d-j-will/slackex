@@ -10,16 +10,25 @@ defmodule Slackex.Sous.FacetPrompt do
 
   alias Slackex.Sous.{Decision, Viewer, WorkItem}
 
-  @prompt_version 1
+  @prompt_version 2
 
   @doc "Current prompt template version. Bumping invalidates older facets via `state/1`."
   @spec prompt_version() :: integer()
   def prompt_version, do: @prompt_version
 
   @system_message """
-  You produce a single short paragraph (1-3 sentences, max ~200 chars) that frames a
-  decision from a specific role's point of view. Stay on the decision's actual content;
-  do not invent facts. Plain prose, no markdown, no bullets.
+  You write one short paragraph (1-3 sentences, max ~200 chars) telling a specific role
+  what THIS decision means for THEM, seen only through their focus areas.
+
+  Rules:
+  - Lead with the concern, trade-off, or risk this role uniquely cares about — not a
+    summary of the decision and not whether it is a good idea. Each role gets a different
+    paragraph; if yours reads like it could belong to any role, rewrite it.
+  - Be candid and specific. No praise or cheerleading, no "smart/pragmatic win", no
+    recommending whether to ship, and never name or address the decision's author.
+  - Stay strictly on the decision's stated content. Invent no facts.
+  - Output ONLY the paragraph: no preamble, no "Here is…", no quotation marks, no role
+    label, no markdown, no bullets.
   """
 
   @doc """
@@ -43,7 +52,8 @@ defmodule Slackex.Sous.FacetPrompt do
     State: #{work_item.state}
     Title: #{work_item.title}
 
-    Write the 1-3-sentence facet that the #{viewer.name} should see.
+    Write the 1-3-sentence facet for the #{viewer.name}, foregrounding their focus areas
+    and the one concern those areas raise about this decision.
     """
   end
 end
