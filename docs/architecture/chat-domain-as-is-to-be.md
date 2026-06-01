@@ -290,6 +290,30 @@ None of these hold today: one small team, one monorepo everyone works on, and a 
 
 When a real trigger does appear, the separation that follows is **event-driven**, not the direct-call fan-out the noun split drew: an extracted context (Moderation first) sits behind a domain-event interface over a message service, with no direct cross-context calls. That target diagram is async and sparse — the opposite of §3.3's tangle. Until then, deepening `Slackex.Chat` keeps every one of those doors open at zero cost, because a clean bounded context lifts out as a unit.
 
+### 3.7 Deep Facade, Not Thin Facade
+
+`Slackex.Chat` is a facade, and the facade pattern only earns its indirection when the facade is **deep**. The same module shape is either the right call or an anti-pattern depending on whether the interface does work.
+
+| | Deep facade (the target) | Thin facade (the trap) |
+|---|---|---|
+| What it does | Absorbs the subsystem's complexity and owns its invariants | Forwards calls to implementation modules and adds nothing |
+| Caller's concept count | One: "chat" | As many as there are modules behind it |
+| Value of the indirection | Stable interface over churning internals; one place to enforce rules | Pure pass-through — indirection with no payoff |
+| Failure name | — | "bag of pass-throughs" (§8) |
+
+Depth is the ratio of capability to interface complexity, not function count — `Enum` is deep over the `Enumerable` protocol, `GenServer` over four callbacks. A wide surface is fine when one concept unifies it.
+
+`Slackex.Chat` is deep when it is the single owner of:
+
+- authorization — channel send permission, DM participant and safety checks
+- identity and ordering — message id assignment
+- the persistence choreography — encryption, batched writes, PubSub envelopes
+- transaction boundaries and consistency rules
+
+so a caller expresses *"send a message in this channel"* and the facade hides the rest. It degrades into a thin facade the moment most of its functions are `defdelegate` shims over unrelated concerns. The per-function test: does it hide a decision or an invariant, or merely rename a delegate call? A few trivial read pass-throughs are fine; a surface that is mostly pass-through over unrelated concepts is not.
+
+**Keep leaky abstractions off the public surface.** Depth also means *hiding implementation decisions*, not just owning many functions — leaking them is how a wide facade still ends up shallow and coupled. The sharpest example is identity: callers deal in messages and an opaque, orderable message id; they must never see the **Snowflake** mechanism behind it. `Slackex.Infrastructure.Snowflake`, the 64-bit layout, the timestamp/node/sequence bits, the generator process — none of it belongs in a `Slackex.Chat` signature, return value, or doc. A caller that calls `Snowflake.generate/0` to talk to chat, or decodes an id to read its timestamp, has bound itself to a leak; the day the id scheme changes, every such caller breaks. The same rule covers the other internals — Cloak encryption, `BatchWriter` mechanics, PubSub topic strings, and raw Ecto changesets or schemas are implementation, not interface.
+
 ---
 
 ## 4. Runtime Messaging In The Target Shape
