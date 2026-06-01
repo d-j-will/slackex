@@ -7,7 +7,7 @@ This directory collects system-level architecture notes for Slackex.
 1. `docs/architecture/realtime-chat.md` - core realtime messaging path, PubSub fanout, and batched persistence
 2. `docs/architecture/threads-and-reactions.md` - thread replies, reply counts, reaction toggles, and LiveView update flow
 3. `docs/architecture/notifications.md` - online presence, push preferences, device subscriptions, catch-up, and notification dispatch
-4. `docs/architecture/chat-domain-as-is-to-be.md` - current `Slackex.Chat` boundary and proposed context split
+4. `docs/architecture/chat-domain-as-is-to-be.md` - current `Slackex.Chat` facade and proposed deeper public chat interface
 
 ## Related Design Docs
 
