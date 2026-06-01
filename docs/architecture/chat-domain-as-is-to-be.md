@@ -169,32 +169,31 @@ Slackex.Chat
 ```mermaid
 flowchart TD
   LV[ChatLive and components] --> Chat[Slackex.Chat]
-  LV --> Messaging[Slackex.Messaging]
-
   API[API controllers] --> Chat
   MCP[MCP server and serializers] --> Chat
   Search[Search and history loading] --> Chat
   Notifications[Notifications] --> Chat
 
-  Messaging --> ChatSend[Small Chat send/edit interface]
+  LV --> Messaging[Slackex.Messaging]
+  Messaging -->|narrow send/edit| Chat
   Messaging --> ChannelSupervisor[ChannelSupervisor]
   ChannelSupervisor --> ChannelServer[ChannelServer]
-
-  ChannelServer --> ChatRuntime[Small Chat runtime interface]
+  ChannelServer -->|narrow runtime| Chat
   ChannelServer --> Cache[Cache]
   ChannelServer --> PubSub[Phoenix.PubSub]
 
-  Chat --> Channels[Chat.Channels]
-  Chat --> Messages[Chat.Messages]
-  Chat --> DMs[Chat.DMs]
-  Chat --> ReadState[Chat.ReadState]
-  Chat --> Moderation[Chat.Moderation]
-  Chat --> Pins[Chat.Pins]
-  Chat --> Reactions[Chat.Reactions]
-  Chat --> Invites[Chat.Invites]
-  Chat --> Members[Chat.Members]
-  Chat --> Permissions[Chat.Permissions]
+  Chat --> Impl[Chat.* implementation modules]
+  Chat --> Mod[Chat.Moderation — trust & safety]
+
+  Mod -.->|first to extract; see §3.6| Future[Own bounded context behind<br/>domain events — future, not now]
+
+  classDef future stroke-dasharray: 5 5;
+  class Future future;
 ```
+
+Every box that touches chat depends on the single `Slackex.Chat` hub; `Messaging` and `ChannelServer` reach it through a narrow part of that interface (labelled edges), not separate modules. The chat aggregates (channels, messages, DMs, read state, …) stay collapsed under `Chat.* implementation modules` and are detailed in §3.1.
+
+`Chat.Moderation` is drawn separately on purpose: per §3.6 it is the one box that speaks a different language (reports, trust scores, blocks, retention), so it is the genuine bounded-context candidate and the first thing that would lift out. The dashed node is its *future* form — its own context behind a domain-event interface — drawn dashed precisely because it is not part of the current target. Today it remains inside `Slackex.Chat` like the other aggregates. The graph still only subtracts edges versus §2.2; the one forward-looking element is explicitly marked as future.
 
 ### 3.4 Target Public APIs
 
@@ -269,6 +268,27 @@ alias Slackex.Chat.Permissions
 ```
 
 Those modules can remain directly tested. The restriction is about application callers. Tests for the implementation can still cross internal seams where that gives useful locality.
+
+### 3.6 The Separation Axis (And Why Not Now)
+
+The abandoned "split into five contexts" target sliced along **nouns** — `Channels`, `DMs`, `Messages`, `ReadState`. Those are aggregates *inside one bounded context*: they share the chat ubiquitous language and the chat invariants (a message lives in a channel or a DM, read cursors reference messages, threads reference parents). Slicing them into separate top-level contexts is noun-slicing dressed as decomposition — it multiplies inbound edges (see §3.3 versus §2.2) without separating anything that changes independently.
+
+The one box that speaks a different language — reports, trust scores, blocks, retention — is **Moderation / trust-and-safety**. That is the only genuine separate-context candidate here, and the first thing that would lift out cleanly if separation were ever warranted.
+
+Separation should follow an **axis of change**, not a noun. The triggers that would justify paying for it:
+
+| Trigger | What it forces |
+|---|---|
+| A second team owning a sub-domain | A boundary that matches the ownership line (Conway), so the facade stops being a merge chokepoint |
+| Independent deployability | Separate releases — the actual service line; a shared release deploys in lockstep |
+| Divergent governance or invariants | A hard boundary for things like Moderation audit, retention, or a separate datastore |
+| Divergent compute profile | A node/release shaped for that workload — for this system that is ML/embeddings serving, **not** a chat sub-domain |
+
+None of these hold today: one small team, one monorepo everyone works on, and a homogeneous cluster where every Elixir node runs the same release.
+
+**Distribution is not decomposition.** The system is already distributed — multiple identical nodes, clustered, with each per-channel `ChannelServer` placed as a cluster singleton via Horde (with split-brain fencing). That is the BEAM delivering resilience and horizontal scale *without* splitting the domain; the only tax it asks is singleton coordination, which is far cheaper than the contracts and brokers decomposition would require. "Different nodes" on the BEAM does not imply "different services."
+
+When a real trigger does appear, the separation that follows is **event-driven**, not the direct-call fan-out the noun split drew: an extracted context (Moderation first) sits behind a domain-event interface over a message service, with no direct cross-context calls. That target diagram is async and sparse — the opposite of §3.3's tangle. Until then, deepening `Slackex.Chat` keeps every one of those doors open at zero cost, because a clean bounded context lifts out as a unit.
 
 ---
 
