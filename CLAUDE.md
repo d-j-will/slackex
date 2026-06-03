@@ -61,7 +61,7 @@ When adding feature flags, gate ALL user-facing surfaces (UI, routes, tests) beh
 
 Docker required: `docker compose up -d postgres_test redis` then `mix test`. Test DB on port 5433, Redis on 6379.
 
-**Never dismiss test failures.** If tests fail due to infrastructure, fix the environment first.
+**Never dismiss test failures, including intermittent/flaky ones.** If tests fail due to infrastructure, fix the environment first. Don't rationalize a flaky failure as "not a real failure" and move on — investigate it, or if it's a known benign race, document why with evidence rather than waving it away.
 
 This project uses Elixir/Phoenix with LiveView. Target the CI Elixir version for API compatibility — do not use functions like `Enum.sum_by` that may not exist in the CI version. Check `.tool-versions` or CI config for the exact version.
 
