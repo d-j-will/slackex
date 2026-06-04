@@ -120,16 +120,24 @@ function showInstallBanner() {
 
   const banner = document.createElement('div');
   banner.id = 'pwa-install-banner';
+  // Loom palette is hardcoded here: this banner is appended to <body>, OUTSIDE
+  // the `.loom` scope, so var(--color-primary) would resolve to the global
+  // daisyUI primary (the pre-Loom purple), not the Loom gold remap.
   Object.assign(banner.style, {
     position: 'fixed', bottom: '0', left: '0', right: '0', zIndex: '9999',
     padding: '12px 16px', display: 'flex', alignItems: 'center',
-    justifyContent: 'space-between', gap: '12px', fontFamily: 'system-ui, sans-serif',
-    fontSize: '14px', background: 'var(--color-primary)', color: 'var(--color-primary-content)'
+    justifyContent: 'space-between', gap: '12px',
+    fontFamily: '"Geist", system-ui, sans-serif',
+    fontSize: '14px', background: '#131109', color: '#f2ecdc',
+    borderTop: '0.5px solid #2a2519'
   });
 
   const text = document.createElement('span');
   const strong = document.createElement('strong');
   strong.textContent = 'Tenun';
+  strong.style.fontFamily = '"Instrument Serif", Georgia, serif';
+  strong.style.fontStyle = 'italic';
+  strong.style.fontWeight = '400';
   text.appendChild(strong);
   text.appendChild(document.createTextNode(' — Install for a native app experience'));
 
@@ -141,14 +149,14 @@ function showInstallBanner() {
   installBtn.textContent = 'Install';
   Object.assign(installBtn.style, {
     padding: '6px 16px', borderRadius: '6px', border: 'none',
-    background: 'white', color: 'var(--color-primary)', fontWeight: '600', cursor: 'pointer'
+    background: '#e8c547', color: '#1a160c', fontWeight: '600', cursor: 'pointer'
   });
 
   const dismissBtn = document.createElement('button');
   dismissBtn.textContent = 'Later';
   Object.assign(dismissBtn.style, {
-    padding: '6px 12px', borderRadius: '6px', border: '1px solid currentColor',
-    background: 'transparent', color: 'inherit', cursor: 'pointer'
+    padding: '6px 12px', borderRadius: '6px', border: '0.5px solid #2a2519',
+    background: 'transparent', color: '#80785f', cursor: 'pointer'
   });
 
   installBtn.addEventListener('click', async () => {
