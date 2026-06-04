@@ -25,25 +25,27 @@ defmodule SlackexWeb.OfflineController do
           align-items: center;
           justify-content: center;
           min-height: 100vh;
-          background: #2A2640;
-          color: #f5f5f5;
+          background: #0b0a07;
+          color: #f2ecdc;
         }
         @media (prefers-color-scheme: light) {
-          body { background: #FAFAFA; color: #1a1a1a; }
-          .icon { background: #E8A835; }
+          body { background: #fbf7eb; color: #1a160c; }
         }
         .container { text-align: center; }
         .icon {
           width: 80px; height: 80px;
-          background: #5D4D8F;
+          background: #131109;
+          border: 0.5px solid #2a2519;
           border-radius: 20px;
           display: flex;
           align-items: center;
           justify-content: center;
           margin: 0 auto 24px;
-          font-size: 40px;
-          font-weight: 700;
-          color: white;
+          font-family: Georgia, "Times New Roman", serif;
+          font-style: italic;
+          font-size: 44px;
+          font-weight: 400;
+          color: #e8c547;
         }
         .title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
         .subtitle { font-size: 14px; opacity: 0.6; }

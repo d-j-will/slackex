@@ -1,4 +1,6 @@
-const CACHE_NAME = 'tenun-shell-v3';
+// Bump on any change to precached shell (e.g. the /offline page) so existing
+// installs reinstall and drop the stale cache. v4: Loom black/gold offline page.
+const CACHE_NAME = 'tenun-shell-v4';
 const OFFLINE_URL = '/offline';
 
 self.addEventListener('install', (event) => {
