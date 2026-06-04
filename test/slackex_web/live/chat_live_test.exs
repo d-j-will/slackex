@@ -2097,6 +2097,29 @@ defmodule SlackexWeb.ChatLiveTest do
       assert html =~ "Alice Updated"
     end
 
+    # Regression (c43bcf5): the push-notifications work added a notification-level
+    # selector wrapped in its OWN <form>, nested inside #edit-profile-form. A nested
+    # <form> is invalid HTML — the browser closes #edit-profile-form early at the
+    # inner </form>, detaching the Save submit button so save_profile never fires
+    # (status doesn't save AND the modal never dismisses). render_submit() targets
+    # the form by id server-side, so it can't see this browser-only parse bug — the
+    # only durable guard is to assert the notification selector is a bare <select>,
+    # never a nested <form>.
+    test "notification selector is not a nested form inside the profile form", %{conn: conn} do
+      FunWithFlags.enable(:push_notifications)
+      on_exit(fn -> FunWithFlags.disable(:push_notifications) end)
+
+      {:ok, lv, _html} = live(conn, ~p"/chat")
+      lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()
+      html = render(lv)
+
+      # The notifications section must actually render, or this test proves nothing.
+      assert html =~ "Default Notification Level"
+      # The level selector must bind phx-change on a <select>, never wrap a nested <form>.
+      assert html =~ ~s(phx-change="update_notification_level")
+      refute html =~ ~s(<form phx-change="update_notification_level")
+    end
+
     # AC4: Sidebar footer display name updates immediately after successful save
     test "sidebar footer updates display name after save", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/chat")

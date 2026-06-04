@@ -944,17 +944,19 @@ defmodule SlackexWeb.ChatComponents do
                 <label class="label">
                   <span class="label-text">Default Notification Level</span>
                 </label>
-                <form phx-change="update_notification_level">
-                  <select name="level" class="select select-bordered select-sm">
-                    <option value="all" selected={@notification_level == "all"}>All messages</option>
-                    <option value="mentions" selected={@notification_level == "mentions"}>
-                      Mentions only
-                    </option>
-                    <option value="nothing" selected={@notification_level == "nothing"}>
-                      Nothing
-                    </option>
-                  </select>
-                </form>
+                <select
+                  name="level"
+                  phx-change="update_notification_level"
+                  class="select select-bordered select-sm"
+                >
+                  <option value="all" selected={@notification_level == "all"}>All messages</option>
+                  <option value="mentions" selected={@notification_level == "mentions"}>
+                    Mentions only
+                  </option>
+                  <option value="nothing" selected={@notification_level == "nothing"}>
+                    Nothing
+                  </option>
+                </select>
               </div>
             <% end %>
 
