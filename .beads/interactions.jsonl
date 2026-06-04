@@ -1,0 +1,1 @@
+{"id":"int-0eafcef2","kind":"field_change","created_at":"2026-06-04T12:14:39.747818Z","actor":"davewil","issue_id":"slackex-lrt","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Fixed in ddb521b — unnested notification-level form; regression test added"}}
