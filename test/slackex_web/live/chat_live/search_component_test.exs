@@ -2,6 +2,7 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   use SlackexWeb.ConnCase, async: false
 
   alias Slackex.Chat
+  alias SlackexWeb.ChatLive.SearchComponent
 
   setup %{conn: conn} do
     Redix.command!(:redix_0, ["FLUSHDB"])
@@ -152,31 +153,19 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   # ---------------------------------------------------------------------------
 
   describe "loading state" do
-    setup do
-      FunWithFlags.enable(:message_search)
-      :ok
-    end
-
-    test "searching flag shows loading indicator", %{conn: conn, channel: channel} do
-      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
-
-      render_click(view, "toggle_search")
-
-      # Trigger a search through the component -- the component sets searching=true
-      # before the parent receives the message
-      view
-      |> element("#search-component form")
-      |> render_change(%{"query" => "something to search"})
-
-      # Immediately after the component processes the event, searching=true
-      # but the parent hasn't responded yet. The component should show loading.
-      # Note: In LiveView testing, the handle_info may process synchronously.
-      # We verify the loading indicator by checking before results arrive.
-      # Use send_update to explicitly set searching=true for assertion
-      send(view.pid, {:search_started})
-      html = render(view)
+    # Rendering the component directly with searching: true is deterministic.
+    # The previous version drove the full search flow and asserted on the
+    # transient loading state via render(view) after a send_update -- but
+    # send_update is async (it enqueues a message) and perform_search runs the
+    # DB query synchronously and flips searching back to false, so the spinner
+    # could never be observed reliably. That made the test flaky and failed the
+    # v0.9.25 tag deploy. "If @searching, show a spinner" is plain render logic;
+    # render_component renders mount -> update -> render in one synchronous call.
+    test "searching flag shows loading indicator" do
+      html = render_component(SearchComponent, id: "search", searching: true)
 
       assert html =~ "Searching"
+      assert html =~ "loading loading-spinner"
     end
   end
 
