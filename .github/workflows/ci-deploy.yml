@@ -106,6 +106,25 @@ jobs:
       - name: Check unused deps
         run: mix deps.unlock --check-unused
 
+  # Render-validates every ```mermaid block in docs/ with a real browser. This
+  # catches layout/render crashes (e.g. C4 auto-layout "reading 'x'") that the
+  # local parse-only gate (scripts/mermaid/validate.mjs) cannot. Independent of
+  # the deploy gate: a broken diagram fails this check (red X) but does not block
+  # shipping code. Uses the runner's preinstalled Google Chrome (no chromium DL).
+  mermaid-render:
+    name: Mermaid render check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install mermaid-cli (skip chromium download, use runner Chrome)
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm install -g @mermaid-js/mermaid-cli@11.15.0
+
+      - name: Render every docs mermaid block
+        run: sh scripts/mermaid/render-check.sh docs
+
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
