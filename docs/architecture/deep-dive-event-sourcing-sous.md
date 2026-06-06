@@ -175,7 +175,7 @@ sequenceDiagram
 
   Modal->>Sous: post_decision_card(work_item, actor_id)
   Sous->>Msg: send_message(channel_id, actor_id, fallback_text)
-  Note over Msg: write-behind pipeline; message broadcasts live as a plain message
+  Note over Msg: write-behind pipeline, message broadcasts live as a plain message
   Msg-->>Sous: {:ok, msg}
 
   rect rgb(238,244,255)
@@ -221,7 +221,7 @@ sequenceDiagram
       Sous->>DB: update_all WorkItemFacet SET facet_stale_at = now (invariant #14)
     end
     Sous->>PS: broadcast {:work_item_event, :state_changed, wi}
-    PS-->>Board: regroup columns; show stale dot for active viewer
+    PS-->>Board: regroup columns, show stale dot for active viewer
   end
 ```
 
@@ -262,10 +262,10 @@ sequenceDiagram
       rect rgb(238,244,255)
         Note over Sous,DB: Atomic Multi
         Sous->>DB: insert WorkItemEvent (:facet_generated, full provenance)
-        Sous->>DB: upsert WorkItemFacet (clears facet_stale_at; lazy :watch default)
+        Sous->>DB: upsert WorkItemFacet (clears facet_stale_at, lazy :watch default)
       end
       Sous->>PS: broadcast {:sous, :facet_generated, wi_id, viewer_id} on sous:facets:#{wi_id}
-      PS-->>Board: drawer shows :fresh facet; remove from enqueued/failed sets
+      PS-->>Board: drawer shows :fresh facet, remove from enqueued/failed sets
     else LLM error
       LLM-->>FW: {:error, reason}
       FW-->>Oban: {:error, reason}  %% Oban retries (perform returns the result)

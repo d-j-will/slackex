@@ -119,7 +119,7 @@ sequenceDiagram
   participant Sum as ChatLive.Summary (Task)
   participant Szr as AI.Summarizer
   participant DB as Postgres
-  participant LC as LLMClient → OpenAICompatibleClient
+  participant LC as LLMClient (OpenAICompatibleClient)
   participant API as LLM API (SSE)
 
   User->>LV: open summary panel (flag :channel_summarization)
@@ -179,13 +179,13 @@ sequenceDiagram
   participant Oban as Oban (:facets queue)
   participant FW as Sous.FacetWorker
   participant FP as Sous.FacetPrompt
-  participant LC as LLMClient → client
+  participant LC as LLMClient (configured client)
   participant API as LLM API
   participant Sous as Slackex.Sous
   participant PS as Phoenix.PubSub
 
   User->>LV: open work-item drawer (flag :sous)
-  LV->>LV: load facet rows; compute WorkItemFacet.state/1
+  LV->>LV: load facet rows, compute WorkItemFacet.state/1
   alt LLM configured and row :never_generated or :stale
     LV->>Oban: insert FacetWorker (unique on work_item_id, viewer_id, prompt_version, state_version)
   end

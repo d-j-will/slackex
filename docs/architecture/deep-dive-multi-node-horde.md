@@ -166,7 +166,7 @@ sequenceDiagram
   else not running
     Reg-->>Sup: []
     Sup->>Sup: start_child(ChannelServer)
-    Note over Sup: Horde picks a node; on transient<br/>:noproc it retries once after 100ms
+    Note over Sup: Horde picks a node, on transient<br/>:noproc it retries once after 100ms
     Sup->>CS: init/1
     CS->>DB: UPDATE ... SET writer_epoch = writer_epoch + 1 RETURNING writer_epoch
     CS->>DB: reconcile cache vs DB (crash recovery)
@@ -255,7 +255,7 @@ sequenceDiagram
   participant DB as Postgres
   participant Clients as Connected clients
 
-  Note over CA,CB: Network partition; Horde runs one instance per side
+  Note over CA,CB: Network partition, Horde runs one instance per side
   CB->>DB: init UPDATE writer_epoch -> 6
   CA->>Clients: broadcast message (optimistic, in-memory)
   CA->>DB: BatchWriter flush (epoch=5)
@@ -326,9 +326,9 @@ sequenceDiagram
   DB-->>New: persisted ids
   New->>DB: BatchWriter.insert_batch(missing, epoch: new)
   alt recovery succeeds
-    DB-->>New: {:ok, count}; emit crash_recovery telemetry
+    DB-->>New: {:ok, count}, emit crash_recovery telemetry
   else recovered process already superseded
-    DB-->>New: {:error, :epoch_stale}; skip (log warning)
+    DB-->>New: {:error, :epoch_stale}, skip (log warning)
   end
 ```
 

@@ -189,16 +189,16 @@ sequenceDiagram
   Caller->>SF: GenServer.call(:generate)
   SF->>SF: now = :os.system_time(:millisecond)
   alt now < last_timestamp (clock went backwards)
-    SF->>SF: Process.sleep(last_ts - now + 1); retry
+    SF->>SF: Process.sleep(last_ts - now + 1), retry
   else now == last_timestamp (same ms)
     SF->>SF: seq = (seq + 1) &&& 4095
     alt seq wrapped to 0 (4096 used this ms)
-      SF->>SF: Process.sleep(1); retry on next ms
+      SF->>SF: Process.sleep(1), retry on next ms
     else
       SF->>SF: build_id(now, node_id, seq)
     end
   else now > last_timestamp (new ms)
-    SF->>SF: reset seq = 0; build_id(now, node_id, 0)
+    SF->>SF: reset seq = 0, build_id(now, node_id, 0)
   end
   SF-->>Caller: id
 ```

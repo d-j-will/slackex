@@ -265,14 +265,14 @@ sequenceDiagram
   LV-->>TEL: [:phoenix, :live_view, :handle_event, :exception]
   TEL->>H: handle_liveview_exception
   alt flag on
-    H->>H: read kind/reason/stacktrace; user from socket.assigns.current_user; trace_id
+    H->>H: read kind/reason/stacktrace, user from socket.assigns.current_user, trace_id
     H->>A: track("server_error", {kind, reason, stacktrace(<=2000), path, trace_id})
   end
 
   Oban-->>TEL: [:oban, :job, :exception]
   TEL->>H: handle_oban_exception
   alt flag on
-    H->>H: read job; reason; trace_id
+    H->>H: read job, reason, trace_id
     H->>A: track("oban_error", {worker, queue, args(<=500), error(<=2000), attempt, trace_id})
   end
 ```

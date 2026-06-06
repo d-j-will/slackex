@@ -210,7 +210,7 @@ sequenceDiagram
   PS-->>PL: {:messages_persisted, ids}
   PL->>W: enqueue(ids)  (chunks of 50)
   W->>W: ensure_serving_available? (snooze 30s if Bumblebee serving down)
-  W->>DB: fetch messages; drop deleted; drop matching content_hash
+  W->>DB: fetch messages, drop deleted, drop matching content_hash
   W->>EC: generate_batch(search_content list)
   EC-->>W: {:ok, vectors}
   W->>DB: upsert message_embeddings (on_conflict replace embedding/hash/inserted_at)

@@ -191,7 +191,7 @@ sequenceDiagram
 
   Deploy->>Deploy: Ecto migrations (up, all)
   Deploy->>BF: decode_html_entities()
-  BF->>DB: count messages where search_content has &gt; / &lt; / &amp;
+  BF->>DB: count messages whose search_content holds raw angle/ampersand chars
   alt count == 0
     BF-->>Deploy: nothing to do
   else affected rows exist
