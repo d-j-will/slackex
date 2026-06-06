@@ -56,13 +56,9 @@ C4Container
     Container(flag_ui, "FunWithFlags.UI.Router", "Plug router (forwarded)", "Admin UI at /admin/flags, behind Basic Auth")
     Container(fwf, "FunWithFlags", "OTP application (auto-started)", "enabled?/1, enabled?/2, enable/1, disable/1")
     Container(cache, "ETS cache", "In-memory per node", "15-min TTL, disabled in test env")
-    Container(actor, "User Actor impl", "defimpl FunWithFlags.Actor", "id/1 returns \"user:<id>\"")
+    Container(actor, "User Actor impl", "defimpl FunWithFlags.Actor", "id/1 returns user:<id>")
 
-    Container(context, "Context modules", "Elixir", "Search, Analytics — gate business logic")
-    Container(liveviews, "LiveViews", "Phoenix LiveView", "ChatLive.Index, SousLive.InService, AdminLive.Analytics")
-    Container(controllers, "Controllers", "Phoenix", "WebhookController")
-    Container(workers, "Oban workers", "Oban", "PushWorker, SubscriptionCleanupWorker, LifecycleWorker")
-    Container(mcp, "MCP Server", "Plug + JSON-RPC", "Gates dark-factory tools")
+    Container(consumers, "Gate consumers", "Contexts / LiveViews / Controllers / Oban workers / MCP", "Each checks enabled?/1 or enabled?/2 before exposing a feature — see the inventory table in §7 for the per-kind list")
   }
 
   ContainerDb(postgres, "PostgreSQL", "fun_with_flags_toggles table")
@@ -74,12 +70,8 @@ C4Container
   Rel(fwf, cache, "Caches reads in")
   Rel(fwf, pubsub, "Publishes cache-bust on write")
   Rel(pubsub, cache, "Invalidates on other nodes")
-  Rel(context, fwf, "Checks enabled?")
-  Rel(liveviews, fwf, "Checks enabled? (often with actor)")
-  Rel(controllers, fwf, "Checks enabled?")
-  Rel(workers, fwf, "Checks enabled? at execution time")
-  Rel(mcp, fwf, "Checks enabled? for tool list and tool calls")
-  Rel(liveviews, actor, "Passes %User{} as actor to")
+  Rel(consumers, fwf, "Check enabled? (global, or per-actor at execution time)")
+  Rel(consumers, actor, "Pass %User{} as actor to")
 ```
 
 These diagrams show the system at a higher level than the sequence diagrams below.
