@@ -2,6 +2,8 @@
 
 Lessons learned from building and deploying Slackex. These principles apply to any production system and should be enshrined in tooling, not just documentation.
 
+> This document is the **concrete, project-specific instantiation** of the delivery philosophy in [`software-delivery-principles.md`](software-delivery-principles.md). That doc is the project-agnostic *why* (Lean flow, trunk-based development, jidoka, dark shipping, expand/contract); this one is the *how* for this repo — the actual gate, hooks, migration safety, and deploy rules. Read the philosophy first if you want the reasoning behind the rules below.
+
 ## 1. Never Break Production
 
 **Every change must be proven safe before it reaches production.** "It works on my machine" is not evidence. "CI passed" is necessary but not sufficient.

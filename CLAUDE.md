@@ -22,6 +22,8 @@ functional
 
 ## Development Principles
 
+**Delivery philosophy (read first): [`docs/software-delivery-principles.md`](docs/software-delivery-principles.md).** This is the project-agnostic *why* behind how we ship — Lean flow (Muda/Mura/Muri), trunk-based development / one-piece flow, build-quality-in (jidoka) via a single gate with no local↔remote seam, fast feedback as a defended constraint, and the two decoupling mechanisms that make small-batch delivery safe (dark shipping for release, expand/contract for migration). When a delivery trade-off is unclear, reason in flow/batch-size terms and prefer integrating small over batching onto branches. The concrete instantiation of these principles in this repo lives in [`docs/engineering-principles.md`](docs/engineering-principles.md).
+
 When encountering unfamiliar tools or protocol issues (e.g., MCP, SSE, external integrations), research documentation FIRST before attempting trial-and-error fixes. Do not deploy broken iterations to production.
 
 ## Production Resilience
@@ -114,6 +116,7 @@ Do not work on branches unless explicitly asked. Commit directly to main. Resolv
 
 Read the relevant doc **before** working in these areas:
 
+- **How we ship (philosophy)**: `docs/software-delivery-principles.md` — Lean flow, trunk-based development, jidoka gate, dark shipping, expand/contract (project-agnostic *why*)
 - **Infrastructure, deployment, CI/CD, Docker, migrations**: `docs/engineering-principles.md` — expand/contract migrations, feature flag lifecycle, test isolation, deploy-safety rules, SSH heredoc gotchas
 - **Deployment runbook**: `docs/runbooks/deployment.md`
 - **UI/UX decisions**: `docs/design/` — component system, design system, information architecture
