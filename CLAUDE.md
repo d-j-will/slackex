@@ -93,7 +93,7 @@ The following are **enforced by hooks or guided by skills** — use them instead
 
 - **Migrations**: Use `/new-migration`. Safety hook warns on NOT NULL without default, renames, drops, type changes.
 - **Feature flags**: Use `/new-feature`. Guards both context module and LiveView template.
-- **Deploy**: Use `/deploy`. Runs `scripts/pre-deploy` (7-step verification) then tags.
+- **Deploy**: Use `/deploy`. Runs `scripts/pre-deploy` (full verification: compile/format/credo/dialyzer/tests/contract/e2e/audit/YAML/Mermaid/Docker build/release boot) then tags.
 - **Oban workers**: Hook warns on `_ =` in `_worker.ex` files. Never discard `perform/1` return values.
 - **Listener wiring**: Hook warns on `*_listener.ex` files with PubSub subscriptions — reminds to add integration tests for full producer → consumer path.
 - **CI deploy edits**: Hook warns on SSH heredoc issues in `ci-deploy.yml`.

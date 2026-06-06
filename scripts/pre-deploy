@@ -15,7 +15,7 @@ set -e
 # Match CI's quality job env. `mix format` resolves dependency formatter configs
 # from _build/$MIX_ENV (the migrations subdirectory imports ecto_sql), so dev and
 # test can disagree on migration files — running under test keeps this gate
-# honest. Docker build + release boot (steps 10-12) use the Dockerfile's own prod
+# honest. Docker build + release boot (steps 12-13) use the Dockerfile's own prod
 # env and are unaffected by this shell setting.
 export MIX_ENV=test
 
@@ -26,47 +26,47 @@ echo ""
 # Quality — mirrors .github/workflows/ci-deploy.yml `quality` job (MIX_ENV=test)
 # ---------------------------------------------------------------------------
 
-echo "Step 1/12: Compiling (--warnings-as-errors)..."
+echo "Step 1/13: Compiling (--warnings-as-errors)..."
 mix compile --warnings-as-errors --force
 echo "PASS: Compile"
 echo ""
 
-echo "Step 2/12: Checking formatting..."
+echo "Step 2/13: Checking formatting..."
 mix format --check-formatted
 echo "PASS: Formatting"
 echo ""
 
-echo "Step 3/12: Running Credo..."
+echo "Step 3/13: Running Credo..."
 mix credo
 echo "PASS: Credo"
 echo ""
 
-echo "Step 4/12: Running Dialyzer..."
+echo "Step 4/13: Running Dialyzer..."
 mix dialyzer
 echo "PASS: Dialyzer"
 echo ""
 
-echo "Step 5/12: Running tests (--warnings-as-errors)..."
+echo "Step 5/13: Running tests (--warnings-as-errors)..."
 mix test --warnings-as-errors
 echo "PASS: Tests"
 echo ""
 
-echo "Step 6/12: Running contract tests..."
+echo "Step 6/13: Running contract tests..."
 mix test --only contract
 echo "PASS: Contract tests"
 echo ""
 
-echo "Step 7/12: Running e2e tests..."
+echo "Step 7/13: Running e2e tests..."
 mix test --only e2e
 echo "PASS: E2E tests"
 echo ""
 
-echo "Step 8/12: Auditing dependencies..."
+echo "Step 8/13: Auditing dependencies..."
 mix hex.audit
 echo "PASS: hex.audit"
 echo ""
 
-echo "Step 9/12: Checking for unused deps..."
+echo "Step 9/13: Checking for unused deps..."
 mix deps.unlock --check-unused
 echo "PASS: deps.unlock --check-unused"
 echo ""
@@ -75,7 +75,7 @@ echo ""
 # Deploy readiness — beyond CI's quality job
 # ---------------------------------------------------------------------------
 
-echo "Step 10/12: Validating CI YAML..."
+echo "Step 10/13: Validating CI YAML..."
 for f in .github/workflows/*.yml; do
   ruby -ryaml -e "YAML.safe_load(File.read('$f'))" 2>&1
   if [ $? -ne 0 ]; then
@@ -86,12 +86,23 @@ done
 echo "PASS: YAML valid"
 echo ""
 
-echo "Step 11/12: Building Docker image..."
+echo "Step 11/13: Validating Mermaid diagrams..."
+# Parse-only validation of every ```mermaid block under docs/ (no Chromium).
+# Self-installs pinned deps (mermaid, jsdom) on first run; see scripts/mermaid/.
+if [ ! -d scripts/mermaid/node_modules ]; then
+  echo "  (installing pinned mermaid validator deps...)"
+  (cd scripts/mermaid && npm ci --silent)
+fi
+node --no-warnings scripts/mermaid/validate.mjs docs
+echo "PASS: Mermaid diagrams parse"
+echo ""
+
+echo "Step 12/13: Building Docker image..."
 docker build -t slackex:pre-deploy-check . >/dev/null 2>&1
 echo "PASS: Docker image builds"
 echo ""
 
-echo "Step 12/12: Verifying release boots..."
+echo "Step 13/13: Verifying release boots..."
 BOOT_OUTPUT=$(docker run --rm \
   -e SECRET_KEY_BASE=pre-deploy-check-key-that-is-at-least-64-bytes-long-for-phoenix-to-accept \
   -e DATABASE_URL=ecto://postgres:postgres@host/slackex_prod \

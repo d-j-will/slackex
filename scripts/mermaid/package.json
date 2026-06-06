@@ -1,0 +1,14 @@
+{
+  "name": "slackex-mermaid-validate",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless Mermaid diagram validator for docs/ (parse-only, no Chromium). Run via scripts/pre-deploy.",
+  "scripts": {
+    "validate": "node validate.mjs ../../docs"
+  },
+  "dependencies": {
+    "jsdom": "29.1.1",
+    "mermaid": "11.15.0"
+  }
+}
