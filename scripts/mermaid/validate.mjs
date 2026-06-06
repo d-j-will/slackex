@@ -5,6 +5,11 @@
 // a published doc. Parse-only: no rendering, no Chromium — just mermaid + a
 // minimal jsdom DOM. Exits non-zero (and lists every failure) if any block fails.
 //
+// LIMITATION: this catches *syntax* errors, not *render/layout* errors. A diagram
+// can parse cleanly yet crash the renderer (e.g. GitHub). Full render validation
+// needs a real browser (mermaid-cli + Chromium). As a partial mitigation we add a
+// static heuristic for the most common C4 render crash (Rel-to-boundary) below.
+//
 // Usage:  node validate.mjs [root-dir]
 // Wired into scripts/pre-deploy. Run standalone with: npm run validate
 //
@@ -54,6 +59,34 @@ function extractBlocks(file) {
   return blocks;
 }
 
+// Heuristic: catch the most common C4 *render* crash that parse() does NOT —
+// a Rel() whose endpoint is a boundary/Deployment_Node has no x/y coordinate,
+// so mermaid's C4 layout throws "Cannot read properties of undefined (reading 'x')".
+// parse() accepts it; only rendering fails. We can't render headlessly (needs a
+// browser), but we can flag this class statically.
+function c4BoundaryRelIssues(body) {
+  const first = (body.find((l) => l.trim()) || "").trim();
+  if (!/^C4(Context|Container|Component|Deployment|Dynamic)\b/.test(first)) return [];
+  const boundaries = new Set();
+  const boundaryRe = /\b(?:Deployment_Node|System_Boundary|Container_Boundary|Enterprise_Boundary|Boundary|Node)\(\s*([A-Za-z0-9_]+)/g;
+  for (const line of body) {
+    let m;
+    while ((m = boundaryRe.exec(line))) boundaries.add(m[1]);
+  }
+  const issues = [];
+  const relRe = /\b(?:Rel|BiRel)(?:_[UDLR]+)?\(\s*([A-Za-z0-9_]+)\s*,\s*([A-Za-z0-9_]+)/;
+  body.forEach((line, idx) => {
+    const r = relRe.exec(line.trim());
+    if (!r) return;
+    for (const alias of [r[1], r[2]]) {
+      if (boundaries.has(alias)) {
+        issues.push({ idx, alias, line: line.trim() });
+      }
+    }
+  });
+  return issues;
+}
+
 if (!fs.existsSync(root)) {
   console.error(`mermaid-validate: root not found: ${root}`);
   process.exit(2);
@@ -69,6 +102,14 @@ for (const file of files) {
   for (const { start, body } of extractBlocks(file)) {
     total++;
     const code = body.join("\n");
+    for (const iss of c4BoundaryRelIssues(body)) {
+      failures.push({
+        file,
+        fileLine: start + iss.idx + 1,
+        summary: `C4 Rel endpoint '${iss.alias}' is a boundary/Deployment_Node — renders crash with "reading 'x'". Point Rel at a leaf Container instead.`,
+        offending: iss.line,
+      });
+    }
     try {
       await mermaid.parse(code);
     } catch (e) {

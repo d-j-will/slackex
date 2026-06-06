@@ -57,8 +57,8 @@ C4Deployment
 
   Rel(quality, deploy, "gates")
   Rel(deploy, image, "builds + pushes")
-  Rel(deploy, docker, "SSH over Tailscale, drives Compose")
-  Rel(docker, image, "pulls via docker compose pull")
+  Rel(deploy, app1, "SSH over Tailscale, docker compose up")
+  Rel(app1, image, "pulls image via docker compose pull")
   Rel(caddy, app1, "reverse_proxy {{upstreams 4000}}")
   Rel(caddy, app2, "reverse_proxy {{upstreams 4000}}")
   Rel(caddy, dns, "DNS-01 challenge for TLS")

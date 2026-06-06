@@ -31,7 +31,8 @@ C4Container
     Container(web, "Web Layer", "LiveView / Channels / Controllers / MCP", "Calls into Chat for history, membership, read state, moderation, DMs")
     Container(messaging, "Messaging", "Elixir Context + GenServers", "Realtime hot path: ChannelServer, cache, PubSub broadcast, async persist")
 
-    Container_Boundary(chat, "Slackex.Chat (domain + persistence)") {
+    Container_Boundary(chat_ctx, "Slackex.Chat (domain + persistence)") {
+      Container(chat, "Slackex.Chat", "Facade module", "defdelegates to the sub-modules below; the context's public entry")
       Container(channels, "Channels", "Module", "Channel CRUD, membership, roles")
       Container(messages, "Messages", "Module", "Message insert/edit/delete, pagination, threads")
       Container(dms, "DMs", "Module", "DM conversations, DM requests, safety pre-flight")

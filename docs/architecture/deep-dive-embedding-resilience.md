@@ -84,7 +84,7 @@ C4Container
 
   System_Ext(deepinfra, "DeepInfra", "Remote OpenAI-compatible embeddings API")
 
-  Rel(op, prod, "Sets EMBEDDING_API_KEY / URL / MODEL / DIMENSIONS")
+  Rel(op, prod_client, "Sets EMBEDDING_API_KEY / URL / MODEL / DIMENSIONS")
   Rel(prod_client, deepinfra, "POSTs batches to", "HTTPS")
 ```
 
