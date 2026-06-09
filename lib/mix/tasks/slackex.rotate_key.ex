@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.Slackex.RotateKey do
+  use Boundary, classify_to: Slackex.MixTasks
+
   @moduledoc """
   Re-encrypts all encrypted fields in all schemas with the current primary key.
 

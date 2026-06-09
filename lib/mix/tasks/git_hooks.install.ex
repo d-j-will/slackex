@@ -1,4 +1,5 @@
 defmodule Mix.Tasks.GitHooks.Install do
+  use Boundary, classify_to: Slackex.MixTasks
   @moduledoc "Installs git hooks from priv/git_hooks/ into .git/hooks/"
   @shortdoc "Install git hooks"
 

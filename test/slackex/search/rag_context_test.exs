@@ -1,7 +1,7 @@
-defmodule Slackex.Embeddings.RAGContextTest do
+defmodule Slackex.Search.RAGContextTest do
   use Slackex.DataCase, async: false
 
-  alias Slackex.Embeddings.RAGContext
+  alias Slackex.Search.RAGContext
 
   # ---------------------------------------------------------------------------
   # Acceptance: formatted output with "[YYYY-MM-DD HH:MM] username: content"

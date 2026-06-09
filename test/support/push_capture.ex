@@ -1,4 +1,7 @@
 defmodule Slackex.PushCapture do
+  # Test support: unchecked boundary (docs-sanctioned pattern for test helpers).
+  use Boundary, check: [in: false, out: false]
+
   @moduledoc "Test push adapter that sends dispatched pushes to the registered test process."
 
   @registry_key :slackex_push_capture_pid

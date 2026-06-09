@@ -67,6 +67,7 @@ C4Container
       Container(search_facade, "Search", "Elixir Context", "Flag check + mode dispatch")
       Container(message_search, "MessageSearch", "Elixir Module", "Query building, EXISTS auth, ts_rank, RRF merge")
       Container(history_loader, "HistoryLoader", "Elixir Module", "Cache-first history reads (CQRS read side)")
+      Container(rag, "RAGContext", "Elixir Module", "Formats semantic hits as LLM context")
     }
 
     Container_Boundary(embeddings, "Slackex.Embeddings (boundary)") {
@@ -75,7 +76,6 @@ C4Container
       Container(recon, "ReconciliationWorker", "Oban Cron", "Every 15min, fills missed embeddings")
       Container(client, "EmbeddingClient", "Behaviour", "OpenAI / Bumblebee / Stub")
       Container(serving, "Embeddings.Supervisor + EmbeddingServing", "Supervisor + Nx.Serving", "Local model host (Bumblebee only)")
-      Container(rag, "RAGContext", "Elixir Module", "Formats semantic hits as LLM context")
     }
   }
 
@@ -138,7 +138,7 @@ These diagrams show the subsystem at a higher level than the sequence diagrams b
 | `Slackex.Embeddings.EmbeddingWorker` | `lib/slackex/embeddings/embedding_worker.ex` | Oban worker: batch embedding + conversation backfill, content-hash dedup, upsert |
 | `Slackex.Embeddings.PersistenceListener` | `lib/slackex/embeddings/persistence_listener.ex` | Subscribes `pipeline:events`; enqueues `EmbeddingWorker` on `{:messages_persisted, ids}` |
 | `Slackex.Embeddings.ReconciliationWorker` | `lib/slackex/embeddings/reconciliation_worker.ex` | Oban cron (every 15 min, 1-hour lookback): durability net for missed events |
-| `Slackex.Embeddings.RAGContext` | `lib/slackex/embeddings/rag_context.ex` | Runs semantic search, formats hits into a token-budgeted LLM context string |
+| `Slackex.Search.RAGContext` | `lib/slackex/search/rag_context.ex` | Runs semantic search, formats hits into a token-budgeted LLM context string |
 
 ---
 
@@ -330,7 +330,7 @@ Non-essential supervised processes (`PersistenceListener`, `Embeddings.Superviso
 
 ## 11. RAG Context
 
-`Slackex.Embeddings.RAGContext.retrieve/2` is the bridge from search to LLM features (channel summarization, Q&A). It always uses **semantic** search (`MessageSearch.semantic_search/3`), formats each hit as `"[YYYY-MM-DD HH:MM] username: content"`, and accumulates lines up to a token budget (default 4000 tokens at ~4 chars/token) **without cutting mid-line**. Authorization is inherited from `semantic_search` — the `user_id` passed in scopes results to messages that user may see, so RAG cannot leak content across access boundaries. It returns `{:ok, context_string, message_count}`.
+`Slackex.Search.RAGContext.retrieve/2` is the bridge from search to LLM features (channel summarization, Q&A). It always uses **semantic** search (`MessageSearch.semantic_search/3`), formats each hit as `"[YYYY-MM-DD HH:MM] username: content"`, and accumulates lines up to a token budget (default 4000 tokens at ~4 chars/token) **without cutting mid-line**. Authorization is inherited from `semantic_search` — the `user_id` passed in scopes results to messages that user may see, so RAG cannot leak content across access boundaries. It returns `{:ok, context_string, message_count}`.
 
 ---
 
@@ -367,7 +367,7 @@ Non-essential supervised processes (`PersistenceListener`, `Embeddings.Superviso
 | `lib/slackex/embeddings/persistence_listener.ex` | PubSub → Oban bridge |
 | `lib/slackex/embeddings/reconciliation_worker.ex` | Oban cron durability net |
 | `lib/slackex/embeddings/supervisor.ex` | Isolated supervisor for the serving pipeline |
-| `lib/slackex/embeddings/rag_context.ex` | Semantic search → LLM context formatting |
+| `lib/slackex/search/rag_context.ex` | Semantic search → LLM context formatting |
 | `lib/slackex_web/live/chat_live/search_component.ex` | Search UI + mode labels |
 | `priv/repo/migrations/20260303191200_add_fts_gin_index.exs` | `search_content` column + FTS GIN index |
 | `priv/repo/migrations/20260303185600_create_message_embeddings.exs` | Embeddings table + HNSW index |

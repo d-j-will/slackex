@@ -28,6 +28,9 @@ defmodule Slackex.Vault do
   original tag so existing ciphertexts can be decoded.
   """
 
+  # Leaf utility: freely depended upon (in: false), depends on nothing in-app.
+  use Boundary, deps: [], check: [in: false]
+
   use Cloak.Vault, otp_app: :slackex
 
   @doc """

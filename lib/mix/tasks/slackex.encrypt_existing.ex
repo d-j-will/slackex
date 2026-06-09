@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.Slackex.EncryptExisting do
+  use Boundary, classify_to: Slackex.MixTasks
+
   @moduledoc """
   Migrates existing plaintext data to encrypted form.
 

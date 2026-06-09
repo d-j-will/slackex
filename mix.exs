@@ -10,27 +10,12 @@ defmodule Slackex.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      compilers: Mix.compilers() ++ [:boundary],
+      # :boundary must come FIRST: it registers a compiler tracer that collects
+      # references DURING elixir compilation. Listed after Mix.compilers() it
+      # traces nothing and silently enforces nothing (inert from 914f1f7 until
+      # the slackex-n3c retrofit discovered it).
+      compilers: [:boundary] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
-      boundary: [
-        ignore: [
-          # Root application module
-          Slackex,
-          # Bootstrap modules — intentionally outside all contexts
-          Slackex.Application,
-          Slackex.NodeListener,
-          Slackex.Release,
-          # Leaf utility modules — freely depended upon, not bounded
-          Slackex.Repo,
-          Slackex.ReadRepo,
-          Slackex.ReadRepo.LagMonitor,
-          Slackex.Vault,
-          # Mix tasks
-          Mix.Tasks.GitHooks.Install,
-          Mix.Tasks.Slackex.EncryptExisting,
-          Mix.Tasks.Slackex.RotateKey
-        ]
-      ],
       releases: [
         slackex: [
           applications: [

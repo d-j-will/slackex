@@ -1,5 +1,8 @@
 # credo:disable-for-this-file Credo.Check.Design.AliasUsage
 defmodule Slackex.DataCase do
+  # Test support: unchecked boundary (docs-sanctioned pattern for test helpers).
+  use Boundary, check: [in: false, out: false]
+
   @moduledoc """
   This module defines the setup for tests requiring
   access to the application's data layer.

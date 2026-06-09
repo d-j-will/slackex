@@ -11,6 +11,10 @@ defmodule Slackex.Release do
       /app/bin/slackex eval "Slackex.Release.decode_html_entities()"
   """
 
+  # Release tooling (migrations, backfills): reaches into any context by
+  # design, checks off (boundary has no ignore option; unchecked = ignored).
+  use Boundary, check: [in: false, out: false]
+
   @app :slackex
 
   require Logger

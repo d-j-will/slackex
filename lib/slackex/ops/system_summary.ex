@@ -3,6 +3,8 @@ defmodule Slackex.Ops.SystemSummary do
   Builds the low-sensitivity operational snapshot exposed through MCP.
   """
 
+  use Boundary, deps: [Slackex.Messaging, Slackex.Notifications], exports: []
+
   require Logger
 
   @queue_names [:default, :notifications, :embeddings, :link_previews]

@@ -1,4 +1,7 @@
 defmodule Slackex.ReadRepo do
+  # Leaf utility: freely depended upon (in: false), depends on nothing in-app.
+  use Boundary, deps: [Slackex.Infrastructure], check: [in: false]
+
   @moduledoc false
 
   use Ecto.Repo,

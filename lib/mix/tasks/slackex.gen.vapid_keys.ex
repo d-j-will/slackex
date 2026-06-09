@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.Slackex.Gen.VapidKeys do
+  use Boundary, classify_to: Slackex.MixTasks
+
   @moduledoc """
   Generates a VAPID key pair for Web Push notifications.
 

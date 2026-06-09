@@ -1,4 +1,7 @@
 defmodule Slackex.EmbeddingHelpers do
+  # Test support: unchecked boundary (docs-sanctioned pattern for test helpers).
+  use Boundary, check: [in: false, out: false]
+
   @moduledoc """
   Shared test helpers for embedding and search tests.
 

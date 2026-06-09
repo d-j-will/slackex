@@ -1,4 +1,7 @@
 defmodule Slackex.Test.MetadataParserStub do
+  # Test support: unchecked boundary (docs-sanctioned pattern for test helpers).
+  use Boundary, check: [in: false, out: false]
+
   @moduledoc """
   A simple Plug used as the Req adapter for MetadataParser in tests.
 

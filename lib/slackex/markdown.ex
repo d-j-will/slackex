@@ -10,6 +10,11 @@ defmodule Slackex.Markdown do
       {Slackex.Markdown.to_html(@content)}
   """
 
+  # Leaf rendering utility with context identity: no in-app deps, no exported
+  # sub-modules (Scrubber is internal). Bounded rather than ignored so any
+  # future reach into another context is a compile-time violation.
+  use Boundary, deps: [], exports: []
+
   @doc """
   Converts a markdown string to sanitized HTML.
 

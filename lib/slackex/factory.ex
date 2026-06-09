@@ -7,6 +7,10 @@ defmodule Slackex.Factory do
   All state transitions are enforced here. MCP tools delegate to this module.
   """
 
+  use Boundary,
+    deps: [Slackex.Accounts, Slackex.Chat, Slackex.Messaging],
+    exports: [ChannelNotifier, LifecycleWorker]
+
   import Ecto.Query
 
   alias Slackex.Factory.{Event, Run}

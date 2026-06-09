@@ -10,7 +10,7 @@
 
 The Embeddings subsystem turns message text into 384-dimensional vectors so that
 `Slackex.Search` can rank messages by semantic similarity (cosine distance), and
-so that `RAGContext` can pull relevant history into LLM prompts.
+so that `Slackex.Search.RAGContext` can pull relevant history into LLM prompts.
 
 The subsystem is built around one deliberate decision: **embedding generation is
 non-essential**. If it fails — provider down, model crash, listener restart —
@@ -80,7 +80,6 @@ C4Container
     Container(openai, "OpenAIClient", "Module", "Calls remote OpenAI-compatible API (prod)")
     Container(serving, "EmbeddingServing", "Nx.Serving GenServer", "Loads all-MiniLM-L6-v2, runs batched inference (only when BumblebeeClient configured)")
     Container(emb_sup, "Embeddings.Supervisor", "Supervisor (restart: :temporary, 5/300s)", "Isolates EmbeddingServing crashes")
-    Container(rag, "RAGContext", "Module", "Formats semantic-search results as LLM prompt context")
   }
 
   ContainerDb(postgres, "PostgreSQL + pgvector", "message_embeddings, vector(384), HNSW index")
@@ -98,7 +97,6 @@ C4Container
   Rel(emb_sup, serving, "Supervises")
   Rel(openai, provider, "POSTs batches to", "HTTP")
   Rel(worker, postgres, "Upserts vectors into")
-  Rel(rag, postgres, "Reads ranked matches from (via Search)")
 ```
 
 ---
@@ -143,12 +141,12 @@ C4Container
 | `Slackex.Embeddings.EmbeddingWorker` | Oban worker: batch embed + channel/DM backfill; upserts vectors |
 | `Slackex.Embeddings.ReconciliationWorker` | Oban cron (every 15m): finds and enqueues missed messages |
 | `Slackex.Embeddings.MessageEmbedding` | Ecto schema for the `message_embeddings` table |
-| `Slackex.Embeddings.RAGContext` | Formats semantic-search results into an LLM prompt context string |
 
 The context module `Slackex.Embeddings` declares a `Boundary` with
-`deps: [Slackex.Chat, Slackex.Search]` and explicit exports, so the rest of the
-app may only reach these public modules
-(`lib/slackex/embeddings/embeddings.ex`).
+`deps: [Slackex.Chat]` and explicit exports, so the rest of the app may only
+reach these public modules (`lib/slackex/embeddings/embeddings.ex`). RAG
+formatting lives on the consumer side as `Slackex.Search.RAGContext` — moving
+it there (slackex-n3c) broke a `Search <-> Embeddings` dependency cycle.
 
 ---
 
@@ -431,10 +429,10 @@ them. The boundary is clean:
   that would corrupt ranking. `hybrid_search/3` fuses full-text and semantic
   results via Reciprocal Rank Fusion (`@rrf_k 60`)
   (`lib/slackex/search/message_search.ex`).
-- `RAGContext.retrieve/2` calls **`semantic_search/3` only** (not hybrid), then
-  formats the top results as `"[YYYY-MM-DD HH:MM] username: content"` lines,
-  truncated to a token budget (default 4000 tokens, ~4 chars/token) without
-  cutting a line (`lib/slackex/embeddings/rag_context.ex`).
+- `Slackex.Search.RAGContext.retrieve/2` calls **`semantic_search/3` only**
+  (not hybrid), then formats the top results as `"[YYYY-MM-DD HH:MM] username:
+  content"` lines, truncated to a token budget (default 4000 tokens, ~4
+  chars/token) without cutting a line (`lib/slackex/search/rag_context.ex`).
 
 The search UI itself is gated by the `:message_search` FunWithFlags flag
 (`lib/slackex_web/live/chat_live/index.ex:128`). Ranking, fusion, and FTS detail
@@ -457,7 +455,6 @@ belong to the search documentation, not here.
 | `lib/slackex/embeddings/embedding_worker.ex` | Oban worker: batch embed + backfill + upsert |
 | `lib/slackex/embeddings/reconciliation_worker.ex` | Oban cron safety net for missed messages |
 | `lib/slackex/embeddings/message_embedding.ex` | Ecto schema for `message_embeddings` |
-| `lib/slackex/embeddings/rag_context.ex` | LLM prompt-context formatting over semantic search |
 | `lib/slackex/application.ex` | `maybe_embedding_serving/1`; listener supervision specs |
 | `config/{config,dev,test,prod,runtime}.exs` | Per-env `:embedding_client` and `:embedding_api` |
 | `priv/repo/migrations/20260303185600_create_message_embeddings.exs` | Initial table + HNSW index (1536-dim) |

@@ -1,4 +1,8 @@
 defmodule Slackex.Application do
+  # Bootstrap module: wires every subsystem together, so boundary checks are
+  # deliberately off (boundary has no ignore option; unchecked = ignored).
+  use Boundary, check: [in: false, out: false]
+
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
   @moduledoc false

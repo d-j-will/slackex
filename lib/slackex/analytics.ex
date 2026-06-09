@@ -11,6 +11,10 @@ defmodule Slackex.Analytics do
   skipped.
   """
 
+  use Boundary,
+    deps: [Slackex.Infrastructure],
+    exports: [MetricsBridge, PruneWorker, TelemetryHandler]
+
   import Ecto.Query
   alias Slackex.Analytics.Event
   alias Slackex.Analytics.TrackWorker

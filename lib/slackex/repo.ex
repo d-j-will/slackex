@@ -1,4 +1,7 @@
 defmodule Slackex.Repo do
+  # Leaf utility: freely depended upon (in: false), depends on nothing in-app.
+  use Boundary, deps: [], check: [in: false]
+
   use Ecto.Repo,
     otp_app: :slackex,
     adapter: Ecto.Adapters.Postgres

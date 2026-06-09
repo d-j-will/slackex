@@ -1,4 +1,4 @@
-defmodule Slackex.Embeddings.RAGContext do
+defmodule Slackex.Search.RAGContext do
   @moduledoc """
   Retrieves semantically relevant messages and formats them as a plain-text
   context string suitable for LLM prompt injection.

@@ -17,7 +17,9 @@ defmodule SlackexWeb do
   those modules here.
   """
 
-  use Boundary, ignore: true
+  # Interface layer: may call every context (out: false). `ignore: true` was
+  # never a valid boundary option — see slackex-n3c.
+  use Boundary, check: [in: false, out: false]
 
   def static_paths,
     do: ~w(assets fonts images favicon.ico robots.txt manifest.json service-worker.js)

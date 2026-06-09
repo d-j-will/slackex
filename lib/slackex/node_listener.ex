@@ -7,6 +7,10 @@ defmodule Slackex.NodeListener do
   tree alongside libcluster.
   """
 
+  # Cluster bootstrap (nodeup/nodedown): intentionally outside context
+  # boundaries, checks off (boundary has no ignore option; unchecked = ignored).
+  use Boundary, check: [in: false, out: false]
+
   use GenServer
   require Logger
 

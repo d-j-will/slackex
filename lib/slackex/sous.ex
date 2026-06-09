@@ -13,6 +13,10 @@ defmodule Slackex.Sous do
     * "sous:cards:channel:\#{id}"  — channel-scoped; chat decision-card upgrade.
   """
 
+  use Boundary,
+    deps: [Slackex.AI, Slackex.Infrastructure, Slackex.Messaging],
+    exports: [FacetPrompt, FacetWorker, Viewer, ViewerPreference, WorkItemFacet]
+
   import Ecto.Query
 
   alias Ecto.Multi

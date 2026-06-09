@@ -5,7 +5,7 @@ defmodule Slackex.Embeddings do
   """
 
   use Boundary,
-    deps: [Slackex.Chat, Slackex.Search],
+    deps: [Slackex.Chat],
     exports: [
       MessageEmbedding,
       EmbeddingClient,
@@ -16,7 +16,6 @@ defmodule Slackex.Embeddings do
       OpenAIClient,
       EmbeddingWorker,
       PersistenceListener,
-      RAGContext,
       ReconciliationWorker
     ]
 end

@@ -1,4 +1,5 @@
 defmodule Mix.Tasks.Tenun.CleanupWebPushTokens do
+  use Boundary, classify_to: Slackex.MixTasks
   @moduledoc "Delete all web_push device tokens (for rolling back push notifications)."
   @shortdoc "Delete all web_push device tokens"
 

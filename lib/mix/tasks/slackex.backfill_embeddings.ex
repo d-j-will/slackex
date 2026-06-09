@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.Slackex.BackfillEmbeddings do
+  use Boundary, classify_to: Slackex.MixTasks
+
   @moduledoc """
   Backfills vector embeddings for all existing messages.
 

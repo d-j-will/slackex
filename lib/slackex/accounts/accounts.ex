@@ -6,7 +6,12 @@ defmodule Slackex.Accounts do
 
   use Boundary,
     deps: [Slackex.Encrypted],
-    exports: [User, UserToken, Auth, Guardian]
+    exports: [User, UserToken, Auth, Guardian],
+    # Known leak (slackex-dfa follow-up): register_user creates default
+    # notification preferences. Adding Slackex.Notifications to deps would
+    # create a cycle (Notifications -> Chat -> Accounts), so the reference is
+    # whitelisted until preference bootstrap moves out of Accounts.
+    dirty_xrefs: [Slackex.Notifications.Preference]
 
   import Ecto.Query
 
