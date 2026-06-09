@@ -5,7 +5,7 @@
 #
 # Exits non-zero on first failure. Do not tag if any step fails.
 #
-# The QUALITY section (steps 1-9) mirrors the `quality` job in
+# The QUALITY section mirrors the `quality` job in
 # .github/workflows/ci-deploy.yml, which runs under MIX_ENV=test. A clean
 # pre-deploy should therefore guarantee a green CI quality job. If you change
 # CI's quality job, update this script to match (and vice versa).
@@ -15,9 +15,17 @@ set -e
 # Match CI's quality job env. `mix format` resolves dependency formatter configs
 # from _build/$MIX_ENV (the migrations subdirectory imports ecto_sql), so dev and
 # test can disagree on migration files — running under test keeps this gate
-# honest. Docker build + release boot (steps 12-13) use the Dockerfile's own prod
+# honest. Docker build + release boot (the final two steps) use the Dockerfile's own prod
 # env and are unaffected by this shell setting.
 export MIX_ENV=test
+
+# Auto-numbered steps: adding/removing a gate only requires updating TOTAL_STEPS.
+TOTAL_STEPS=13
+STEP=0
+step() {
+  STEP=$((STEP + 1))
+  echo "Step $STEP/$TOTAL_STEPS: $1"
+}
 
 echo "=== Pre-deploy verification ==="
 echo ""
@@ -26,47 +34,47 @@ echo ""
 # Quality — mirrors .github/workflows/ci-deploy.yml `quality` job (MIX_ENV=test)
 # ---------------------------------------------------------------------------
 
-echo "Step 1/13: Compiling (--warnings-as-errors)..."
+step "Compiling (--warnings-as-errors)..."
 mix compile --warnings-as-errors --force
 echo "PASS: Compile"
 echo ""
 
-echo "Step 2/13: Checking formatting..."
+step "Checking formatting..."
 mix format --check-formatted
 echo "PASS: Formatting"
 echo ""
 
-echo "Step 3/13: Running Credo..."
+step "Running Credo..."
 mix credo
 echo "PASS: Credo"
 echo ""
 
-echo "Step 4/13: Running Dialyzer..."
+step "Running Dialyzer..."
 mix dialyzer
 echo "PASS: Dialyzer"
 echo ""
 
-echo "Step 5/13: Running tests (--warnings-as-errors)..."
+step "Running tests (--warnings-as-errors)..."
 mix test --warnings-as-errors
 echo "PASS: Tests"
 echo ""
 
-echo "Step 6/13: Running contract tests..."
+step "Running contract tests..."
 mix test --only contract
 echo "PASS: Contract tests"
 echo ""
 
-echo "Step 7/13: Running e2e tests..."
+step "Running e2e tests..."
 mix test --only e2e
 echo "PASS: E2E tests"
 echo ""
 
-echo "Step 8/13: Auditing dependencies..."
+step "Auditing dependencies..."
 mix hex.audit
 echo "PASS: hex.audit"
 echo ""
 
-echo "Step 9/13: Checking for unused deps..."
+step "Checking for unused deps..."
 mix deps.unlock --check-unused
 echo "PASS: deps.unlock --check-unused"
 echo ""
@@ -75,7 +83,7 @@ echo ""
 # Deploy readiness — beyond CI's quality job
 # ---------------------------------------------------------------------------
 
-echo "Step 10/13: Validating CI YAML..."
+step "Validating CI YAML..."
 for f in .github/workflows/*.yml; do
   ruby -ryaml -e "YAML.safe_load(File.read('$f'))" 2>&1
   if [ $? -ne 0 ]; then
@@ -86,7 +94,7 @@ done
 echo "PASS: YAML valid"
 echo ""
 
-echo "Step 11/13: Validating Mermaid diagrams..."
+step "Validating Mermaid diagrams..."
 # Parse-only validation of every ```mermaid block under docs/ (no Chromium).
 # Self-installs pinned deps (mermaid, jsdom) on first run; see scripts/mermaid/.
 if [ ! -d scripts/mermaid/node_modules ]; then
@@ -97,12 +105,12 @@ node --no-warnings scripts/mermaid/validate.mjs docs
 echo "PASS: Mermaid diagrams parse"
 echo ""
 
-echo "Step 12/13: Building Docker image..."
+step "Building Docker image..."
 docker build -t slackex:pre-deploy-check . >/dev/null 2>&1
 echo "PASS: Docker image builds"
 echo ""
 
-echo "Step 13/13: Verifying release boots..."
+step "Verifying release boots..."
 BOOT_OUTPUT=$(docker run --rm \
   -e SECRET_KEY_BASE=pre-deploy-check-key-that-is-at-least-64-bytes-long-for-phoenix-to-accept \
   -e DATABASE_URL=ecto://postgres:postgres@host/slackex_prod \

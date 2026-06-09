@@ -1,9 +1,15 @@
 #!/bin/sh
 # Render-validate every ```mermaid block under a docs root using mermaid-cli +
-# a real browser. This is the AUTHORITATIVE gate: unlike validate.mjs (parse +
-# C4-boundary heuristic, fast, no browser), this actually lays out each diagram,
-# so it catches render/layout crashes (e.g. C4 auto-layout "reading 'x'") that
-# parsing cannot. Runs in CI (ci-deploy.yml `mermaid-render` job).
+# a real browser. This is the RENDER TIER of the two-tier Mermaid gate (decision
+# recorded in docs/engineering-principles.md, "Two-Tier Mermaid Gate"): unlike
+# validate.mjs (parse + C4-boundary heuristic — the fast, blocking pre-deploy
+# tier), this actually lays out each diagram, so it catches render/layout
+# crashes (e.g. C4 auto-layout "reading 'x'") that parsing cannot. It runs
+# ADVISORY in CI (ci-deploy.yml `mermaid-render` job): a failure is a red X but
+# deliberately does not block the deploy path.
+# The mermaid-cli version is pinned in scripts/mermaid/package.json under
+# "config.mermaid-cli" — keep it in lockstep with "dependencies.mermaid" so both
+# tiers validate the same grammar.
 #
 # Usage:  sh scripts/mermaid/render-check.sh [docs-root]
 #
@@ -41,19 +47,27 @@ fi
 CFG="$(mktemp)"
 OUTDIR="$(mktemp -d)"
 ERR="$(mktemp)"
-trap 'rm -rf "$CFG" "$OUTDIR" "$ERR"' EXIT
+LIST="$(mktemp)"
+trap 'rm -rf "$CFG" "$OUTDIR" "$ERR" "$LIST"' EXIT
 printf '{"executablePath":"%s","args":["--no-sandbox","--disable-gpu","--disable-dev-shm-usage"]}\n' "$BROWSER" > "$CFG"
+
+# File list goes through a temp file (not a for-loop over $(...), which
+# word-splits on spaces; not a pipe into while, which loses the counters in a
+# subshell). .md-only to match validate.mjs's discovery.
+grep -rl --include='*.md' '```mermaid' "$ROOT" | sort > "$LIST" || true
 
 status=0
 total=0
-for f in $(grep -rl '```mermaid' "$ROOT" | sort); do
+while IFS= read -r f; do
   total=$((total + 1))
   if ! "$MMDC" -q -p "$CFG" -i "$f" -o "$OUTDIR/out.md" >"$ERR" 2>&1; then
     echo "RENDER FAIL: $f"
-    grep -iE "error|reading|undefined" "$ERR" | head -2 | sed 's/^/    /'
+    detail="$(grep -iE 'error|reading|undefined' "$ERR" | head -2 || true)"
+    [ -n "$detail" ] || detail="$(head -c 400 "$ERR")"
+    printf '%s\n' "$detail" | sed 's/^/    /'
     status=1
   fi
-done
+done < "$LIST"
 
 if [ "$status" -eq 0 ]; then
   echo "Mermaid render OK: all diagrams in $total doc(s) under $ROOT render."

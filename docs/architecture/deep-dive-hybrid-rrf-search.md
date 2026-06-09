@@ -196,7 +196,7 @@ When a message appears in both result sets, `merge_with_rrf/4` builds the lookup
 |> Enum.reduce(%{}, fn msg, acc -> Map.put_new(acc, msg.id, msg) end)
 ```
 
-Because text messages come first and `Map.put_new` keeps the first occurrence, **the text struct is retained** for any overlapping ID. The text struct carries `:headline` (FTS snippet) but its `:similarity` virtual field is unpopulated. The in-code comment says "preferring semantic (has `:similarity`)", but the actual behavior keeps the text struct — a comment/behavior mismatch worth knowing if a consumer relies on `:similarity` being present on hybrid results. (Documented as-is; not changed by this doc.)
+Because text messages come first and `Map.put_new` keeps the first occurrence, **the text struct is retained** for any overlapping ID. The text struct carries `:headline` (FTS snippet) but its `:similarity` virtual field is unpopulated — worth knowing if a consumer relies on `:similarity` being present on hybrid results. Both the concat order and the `Map.put_new` choice are pinned by `ArchitectureDocsContractTest`.
 
 ---
 

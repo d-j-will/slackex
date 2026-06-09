@@ -108,19 +108,22 @@ jobs:
 
   # Render-validates every ```mermaid block in docs/ with a real browser. This
   # catches layout/render crashes (e.g. C4 auto-layout "reading 'x'") that the
-  # local parse-only gate (scripts/mermaid/validate.mjs) cannot. Independent of
-  # the deploy gate: a broken diagram fails this check (red X) but does not block
-  # shipping code. Uses the runner's preinstalled Google Chrome (no chromium DL).
+  # local parse-only gate (scripts/mermaid/validate.mjs) cannot. ADVISORY by
+  # decision (docs/engineering-principles.md, "Two-Tier Mermaid Gate"): a broken
+  # diagram fails this check (red X) but does not block shipping code. Uses the
+  # runner's preinstalled Google Chrome (no chromium DL). The mermaid-cli version
+  # comes from scripts/mermaid/package.json (config.mermaid-cli) so both tiers
+  # stay pinned to the same grammar from one place.
   mermaid-render:
     name: Mermaid render check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install mermaid-cli (skip chromium download, use runner Chrome)
+      - name: Install mermaid-cli (pin from scripts/mermaid/package.json, runner Chrome)
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
-        run: npm install -g @mermaid-js/mermaid-cli@11.15.0
+        run: npm install -g "@mermaid-js/mermaid-cli@$(node -p "require('./scripts/mermaid/package.json').config['mermaid-cli']")"
 
       - name: Render every docs mermaid block
         run: sh scripts/mermaid/render-check.sh docs

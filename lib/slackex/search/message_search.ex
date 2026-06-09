@@ -427,7 +427,9 @@ defmodule Slackex.Search.MessageSearch do
 
     rrf_scores = compute_rrf_scores(text_ids, semantic_ids, @rrf_k)
 
-    # Build a map of id => message, preferring semantic (has :similarity) over text
+    # Build a map of id => message. Text comes first and Map.put_new keeps the
+    # first occurrence, so the TEXT struct (with :headline, without :similarity)
+    # wins on overlap. Pinned by ArchitectureDocsContractTest.
     messages_by_id =
       (text_messages ++ semantic_messages)
       |> Enum.reduce(%{}, fn msg, acc ->

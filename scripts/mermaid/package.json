@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Headless Mermaid diagram validator for docs/ (parse-only, no Chromium). Run via scripts/pre-deploy.",
+  "description": "Headless Mermaid diagram validator for docs/ (parse-only, no Chromium). Run via scripts/pre-deploy. config.mermaid-cli pins the CLI used by render-check.sh/CI — bump it in lockstep with dependencies.mermaid so both tiers validate the same grammar.",
   "scripts": {
     "validate": "node validate.mjs ../../docs"
+  },
+  "config": {
+    "mermaid-cli": "11.15.0"
   },
   "dependencies": {
     "jsdom": "29.1.1",

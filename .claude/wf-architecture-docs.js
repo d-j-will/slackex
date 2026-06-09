@@ -32,13 +32,15 @@ const GROUND_TRUTH = `
 DESIGN INTENTIONS FROM INCIDENT HISTORY (these are leads -- VERIFY each against the actual source before
 asserting it; where the code diverges or a mechanism is NOT implemented, document what is actually there and
 flag the gap; never assert a mechanism you cannot find in the code):
-- Snowflake IDs order messages; messages table is PARTITIONED. Partition pruning needs composite joins
-  like (message_id, message_inserted_at) = (id, inserted_at).
+- Snowflake IDs order messages; the messages table is NOT partitioned (a flat table — pinned by
+  ArchitectureDocsContractTest; earlier notes claiming partitioning were aspirational, never implemented).
 - Messages use Cloak encryption at rest. A plaintext companion column \`search_content\` enables GIN/FTS indexing.
 - Search authorization uses EXISTS subqueries, NOT JOINs, to avoid row duplication that corrupts rank/pagination.
 - Hybrid search fuses FTS + semantic via Reciprocal Rank Fusion (RRF). UI labels: "Best match"=hybrid,
   "Exact words"=text, "Meaning"=semantic.
-- Embeddings: BumblebeeClient (all-MiniLM-L6-v2, 384-dim) in dev; StubClient in prod (GPU off-limits, CPU EXLA OOMs the LXC).
+- Embeddings: BumblebeeClient (all-MiniLM-L6-v2, 384-dim) in dev; OpenAIClient against DeepInfra (same
+  model over HTTP) in prod — see config/prod.exs, pinned by ArchitectureDocsContractTest; StubClient in test.
+  No local EXLA in prod (GPU off-limits, CPU EXLA OOMs the LXC).
   Non-essential supervisors use restart: :temporary to prevent cascade (v0.5.36 outage precedent).
 - Oban worker perform/1 must return the result (never \`_ = result; :ok\`) so Oban retries on failure.
 - Req streaming (into: :self) yields raw Mint messages; must use Req.parse_message/2. (v0.5.58-61 precedent.)

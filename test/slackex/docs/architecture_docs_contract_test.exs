@@ -53,14 +53,14 @@ defmodule Slackex.Docs.ArchitectureDocsContractTest do
     end
 
     test "overlap keeps the text struct via Map.put_new over text ++ semantic" do
-      # deep-dive-hybrid-rrf-search.md §5.4 documents that the in-code comment
-      # ("preferring semantic") is wrong: Map.put_new over (text ++ semantic)
-      # keeps the TEXT struct on overlap. If this changes to Map.put/merge or
-      # reorders the concat, the documented behavior is stale.
+      # deep-dive-hybrid-rrf-search.md §5.4: the TEXT struct wins on overlap.
+      # That claim depends on BOTH facts — Map.put_new (first occurrence wins)
+      # AND text_messages coming first in the concat. Pinning only one would
+      # let a reorder flip the documented behavior while staying green.
       src = source("lib/slackex/search/message_search.ex")
 
-      assert src =~ ~r/Map\.put_new/,
-             "§5.4 documents Map.put_new overlap behavior; verify the doc if the merge changed"
+      assert src =~ ~r/text_messages \+\+ semantic_messages\).*?Map\.put_new/s,
+             "§5.4 documents Map.put_new over (text ++ semantic); update the doc if the merge or order changed"
     end
   end
 
@@ -134,21 +134,23 @@ defmodule Slackex.Docs.ArchitectureDocsContractTest do
   # --- Oban queues (system-landscape.md §5, background-jobs-and-workers.md) ---
 
   test "Oban queue concurrency matches the documented table" do
-    src = source("config/config.exs")
+    # Asserts on the merged runtime config rather than regex-over-source:
+    # config/test.exs only adds `testing: :inline`, so :queues survives the
+    # merge, and equality also catches queues being added or removed.
+    queues = :slackex |> Application.get_env(Oban) |> Keyword.fetch!(:queues)
 
     expected = [
-      {"default", 10},
-      {"notifications", 20},
-      {"embeddings", 5},
-      {"link_previews", 5},
-      {"analytics", 5},
-      {"facets", 3}
+      default: 10,
+      notifications: 20,
+      embeddings: 5,
+      link_previews: 5,
+      analytics: 5,
+      facets: 3
     ]
 
-    for {queue, size} <- expected do
-      assert src =~ ~r/#{queue}:\s*#{size}\b/,
-             "background-jobs-and-workers.md / system-landscape.md §5 document #{queue}: #{size}"
-    end
+    assert Enum.sort(queues) == Enum.sort(expected),
+           "background-jobs-and-workers.md / system-landscape.md §5 document the queue table; " <>
+             "update both docs if the Oban queues changed"
   end
 
   # --- Sous tables exist (data-model-erd.md §2.1) ---
@@ -165,9 +167,13 @@ defmodule Slackex.Docs.ArchitectureDocsContractTest do
   # --- Toolchain version (deployment-topology.md §3) ---
 
   test "Elixir/OTP toolchain matches deployment-topology.md" do
+    # Anchored to whole lines: a bare substring like "elixir 1.19.2" would
+    # still match after a bump to 1.19.20 and silently stop enforcing the doc.
     tv = source(".tool-versions")
-    assert tv =~ "erlang 28.1.1", "deployment-topology.md §3 pins OTP 28.1.1"
-    assert tv =~ "elixir 1.19.2", "deployment-topology.md §3 pins Elixir 1.19.2"
+    assert tv =~ ~r/^erlang 28\.1\.1$/m, "deployment-topology.md §3 pins OTP 28.1.1"
+
+    assert tv =~ ~r/^elixir 1\.19\.2(-otp-\d+)?$/m,
+           "deployment-topology.md §3 pins Elixir 1.19.2"
   end
 
   # --- Prod embedding client (deep-dive-hybrid-rrf-search.md §9.4) ---

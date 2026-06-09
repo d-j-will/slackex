@@ -120,7 +120,7 @@ for (const file of files) {
         "parse error";
       const m = /line (\d+)/.exec(String(e?.message ?? ""));
       const diagLine = m ? parseInt(m[1], 10) : null;
-      const fileLine = diagLine ? start + diagLine : start; // fence + offset
+      const fileLine = diagLine ? start + diagLine : start + 1; // fence + offset; else first diagram line
       const offending = diagLine ? (body[diagLine - 1] || "").trim() : "";
       failures.push({ file, fileLine, summary: summary.trim().slice(0, 160), offending });
     }

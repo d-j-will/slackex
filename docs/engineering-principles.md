@@ -193,6 +193,19 @@ From least to most effective:
 
 Custom `/deploy` command wraps the full workflow: verify -> tag -> push. Eliminates manual version calculation and forgotten pre-deploy checks.
 
+### Decision: Two-Tier Mermaid Gate (2026-06)
+
+Mermaid diagram validation runs in two tiers with **different blocking semantics** — a recorded exception to the single-gate ideal:
+
+- **Parse tier (blocking)**: `scripts/mermaid/validate.mjs` — the real Mermaid parser plus a static C4 Rel-to-boundary heuristic, no browser, seconds. Runs in `scripts/pre-deploy`; a failure blocks tagging.
+- **Render tier (advisory)**: `scripts/mermaid/render-check.sh` — mermaid-cli + Chrome actually lays out every diagram, catching render crashes parsing cannot. Runs as the `mermaid-render` CI job; a failure is a red X that deliberately does **not** block the deploy path.
+
+**Why the seam is acceptable here:** the render tier validates documentation only — a broken diagram cannot break production code, so holding a code deploy hostage to a docs render is the wrong trade against fast feedback (the render pass costs minutes of Chrome startup per doc). The parse tier still blocks the common failure class locally.
+
+**What promoting the render tier to blocking would require** (if a render-crashed diagram ever ships and matters): install mermaid-cli in pre-deploy and run `render-check.sh` there instead of `validate.mjs`, delete `validate.mjs` (including the C4 heuristic that exists only to approximate rendering), and accept ~1–2 minutes added to pre-deploy. That consolidation removes the dual mermaid version pin and one whole npm project.
+
+**Version-sync invariant:** both tiers must validate the same Mermaid grammar. The single source is `scripts/mermaid/package.json` — `dependencies.mermaid` (parse tier) and `config.mermaid-cli` (render tier, read by CI at install time) must be bumped together.
+
 ---
 
 ## 6. Infrastructure Config is Code
