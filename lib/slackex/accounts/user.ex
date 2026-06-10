@@ -4,6 +4,8 @@ defmodule Slackex.Accounts.User do
   """
 
   use Ecto.Schema
+
+  @type t :: %__MODULE__{}
   import Ecto.Changeset
 
   @valid_dm_preferences ~w(anyone shared_channels nobody)

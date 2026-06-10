@@ -100,6 +100,17 @@ defmodule Slackex.Accounts do
   def get_user!(id), do: Repo.get!(User, id)
 
   @doc """
+  Gets a bot user by exact username (e.g. `"mcp-claude-code-max"`).
+
+  Only matches `is_bot: true` accounts — human users are never returned, so
+  callers can use this for bot-only authorization paths. Returns `nil` when
+  no bot matches.
+  """
+  def get_bot_by_username(username) when is_binary(username) do
+    Repo.get_by(User, username: username, is_bot: true)
+  end
+
+  @doc """
   Updates a user's profile (display_name and status).
   Returns {:ok, user} or {:error, changeset}.
   """

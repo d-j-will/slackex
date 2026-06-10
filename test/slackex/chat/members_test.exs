@@ -79,4 +79,90 @@ defmodule Slackex.Chat.MembersTest do
       assert {:error, :not_a_member} = Members.kick_member(channel.id, owner.id, non_member.id)
     end
   end
+
+  describe "add_bot_member/3" do
+    setup %{} do
+      # Bot created through the production path (token mint), not a fixture.
+      {:ok, %{bot_user: bot}} =
+        Slackex.Integrations.McpTokens.create_mcp_token(%{
+          name: "helper-#{System.unique_integer([:positive])}"
+        })
+
+      %{bot: bot}
+    end
+
+    test "owner subscribes a bot with role member", %{channel: channel, owner: owner, bot: bot} do
+      assert {:ok, %Slackex.Chat.Subscription{role: "member"}} =
+               Members.add_bot_member(channel.id, owner.id, bot.id)
+    end
+
+    test "admin may also subscribe a bot", %{channel: channel, admin: admin, bot: bot} do
+      assert {:ok, %Slackex.Chat.Subscription{}} =
+               Members.add_bot_member(channel.id, admin.id, bot.id)
+    end
+
+    test "plain member is unauthorized", %{channel: channel, member: member, bot: bot} do
+      assert {:error, :unauthorized} = Members.add_bot_member(channel.id, member.id, bot.id)
+    end
+
+    test "private channel is rejected", %{owner: owner, bot: bot} do
+      {:ok, private} =
+        Chat.create_channel(owner.id, %{
+          name: "secret-#{System.unique_integer([:positive])}",
+          is_private: true
+        })
+
+      assert {:error, :private_channel_not_supported} =
+               Members.add_bot_member(private.id, owner.id, bot.id)
+    end
+
+    test "non-bot target is rejected", %{channel: channel, owner: owner, member: member} do
+      assert {:error, :not_a_bot} = Members.add_bot_member(channel.id, owner.id, member.id)
+    end
+
+    test "subscribing twice is idempotent", %{channel: channel, owner: owner, bot: bot} do
+      assert {:ok, %Slackex.Chat.Subscription{}} =
+               Members.add_bot_member(channel.id, owner.id, bot.id)
+
+      assert {:ok, :already_subscribed} = Members.add_bot_member(channel.id, owner.id, bot.id)
+    end
+  end
+
+  describe "remove_bot_member/3" do
+    setup %{channel: channel, owner: owner} do
+      {:ok, %{bot_user: bot}} =
+        Slackex.Integrations.McpTokens.create_mcp_token(%{
+          name: "helper-#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, _} = Members.add_bot_member(channel.id, owner.id, bot.id)
+      %{bot: bot}
+    end
+
+    test "owner removes a subscribed bot", %{channel: channel, owner: owner, bot: bot} do
+      assert :ok = Members.remove_bot_member(channel.id, owner.id, bot.id)
+      refute Enum.any?(Members.list_members(channel.id), &(&1.user.id == bot.id))
+    end
+
+    test "removing an unsubscribed bot reports not_a_member", %{
+      channel: channel,
+      owner: owner,
+      bot: bot
+    } do
+      :ok = Members.remove_bot_member(channel.id, owner.id, bot.id)
+      assert {:error, :not_a_member} = Members.remove_bot_member(channel.id, owner.id, bot.id)
+    end
+
+    test "plain member is unauthorized", %{channel: channel, member: member, bot: bot} do
+      assert {:error, :unauthorized} = Members.remove_bot_member(channel.id, member.id, bot.id)
+    end
+
+    test "non-bot target is rejected even if subscribed", %{
+      channel: channel,
+      owner: owner,
+      member: member
+    } do
+      assert {:error, :not_a_bot} = Members.remove_bot_member(channel.id, owner.id, member.id)
+    end
+  end
 end

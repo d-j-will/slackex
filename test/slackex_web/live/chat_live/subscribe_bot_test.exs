@@ -1,0 +1,177 @@
+defmodule SlackexWeb.ChatLive.SubscribeBotTest do
+  # async: false — shared sandbox (ChannelServer processes) + global flag state
+  use SlackexWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+
+  alias Slackex.Chat.Members
+  alias Slackex.Chat.Subscription
+  alias Slackex.Integrations.McpTokens
+  alias Slackex.Repo
+
+  setup %{conn: conn} do
+    Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, {:shared, self()})
+    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, :manual) end)
+
+    # FunWithFlags state is shared (not sandboxed); re-enable per test so
+    # the flag-off test cannot leak into siblings (cf. decide_test.exs).
+    FunWithFlags.enable(:bot_subscription)
+    on_exit(fn -> FunWithFlags.disable(:bot_subscription) end)
+
+    owner = insert(:user, username: "owner-#{System.unique_integer([:positive])}")
+
+    {:ok, channel} =
+      Slackex.Chat.create_channel(owner.id, %{
+        name: "engineering-#{System.unique_integer([:positive])}"
+      })
+
+    # Bot minted through the production path; username is "mcp-claude-code-max".
+    {:ok, %{bot_user: bot, raw_token: raw_token}} =
+      McpTokens.create_mcp_token(%{name: "claude-code-max"})
+
+    conn = log_in_user(conn, owner)
+    %{conn: conn, owner: owner, channel: channel, bot: bot, raw_token: raw_token}
+  end
+
+  defp submit_command(lv, content) do
+    lv
+    |> form("#message-form", %{message: %{content: content}})
+    |> render_submit()
+  end
+
+  defp subscription(bot, channel) do
+    Repo.get_by(Subscription, user_id: bot.id, channel_id: channel.id)
+  end
+
+  test "flag off: /subscribe-bot behaves as an unknown command and inserts nothing", %{
+    conn: conn,
+    channel: channel,
+    bot: bot
+  } do
+    FunWithFlags.disable(:bot_subscription)
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    html = submit_command(lv, "/subscribe-bot claude-code-max")
+
+    assert html =~ "Unknown command: /subscribe-bot"
+    refute html =~ "subscribed"
+    assert subscription(bot, channel) == nil
+  end
+
+  test "flag on: subscribing a bot inserts the membership row and flashes the channel id", %{
+    conn: conn,
+    channel: channel,
+    bot: bot
+  } do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    html = submit_command(lv, "/subscribe-bot claude-code-max")
+
+    assert html =~ "claude-code-max subscribed to ##{channel.name}"
+    assert html =~ to_string(channel.id)
+    assert %Subscription{role: "member"} = subscription(bot, channel)
+  end
+
+  test "input is cleared after a successful subscribe", %{conn: conn, channel: channel} do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    submit_command(lv, "/subscribe-bot claude-code-max")
+
+    refute lv |> element("#message-form") |> render() =~ "subscribe-bot claude-code-max"
+  end
+
+  test "non-matching bot name flashes a not-found error", %{conn: conn, channel: channel} do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    html = submit_command(lv, "/subscribe-bot nonexistent")
+
+    assert html =~ "No bot named &#39;nonexistent&#39; found"
+  end
+
+  test "bare /subscribe-bot flashes a usage hint", %{conn: conn, channel: channel} do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    html = submit_command(lv, "/subscribe-bot")
+
+    assert html =~ "Usage: /subscribe-bot &lt;name&gt;"
+  end
+
+  test "subscribing twice reports already subscribed", %{conn: conn, channel: channel} do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    submit_command(lv, "/subscribe-bot claude-code-max")
+    html = submit_command(lv, "/subscribe-bot claude-code-max")
+
+    assert html =~ "already subscribed"
+  end
+
+  test "/unsubscribe-bot removes the membership row", %{
+    conn: conn,
+    channel: channel,
+    owner: owner,
+    bot: bot
+  } do
+    {:ok, _} = Members.add_bot_member(channel.id, owner.id, bot.id)
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    html = submit_command(lv, "/unsubscribe-bot claude-code-max")
+
+    assert html =~ "claude-code-max unsubscribed from ##{channel.name}"
+    assert subscription(bot, channel) == nil
+  end
+
+  test "unsubscribing a bot that is not a member flashes an error", %{
+    conn: conn,
+    channel: channel
+  } do
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+    html = submit_command(lv, "/unsubscribe-bot claude-code-max")
+
+    assert html =~ "not subscribed to this channel"
+  end
+
+  # Full producer -> consumer path (CLAUDE.md spec-driven acceptance rule):
+  # the slash command must actually unlock the MCP write path — proving a row
+  # was inserted is not enough.
+  test "INTEGRATION: /subscribe-bot unlocks MCP send_message for the bot", %{
+    conn: conn,
+    channel: channel,
+    raw_token: raw_token
+  } do
+    mcp_send = fn ->
+      Phoenix.ConnTest.build_conn()
+      |> put_req_header("authorization", "Bearer #{raw_token}")
+      |> put_req_header("content-type", "application/json")
+      |> post("/mcp", %{
+        "jsonrpc" => "2.0",
+        "id" => 1,
+        "method" => "tools/call",
+        "params" => %{
+          "name" => "send_message",
+          "arguments" => %{
+            "channel_id" => to_string(channel.id),
+            "content" => "Hello from the subscribed bot"
+          }
+        }
+      })
+    end
+
+    # Before subscription the MCP write path is closed.
+    assert %{"result" => %{"isError" => true, "content" => [%{"text" => before_text}]}} =
+             json_response(mcp_send.(), 200)
+
+    assert before_text =~ "Not a member"
+
+    # Owner subscribes the bot in-chat.
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+    submit_command(lv, "/subscribe-bot claude-code-max")
+
+    # The same MCP call now succeeds.
+    assert %{"result" => result} = json_response(mcp_send.(), 200)
+    refute result["isError"]
+
+    assert [%{"type" => "text", "text" => text}] = result["content"]
+    assert Jason.decode!(text)["content"] == "Hello from the subscribed bot"
+  end
+end

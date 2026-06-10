@@ -12,6 +12,7 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Notifications.Preference
   alias Slackex.Notifications.PushHealth
   alias Slackex.Search
+  alias SlackexWeb.ChatLive.BotSubscription
   alias SlackexWeb.ChatLive.BrowseChannelsModal
   alias SlackexWeb.ChatLive.ChannelMembersModal
   alias SlackexWeb.ChatLive.Conversations
@@ -367,6 +368,9 @@ defmodule SlackexWeb.ChatLive.Index do
           # command rather than leaking the existence of /decide.
           {:noreply, put_flash(socket, :error, "Unknown command: /decide")}
         end
+
+      {:bot_subscription, action} ->
+        BotSubscription.handle(socket, user, action)
 
       {:unknown_command, cmd} ->
         {:noreply, put_flash(socket, :error, "Unknown command: /#{cmd}")}

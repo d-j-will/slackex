@@ -9,11 +9,14 @@ defmodule SlackexWeb.ChatLive.SlashCommand do
 
     * `/summarize [range]` — summarize channel (24h, 7d, 30d)
     * `/decide` — capture a decision
+    * `/subscribe-bot <name>` — subscribe an MCP bot to the active channel
+    * `/unsubscribe-bot <name>` — remove an MCP bot from the active channel
   """
 
   @type result ::
           {:summarize, String.t()}
           | {:decide}
+          | {:bot_subscription, SlackexWeb.ChatLive.BotSubscription.action()}
           | {:unknown_command, String.t()}
           | :not_command
 
@@ -27,14 +30,20 @@ defmodule SlackexWeb.ChatLive.SlashCommand do
 
   defp do_parse("/" <> rest) do
     case String.split(rest, ~r/\s+/, parts: 2) do
-      ["summarize"] -> {:summarize, "24h"}
-      ["summarize", range] -> {:summarize, String.trim(range)}
-      ["decide"] -> {:decide}
-      ["decide", _rest] -> {:decide}
-      [command | _] -> {:unknown_command, command}
       [] -> :not_command
+      [command] -> command(command, nil)
+      [command, arg] -> command(command, String.trim(arg))
     end
   end
 
   defp do_parse(_), do: :not_command
+
+  defp command("summarize", nil), do: {:summarize, "24h"}
+  defp command("summarize", range), do: {:summarize, range}
+  defp command("decide", _arg), do: {:decide}
+  defp command("subscribe-bot", nil), do: {:bot_subscription, :subscribe_help}
+  defp command("subscribe-bot", name), do: {:bot_subscription, {:subscribe, name}}
+  defp command("unsubscribe-bot", nil), do: {:bot_subscription, :unsubscribe_help}
+  defp command("unsubscribe-bot", name), do: {:bot_subscription, {:unsubscribe, name}}
+  defp command(command, _arg), do: {:unknown_command, command}
 end

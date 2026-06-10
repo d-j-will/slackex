@@ -42,4 +42,33 @@ defmodule SlackexWeb.ChatLive.SlashCommandTest do
       assert SlashCommand.parse("hello") == :not_command
     end
   end
+
+  describe "subscribe-bot / unsubscribe-bot" do
+    test "/subscribe-bot with a name parses to a subscribe action" do
+      assert {:bot_subscription, {:subscribe, "claude-code-max"}} =
+               SlashCommand.parse("/subscribe-bot claude-code-max")
+    end
+
+    test "/subscribe-bot trims surrounding whitespace from the name" do
+      assert {:bot_subscription, {:subscribe, "claude-code-max"}} =
+               SlashCommand.parse("  /subscribe-bot   claude-code-max  ")
+    end
+
+    test "/subscribe-bot with no name parses to help" do
+      assert {:bot_subscription, :subscribe_help} = SlashCommand.parse("/subscribe-bot")
+    end
+
+    test "/unsubscribe-bot with a name parses to an unsubscribe action" do
+      assert {:bot_subscription, {:unsubscribe, "claude-code-max"}} =
+               SlashCommand.parse("/unsubscribe-bot claude-code-max")
+    end
+
+    test "/unsubscribe-bot with no name parses to help" do
+      assert {:bot_subscription, :unsubscribe_help} = SlashCommand.parse("/unsubscribe-bot")
+    end
+
+    test "near-miss commands stay unknown" do
+      assert {:unknown_command, "subscribe-bots"} = SlashCommand.parse("/subscribe-bots x")
+    end
+  end
 end
