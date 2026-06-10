@@ -2107,7 +2107,6 @@ defmodule SlackexWeb.ChatLiveTest do
     # never a nested <form>.
     test "notification selector is not a nested form inside the profile form", %{conn: conn} do
       FunWithFlags.enable(:push_notifications)
-      on_exit(fn -> FunWithFlags.disable(:push_notifications) end)
 
       {:ok, lv, _html} = live(conn, ~p"/chat")
       lv |> element("button[aria-label=\"Edit profile\"]") |> render_click()

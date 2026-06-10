@@ -13,7 +13,6 @@ defmodule SlackexWeb.SousLive.InServiceB2IndicatorTest do
 
   setup %{conn: conn} do
     FunWithFlags.enable(:sous)
-    on_exit(fn -> FunWithFlags.enable(:sous) end)
 
     _ = :telemetry.detach("Elixir.OpentelemetryOban.JobHandler.job_start")
     _ = :telemetry.detach("Elixir.OpentelemetryOban.JobHandler.job_stop")

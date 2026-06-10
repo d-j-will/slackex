@@ -4,7 +4,6 @@ defmodule SlackexWeb.ChatLive.LoomRedesignTest do
   import Slackex.TestFactory
 
   setup do
-    on_exit(fn -> FunWithFlags.disable(:loom_redesign) end)
     :ok
   end
 

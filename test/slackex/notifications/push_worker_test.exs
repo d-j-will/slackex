@@ -30,8 +30,6 @@ defmodule Slackex.Notifications.PushWorkerTest do
     Process.put(:push_calls, [])
 
     on_exit(fn ->
-      FunWithFlags.disable(:push_notifications)
-
       case previous do
         nil -> Application.delete_env(:slackex, :push_adapter)
         mod -> Application.put_env(:slackex, :push_adapter, mod)

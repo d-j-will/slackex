@@ -7,7 +7,6 @@ defmodule SlackexWeb.SousLive.InServiceLensTest do
 
   setup %{conn: conn} do
     FunWithFlags.enable(:sous)
-    on_exit(fn -> FunWithFlags.enable(:sous) end)
 
     user = insert(:user, username: "alice")
     {:ok, channel} = Slackex.Chat.create_channel(user.id, %{name: "deploys"})

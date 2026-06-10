@@ -22,7 +22,6 @@ defmodule SlackexWeb.ChatLive.SummaryModalTest do
   describe "summarize button visibility" do
     test "shows summarize button when flag is enabled", %{conn: conn, channel: channel} do
       FunWithFlags.enable(:channel_summarization)
-      on_exit(fn -> FunWithFlags.disable(:channel_summarization) end)
 
       {:ok, _view, html} = live(conn, ~p"/chat/#{channel.slug}")
       assert html =~ "data-role=\"summarize-button\""
@@ -39,7 +38,6 @@ defmodule SlackexWeb.ChatLive.SummaryModalTest do
   describe "summary modal interaction" do
     setup %{channel: channel} do
       FunWithFlags.enable(:channel_summarization)
-      on_exit(fn -> FunWithFlags.disable(:channel_summarization) end)
       %{channel: channel}
     end
 

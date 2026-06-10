@@ -16,7 +16,6 @@ defmodule SlackexWeb.ChatLive.IndexCatchupTest do
   describe "reconnect-mount catchup" do
     setup do
       FunWithFlags.enable(:catchup_on_reconnect)
-      on_exit(fn -> FunWithFlags.disable(:catchup_on_reconnect) end)
       :ok
     end
 

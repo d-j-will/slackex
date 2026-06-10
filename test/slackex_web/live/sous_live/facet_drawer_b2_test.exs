@@ -22,7 +22,6 @@ defmodule SlackexWeb.SousLive.FacetDrawerB2Test do
 
   setup %{conn: conn} do
     FunWithFlags.enable(:sous)
-    on_exit(fn -> FunWithFlags.enable(:sous) end)
 
     # OpentelemetryOban's :oban.job.start handler crashes on inline-mode jobs
     # whose scheduled_at is nil. We detach it for this suite — these tests don't

@@ -6,7 +6,6 @@ defmodule Slackex.Notifications.PushNotificationsIntegrationTest do
 
   setup do
     FunWithFlags.enable(:push_notifications)
-    on_exit(fn -> FunWithFlags.disable(:push_notifications) end)
     :ok
   end
 

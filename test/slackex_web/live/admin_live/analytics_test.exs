@@ -5,7 +5,6 @@ defmodule SlackexWeb.AdminLive.AnalyticsTest do
 
   setup do
     FunWithFlags.enable(:website_analytics)
-    on_exit(fn -> FunWithFlags.disable(:website_analytics) end)
     :ok
   end
 

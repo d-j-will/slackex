@@ -9,7 +9,6 @@ defmodule Slackex.Analytics.TelemetryHandlerTest do
     TelemetryHandler.attach()
 
     on_exit(fn ->
-      FunWithFlags.disable(:website_analytics)
       :telemetry.detach("analytics-lv-exception")
       :telemetry.detach("analytics-oban-exception")
     end)

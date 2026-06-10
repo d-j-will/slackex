@@ -17,7 +17,6 @@ defmodule SlackexWeb.SousLive.ViewerPreferenceSeamTest do
 
   setup %{conn: conn} do
     FunWithFlags.enable(:sous)
-    on_exit(fn -> FunWithFlags.enable(:sous) end)
 
     original = Application.get_env(:slackex, :viewer_preference_store)
 

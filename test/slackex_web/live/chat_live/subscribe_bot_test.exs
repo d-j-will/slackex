@@ -13,11 +13,11 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
     Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, {:shared, self()})
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, :manual) end)
 
-    # FunWithFlags state is shared (not sandboxed); re-enable per test so
-    # the flag-off test cannot leak into siblings (cf. decide_test.exs).
-    # No on_exit disable: FunWithFlags persists via the DB, and on_exit runs
-    # after the test process (the shared-sandbox owner) has died — the write
-    # raises DBConnection.OwnershipError on slow runners (CI run 27250133107).
+    # Flag writes go through the sandboxed Repo and roll back with each test,
+    # so setup must enable per test. Never disable in on_exit: it runs after
+    # the sandbox owner has died — DBConnection.OwnershipError on slow runners
+    # (CI run 27250133107) — and the rollback already cleaned up. Enforced by
+    # TestTeardownSafetyTest.
     FunWithFlags.enable(:bot_subscription)
 
     owner = insert(:user, username: "owner-#{System.unique_integer([:positive])}")

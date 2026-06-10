@@ -14,10 +14,6 @@ defmodule Slackex.Notifications.PushEligibilityTest do
     Process.put(:push_test_pid, self())
     FunWithFlags.enable(:push_notifications)
 
-    on_exit(fn ->
-      FunWithFlags.disable(:push_notifications)
-    end)
-
     :ok
   end
 
