@@ -15,8 +15,10 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
 
     # FunWithFlags state is shared (not sandboxed); re-enable per test so
     # the flag-off test cannot leak into siblings (cf. decide_test.exs).
+    # No on_exit disable: FunWithFlags persists via the DB, and on_exit runs
+    # after the test process (the shared-sandbox owner) has died — the write
+    # raises DBConnection.OwnershipError on slow runners (CI run 27250133107).
     FunWithFlags.enable(:bot_subscription)
-    on_exit(fn -> FunWithFlags.disable(:bot_subscription) end)
 
     owner = insert(:user, username: "owner-#{System.unique_integer([:positive])}")
 
