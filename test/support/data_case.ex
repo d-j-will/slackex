@@ -81,13 +81,24 @@ defmodule Slackex.DataCase do
   # Terminates all active ChannelServers and waits for each to finish
   # shutdown (including the synchronous DB flush in terminate/2).
   # A 5-second timeout per server catches genuinely stuck processes.
-  defp shutdown_channel_servers do
-    pids =
-      try do
-        Horde.Registry.select(Slackex.Messaging.ChannelRegistry, [{{:_, :"$1", :_}, [], [:"$1"]}])
-      catch
-        :exit, _ -> []
-      end
+  #
+  # Horde.Registry is CRDT-based and eventually consistent, so a server
+  # registered in a test's final moments can be missing from a one-shot
+  # registry select. We therefore union the registry with the supervisor's
+  # own child list (authoritative on a single node) and re-sweep until empty:
+  # a survivor's pending :batch_flush (2s timer) would otherwise fire in the
+  # inter-test gap under the reverted :manual mode — "ChannelServer flush
+  # crashed: cannot find ownership".
+  #
+  # KNOWN RESIDUAL (log-noise only, slackex bead: teardown-flush deep dive):
+  # 2-3 "flush crashed ... mode :manual" lines per full-suite run, emitted
+  # DURING this sweep's terminate-flush (probe-verified: crashing pid ==
+  # swept pid) despite the sandbox owner being alive. Does not reproduce in
+  # isolated file runs — full-suite context only. Benign by construction:
+  # the flushed rows belong to the dying test's rolled-back transaction and
+  # channel ids are unique per test; the suite stays green.
+  defp shutdown_channel_servers(sweeps_left \\ 3) do
+    pids = active_channel_servers()
 
     for pid <- pids, Process.alive?(pid) do
       ref = Process.monitor(pid)
@@ -105,6 +116,33 @@ defmodule Slackex.DataCase do
         5_000 -> :ok
       end
     end
+
+    if pids != [] and sweeps_left > 1, do: shutdown_channel_servers(sweeps_left - 1)
+
+    :ok
+  end
+
+  defp active_channel_servers do
+    registered =
+      try do
+        Horde.Registry.select(Slackex.Messaging.ChannelRegistry, [{{:_, :"$1", :_}, [], [:"$1"]}])
+      catch
+        :exit, _ -> []
+      end
+
+    supervised =
+      try do
+        Slackex.Messaging.ChannelSupervisor
+        |> Horde.DynamicSupervisor.which_children()
+        |> Enum.flat_map(fn
+          {_, pid, _, _} when is_pid(pid) -> [pid]
+          _ -> []
+        end)
+      catch
+        :exit, _ -> []
+      end
+
+    Enum.uniq(registered ++ supervised)
   end
 
   @doc """
