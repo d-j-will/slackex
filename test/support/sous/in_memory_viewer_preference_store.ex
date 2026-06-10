@@ -7,11 +7,13 @@ defmodule Slackex.Sous.ViewerPreference.InMemoryStore do
 
   @behaviour Slackex.Sous.ViewerPreference.Store
 
+  alias Slackex.Sous.ViewerPreference
+
   import Phoenix.Component, only: [assign: 3]
 
   @impl true
   def load(socket) do
-    assign(socket, :active_viewer_id, Slackex.Sous.ViewerPreference.default_viewer_id())
+    assign(socket, :active_viewer_id, ViewerPreference.default_viewer_id())
   end
 
   @impl true

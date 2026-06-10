@@ -3,6 +3,7 @@ defmodule Slackex.Chat.MembersTest do
 
   alias Slackex.Chat
   alias Slackex.Chat.Members
+  alias Slackex.Integrations.McpTokens
 
   import Slackex.TestFactory
 
@@ -84,7 +85,7 @@ defmodule Slackex.Chat.MembersTest do
     setup %{} do
       # Bot created through the production path (token mint), not a fixture.
       {:ok, %{bot_user: bot}} =
-        Slackex.Integrations.McpTokens.create_mcp_token(%{
+        McpTokens.create_mcp_token(%{
           name: "helper-#{System.unique_integer([:positive])}"
         })
 
@@ -131,7 +132,7 @@ defmodule Slackex.Chat.MembersTest do
   describe "remove_bot_member/3" do
     setup %{channel: channel, owner: owner} do
       {:ok, %{bot_user: bot}} =
-        Slackex.Integrations.McpTokens.create_mcp_token(%{
+        McpTokens.create_mcp_token(%{
           name: "helper-#{System.unique_integer([:positive])}"
         })
 

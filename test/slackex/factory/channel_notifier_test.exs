@@ -9,6 +9,7 @@ defmodule Slackex.Factory.ChannelNotifierTest do
   use Oban.Testing, repo: Slackex.Repo
 
   alias Slackex.Factory
+  alias Slackex.Factory.ChannelNotifier
 
   setup do
     # Drain the ChannelNotifier's mailbox to prevent stale events from
@@ -35,7 +36,7 @@ defmodule Slackex.Factory.ChannelNotifierTest do
       notifier_pid =
         if is_nil(notifier_pid) or not Process.alive?(notifier_pid) do
           {:ok, pid} =
-            Slackex.Factory.ChannelNotifier.start_link(name: Slackex.Factory.ChannelNotifier)
+            ChannelNotifier.start_link(name: ChannelNotifier)
 
           pid
         else

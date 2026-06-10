@@ -7,13 +7,16 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Chat.MessageGrouping
   alias Slackex.Messaging
   alias Slackex.Notifications.ActiveTracker
+  alias Slackex.Notifications.CatchupServer
   alias Slackex.Notifications.DeviceTokens
   alias Slackex.Notifications.OnlineTracker
   alias Slackex.Notifications.Preference
   alias Slackex.Notifications.PushHealth
+  alias Slackex.Notifications.TestPush
   alias Slackex.Search
   alias SlackexWeb.ChatLive.BotSubscription
   alias SlackexWeb.ChatLive.BrowseChannelsModal
+  alias SlackexWeb.ChatLive.Catchup
   alias SlackexWeb.ChatLive.ChannelMembersModal
   alias SlackexWeb.ChatLive.Conversations
   alias SlackexWeb.ChatLive.CreateChannelModal
@@ -66,10 +69,9 @@ defmodule SlackexWeb.ChatLive.Index do
     {unread_counts, catchup_summary} =
       if catchup_enabled do
         try do
-          catchup = Slackex.Notifications.CatchupServer.build_catchup(user.id)
+          catchup = CatchupServer.build_catchup(user.id)
 
-          {SlackexWeb.ChatLive.Catchup.merge_unread(base_unread_counts, catchup),
-           SlackexWeb.ChatLive.Catchup.summary(catchup)}
+          {Catchup.merge_unread(base_unread_counts, catchup), Catchup.summary(catchup)}
         rescue
           e ->
             require Logger
@@ -937,7 +939,7 @@ defmodule SlackexWeb.ChatLive.Index do
     user = socket.assigns.current_user
 
     socket =
-      case Slackex.Notifications.TestPush.send(user.id) do
+      case TestPush.send(user.id) do
         {:ok, 0} ->
           put_flash(
             socket,

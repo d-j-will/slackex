@@ -1,8 +1,8 @@
 defmodule Slackex.Sous.WorkItemEventTest do
   use Slackex.DataCase, async: true
 
-  alias Slackex.Sous.WorkItemEvent
   alias Slackex.Infrastructure.Snowflake
+  alias Slackex.Sous.WorkItemEvent
 
   test "valid event derives inserted_at from id and accepts known types" do
     id = Snowflake.generate()

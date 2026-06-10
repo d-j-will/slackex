@@ -8,6 +8,8 @@ defmodule Slackex.Sous.WorkItemFacet do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Slackex.Sous.FacetPrompt
+
   @primary_key false
 
   @attentions [:act, :watch, :know, :hidden]
@@ -64,7 +66,7 @@ defmodule Slackex.Sous.WorkItemFacet do
     cond do
       is_nil(row_or_nil) or is_nil(row_or_nil.facet_text) -> :never_generated
       not is_nil(row_or_nil.facet_stale_at) -> :stale
-      row_or_nil.facet_prompt_version < Slackex.Sous.FacetPrompt.prompt_version() -> :stale
+      row_or_nil.facet_prompt_version < FacetPrompt.prompt_version() -> :stale
       true -> :fresh
     end
   end

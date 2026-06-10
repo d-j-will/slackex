@@ -4,9 +4,9 @@ defmodule Slackex.SousCardTest do
 
   import Ecto.Query
 
+  alias Slackex.Repo
   alias Slackex.Sous
   alias Slackex.Sous.{WorkItem, WorkItemEvent}
-  alias Slackex.Repo
 
   setup do
     user = insert(:user)

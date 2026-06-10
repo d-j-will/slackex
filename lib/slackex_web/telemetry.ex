@@ -4,6 +4,7 @@ defmodule SlackexWeb.Telemetry do
   require Logger
 
   alias Slackex.Analytics.TelemetryHandler
+  alias Slackex.Notifications.OnlineTracker
 
   @queue_names [:default, :notifications, :embeddings, :link_previews]
 
@@ -237,6 +238,6 @@ defmodule SlackexWeb.Telemetry do
   end
 
   defmodule OnlineProvider do
-    def count, do: Slackex.Notifications.OnlineTracker.count_online()
+    def count, do: OnlineTracker.count_online()
   end
 end

@@ -10,6 +10,7 @@ defmodule SlackexWeb.SousLive.InServiceB2IndicatorTest do
   import Phoenix.LiveViewTest
 
   alias Slackex.Sous
+  alias Slackex.Sous.FacetPrompt
 
   setup %{conn: conn} do
     FunWithFlags.enable(:sous)
@@ -41,7 +42,7 @@ defmodule SlackexWeb.SousLive.InServiceB2IndicatorTest do
       Sous.set_facet_text(wi.id, "cto", %{
         facet_text: "old",
         model: "stub",
-        prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+        prompt_version: FacetPrompt.prompt_version(),
         state_version: 0
       })
 
@@ -59,7 +60,7 @@ defmodule SlackexWeb.SousLive.InServiceB2IndicatorTest do
       Sous.set_facet_text(wi.id, "cto", %{
         facet_text: "old",
         model: "stub",
-        prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+        prompt_version: FacetPrompt.prompt_version(),
         state_version: 0
       })
 
@@ -75,7 +76,7 @@ defmodule SlackexWeb.SousLive.InServiceB2IndicatorTest do
       Sous.set_facet_text(wi.id, "cto", %{
         facet_text: "old",
         model: "stub",
-        prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+        prompt_version: FacetPrompt.prompt_version(),
         state_version: 0
       })
 
@@ -91,7 +92,7 @@ defmodule SlackexWeb.SousLive.InServiceB2IndicatorTest do
       Sous.set_facet_text(wi.id, "cto", %{
         facet_text: "new",
         model: "stub",
-        prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+        prompt_version: FacetPrompt.prompt_version(),
         state_version: 1
       })
 
@@ -108,7 +109,7 @@ defmodule SlackexWeb.SousLive.InServiceB2IndicatorTest do
       Sous.set_facet_text(wi.id, "cto", %{
         facet_text: "fresh",
         model: "stub",
-        prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+        prompt_version: FacetPrompt.prompt_version(),
         state_version: 0
       })
 

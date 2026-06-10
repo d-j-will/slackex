@@ -7,6 +7,8 @@ defmodule Slackex.Ops.SystemSummary do
 
   require Logger
 
+  alias Slackex.Notifications.OnlineTracker
+
   @queue_names [:default, :notifications, :embeddings, :link_previews]
 
   @type snapshot :: %{
@@ -137,7 +139,7 @@ defmodule Slackex.Ops.SystemSummary do
   defmodule OnlineProvider do
     @moduledoc false
 
-    def count, do: Slackex.Notifications.OnlineTracker.count_online()
+    def count, do: OnlineTracker.count_online()
   end
 
   defmodule QueueProvider do

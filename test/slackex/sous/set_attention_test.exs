@@ -3,9 +3,9 @@ defmodule Slackex.Sous.SetAttentionTest do
 
   import Ecto.Query
 
+  alias Slackex.Repo
   alias Slackex.Sous
   alias Slackex.Sous.{WorkItemEvent, WorkItemFacet}
-  alias Slackex.Repo
 
   setup do
     user = insert(:user)

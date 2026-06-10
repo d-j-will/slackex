@@ -83,7 +83,7 @@ jobs:
         run: mix format --check-formatted
 
       - name: Credo
-        run: mix credo
+        run: mix credo --strict
 
       - name: Dialyzer
         run: mix dialyzer --format github

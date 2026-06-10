@@ -1,6 +1,7 @@
 defmodule Slackex.Sous.WorkItemFacetTest do
   use Slackex.DataCase, async: true
 
+  alias Slackex.Sous.FacetPrompt
   alias Slackex.Sous.WorkItemFacet
 
   test "attentions/0 enumerates the four values" do
@@ -96,7 +97,7 @@ defmodule Slackex.Sous.WorkItemFacetTest do
     test "row with facet_text + current prompt_version + no stale_at -> :fresh" do
       row = %WorkItemFacet{
         facet_text: "text",
-        facet_prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+        facet_prompt_version: FacetPrompt.prompt_version(),
         facet_stale_at: nil
       }
 

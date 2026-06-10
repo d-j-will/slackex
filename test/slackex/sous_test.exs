@@ -1,9 +1,9 @@
 defmodule Slackex.SousTest do
   use Slackex.DataCase, async: true
 
-  alias Slackex.Sous
-  alias Slackex.Sous.{WorkItem, WorkItemEvent, Projection}
   alias Slackex.Repo
+  alias Slackex.Sous
+  alias Slackex.Sous.{Projection, WorkItem, WorkItemEvent}
 
   import Ecto.Query
 

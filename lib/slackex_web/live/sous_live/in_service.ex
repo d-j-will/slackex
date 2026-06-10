@@ -17,6 +17,7 @@ defmodule SlackexWeb.SousLive.InService do
   alias Slackex.Repo
   alias Slackex.Sous
   alias Slackex.Sous.{FacetPrompt, FacetWorker, Viewer, WorkItemFacet}
+  alias Slackex.Sous.ViewerPreference
 
   @columns [
     {:order, "Order"},
@@ -52,7 +53,7 @@ defmodule SlackexWeb.SousLive.InService do
         |> assign(:drawer_failed, MapSet.new())
         |> assign(:drawer_facets_topic, nil)
         |> assign(:stale_map, MapSet.new())
-        |> Slackex.Sous.ViewerPreference.load()
+        |> ViewerPreference.load()
 
       {:ok, socket}
     else
@@ -70,7 +71,7 @@ defmodule SlackexWeb.SousLive.InService do
 
     socket =
       socket
-      |> Slackex.Sous.ViewerPreference.put(viewer_id)
+      |> ViewerPreference.put(viewer_id)
       |> assign(:facet_map, Sous.facets_for_viewer(viewer_id))
       |> assign(:stale_map, Sous.stale_facets_for_viewer(viewer_id))
 
@@ -83,7 +84,7 @@ defmodule SlackexWeb.SousLive.InService do
 
     socket =
       socket
-      |> Slackex.Sous.ViewerPreference.put(viewer_id)
+      |> ViewerPreference.put(viewer_id)
       |> assign(:facet_map, Sous.facets_for_viewer(viewer_id))
       |> assign(:stale_map, Sous.stale_facets_for_viewer(viewer_id))
 

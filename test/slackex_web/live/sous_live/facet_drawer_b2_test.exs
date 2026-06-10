@@ -18,6 +18,7 @@ defmodule SlackexWeb.SousLive.FacetDrawerB2Test do
 
   alias Slackex.Repo
   alias Slackex.Sous
+  alias Slackex.Sous.FacetPrompt
   alias Slackex.Sous.WorkItemFacet
 
   setup %{conn: conn} do
@@ -132,7 +133,7 @@ defmodule SlackexWeb.SousLive.FacetDrawerB2Test do
           Sous.set_facet_text(wi.id, v.id, %{
             facet_text: "pre-existing",
             model: "stub",
-            prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+            prompt_version: FacetPrompt.prompt_version(),
             state_version: 0
           })
       end
@@ -171,7 +172,7 @@ defmodule SlackexWeb.SousLive.FacetDrawerB2Test do
           Sous.set_facet_text(wi.id, v.id, %{
             facet_text: "old",
             model: "stub",
-            prompt_version: Slackex.Sous.FacetPrompt.prompt_version(),
+            prompt_version: FacetPrompt.prompt_version(),
             state_version: 0
           })
       end
@@ -217,7 +218,7 @@ defmodule SlackexWeb.SousLive.FacetDrawerB2Test do
         args: %{
           "work_item_id" => wi.id,
           "viewer_id" => "cto",
-          "prompt_version" => Slackex.Sous.FacetPrompt.prompt_version(),
+          "prompt_version" => FacetPrompt.prompt_version(),
           "state_version" => 0
         },
         state: "discarded",

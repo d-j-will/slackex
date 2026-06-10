@@ -1,8 +1,8 @@
 defmodule Slackex.Sous.WorkItemTest do
   use Slackex.DataCase, async: true
 
-  alias Slackex.Sous.WorkItem
   alias Slackex.Infrastructure.Snowflake
+  alias Slackex.Sous.WorkItem
 
   test "changeset derives inserted_at from the Snowflake id" do
     id = Snowflake.generate()
