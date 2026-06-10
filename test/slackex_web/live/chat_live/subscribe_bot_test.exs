@@ -10,9 +10,6 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
   alias Slackex.Repo
 
   setup %{conn: conn} do
-    Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, {:shared, self()})
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, :manual) end)
-
     # Flag writes go through the sandboxed Repo and roll back with each test,
     # so setup must enable per test. Never disable in on_exit: it runs after
     # the sandbox owner has died — DBConnection.OwnershipError on slow runners

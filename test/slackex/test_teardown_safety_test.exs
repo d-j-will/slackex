@@ -13,6 +13,13 @@ defmodule Slackex.TestTeardownSafetyTest do
   test's transaction (verified empirically — a flag enabled in one test is
   invisible to the next). Establish state in setup; let the sandbox clean up.
 
+  Also forbids direct `Sandbox.mode/2` calls in test files: `setup_sandbox`
+  already provides shared mode (via `start_owner!`) for `async: false` tests
+  with a teardown that flushes and stops ChannelServers BEFORE revoking the
+  connection. Manual mode juggling re-points ownership at the mortal test pid
+  and breaks that ordering ("ChannelServer flush crashed: cannot find
+  ownership ... mode :manual").
+
   For a genuinely DB-free exception the scanner misreads, append
   `# teardown-db-ok` on the offending line.
 
@@ -26,13 +33,41 @@ defmodule Slackex.TestTeardownSafetyTest do
   @db_call ~r/\b(?:Repo|ReadRepo)\.\w|\bFunWithFlags\./
   @max_block_lines 15
 
-  test "on_exit callbacks never touch the database" do
+  test "no test file manipulates the sandbox mode directly" do
+    # setup_sandbox (DataCase/ConnCase) already runs async: false tests in
+    # shared mode via start_owner!, with a durable owner that survives until
+    # ChannelServers are flushed and stopped in its teardown. A manual
+    # `Sandbox.mode(repo, {:shared, self()})` re-points ownership at the
+    # mortal test pid, and an on_exit reset to :manual runs BEFORE that
+    # teardown (LIFO) — yanking DB access from the ChannelServer
+    # terminate-flush ("flush crashed: cannot find ownership ... mode
+    # :manual"). Don't manage the sandbox in tests; setup_sandbox owns it.
     offenders =
-      @test_root
-      |> Path.join("**/*_test.exs")
-      |> Path.wildcard()
-      |> Enum.reject(&String.ends_with?(&1, "test_teardown_safety_test.exs"))
-      |> Enum.flat_map(&offending_on_exits/1)
+      test_files()
+      |> Enum.flat_map(fn file ->
+        file
+        |> File.read!()
+        |> String.split("\n")
+        |> Enum.with_index(1)
+        |> Enum.filter(fn {line, _n} ->
+          String.contains?(line, "Sandbox.mode(") and
+            not String.contains?(line, "teardown-db-ok")
+        end)
+        |> Enum.map(fn {_line, n} -> {Path.relative_to_cwd(file), n} end)
+      end)
+
+    assert offenders == [],
+           """
+           Test files must not call Ecto.Adapters.SQL.Sandbox.mode/2 —
+           setup_sandbox already provides shared mode for async: false tests
+           with the correct teardown ordering. Offenders:
+
+           #{Enum.map_join(offenders, "\n", fn {file, line} -> "  #{file}:#{line}" end)}
+           """
+  end
+
+  test "on_exit callbacks never touch the database" do
+    offenders = Enum.flat_map(test_files(), &offending_on_exits/1)
 
     assert offenders == [],
            """
@@ -43,6 +78,13 @@ defmodule Slackex.TestTeardownSafetyTest do
 
            #{Enum.map_join(offenders, "\n", fn {file, line} -> "  #{file}:#{line}" end)}
            """
+  end
+
+  defp test_files do
+    @test_root
+    |> Path.join("**/*_test.exs")
+    |> Path.wildcard()
+    |> Enum.reject(&String.ends_with?(&1, "test_teardown_safety_test.exs"))
   end
 
   defp offending_on_exits(file) do

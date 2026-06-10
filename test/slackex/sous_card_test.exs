@@ -9,10 +9,6 @@ defmodule Slackex.SousCardTest do
   alias Slackex.Repo
 
   setup do
-    # ChannelServer runs in its own process; share the sandbox connection with it.
-    Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, {:shared, self()})
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, :manual) end)
-
     user = insert(:user)
     {:ok, channel} = Slackex.Chat.create_channel(user.id, %{name: "deploys"})
 

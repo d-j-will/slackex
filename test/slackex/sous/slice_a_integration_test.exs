@@ -9,9 +9,6 @@ defmodule Slackex.Sous.SliceAIntegrationTest do
   alias Slackex.Sous.WorkItem
 
   setup %{conn: conn} do
-    Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, {:shared, self()})
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, :manual) end)
-
     FunWithFlags.enable(:sous)
 
     alice = insert(:user, username: "alice")

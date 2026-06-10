@@ -6,9 +6,6 @@ defmodule SlackexWeb.ChatLive.DecideTest do
   alias Slackex.Sous
 
   setup %{conn: conn} do
-    Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, {:shared, self()})
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.mode(Slackex.Repo, :manual) end)
-
     # Flag writes go through the sandboxed Repo and roll back with each test
     # (the test_helper "global enable" block is itself sandbox-rolled-back),
     # so setup must enable per test. Never disable in on_exit: it runs after
