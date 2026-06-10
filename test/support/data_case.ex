@@ -100,24 +100,40 @@ defmodule Slackex.DataCase do
   defp shutdown_channel_servers(sweeps_left \\ 3) do
     pids = active_channel_servers()
 
-    for pid <- pids, Process.alive?(pid) do
-      ref = Process.monitor(pid)
+    if pids != [] do
+      # Since on_exit runs after the test process exits, the test's Sandbox connection
+      # is already revoked and closed. If ChannelServer tries to flush its writes,
+      # it will crash with DBConnection.OwnershipError.
+      # To fix this without polluting production code, we provide a temporary dummy 
+      # Sandbox connection for the teardown flush. Because the test transaction has 
+      # rolled back, the flush will safely fail with :target_deleted and cleanly exit.
+      dummy_repo = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.Repo, shared: false)
+      dummy_read = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.ReadRepo, shared: false)
 
-      _ =
-        try do
-          Horde.DynamicSupervisor.terminate_child(Slackex.Messaging.ChannelSupervisor, pid)
-        catch
-          :exit, _ -> :ok
+      for pid <- pids, Process.alive?(pid) do
+        ref = Process.monitor(pid)
+
+        _ =
+          try do
+            Ecto.Adapters.SQL.Sandbox.allow(Slackex.Repo, dummy_repo, pid)
+            Ecto.Adapters.SQL.Sandbox.allow(Slackex.ReadRepo, dummy_read, pid)
+            Horde.DynamicSupervisor.terminate_child(Slackex.Messaging.ChannelSupervisor, pid)
+          catch
+            :exit, _ -> :ok
+          end
+
+        receive do
+          {:DOWN, ^ref, :process, ^pid, _} -> :ok
+        after
+          5_000 -> :ok
         end
-
-      receive do
-        {:DOWN, ^ref, :process, ^pid, _} -> :ok
-      after
-        5_000 -> :ok
       end
-    end
 
-    if pids != [] and sweeps_left > 1, do: shutdown_channel_servers(sweeps_left - 1)
+      Ecto.Adapters.SQL.Sandbox.stop_owner(dummy_repo)
+      Ecto.Adapters.SQL.Sandbox.stop_owner(dummy_read)
+
+      if sweeps_left > 1, do: shutdown_channel_servers(sweeps_left - 1)
+    end
 
     :ok
   end

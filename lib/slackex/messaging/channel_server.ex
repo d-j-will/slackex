@@ -359,6 +359,11 @@ defmodule Slackex.Messaging.ChannelServer do
               "ChannelServer #{state.channel_type}:#{state.channel_id} flush rejected: epoch stale"
             )
 
+          {:error, :target_deleted} ->
+            Logger.info(
+              "ChannelServer #{state.channel_type}:#{state.channel_id} flush skipped: target deleted"
+            )
+
           {:error, reason} ->
             Logger.error(
               "ChannelServer #{state.channel_type}:#{state.channel_id} flush failed: #{inspect(reason)}"
