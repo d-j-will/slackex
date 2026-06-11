@@ -20,6 +20,26 @@ Always ensure Docker Desktop and PostgreSQL are running before attempting to sta
 functional
 @nw-functional-software-crafter
 
+## Architecture Patterns
+
+### Gather → Decide → Act
+
+The default shape for any context function that mixes **database reads, business rules, and side-effects** (the typical "do a thing and apply its consequences" operation). Split the function into three stages so the rules become a pure, independently-testable core:
+
+1. **Gather** — run the read-only `Repo` queries and assemble a plain context struct. No decisions here; just facts. Where the decision depends on the *post-write* state (counts that include the row you are about to insert), the Gather must **project** that state explicitly, and a comment must say so — the decision is then made on the same numbers the side-effects will produce.
+2. **Decide** — a **pure** function (`@spec evaluate_*(%Context{}) :: %Action{}`) in a dedicated `Rules` module. No `Ecto`, no `Repo`, no IO — only thresholds (as module attributes) and branching. It returns an `Action` struct of booleans/flags (plus an `error` field for pre-flight rejections). Dispatch on the input struct with function-head guards rather than `if` chains.
+3. **Act** — read the `Action` and execute the flagged side-effects. When several writes must succeed or fail together, wrap them in a single `Ecto.Multi` transaction. If `action.error` is set, return `{:error, reason}` and write nothing.
+
+**Why:** the rules can be exercised with plain structs (no DB fixtures), the thresholds live in one obvious place, and the boundary between "what we decided" and "what we did" is explicit. This is the functional-core / imperative-shell idea applied at the context-function level, and it complements the LiveView anti-corruption rule below (validate at the boundary, trust the shape inside).
+
+**Reference implementation:** `Slackex.Chat.Moderation.create_abuse_report/3` (orchestrator) + `Slackex.Chat.Moderation.Rules` (pure core: `ModerationContext`, `ModerationAction`, `evaluate_abuse_report/1`). Pure-core tests in `test/slackex/chat/moderation/rules_test.exs` need no database.
+
+**When to apply:**
+- **New features** — any new context operation that gathers data, applies business rules, and produces side-effects should be built this way from the start. Put the rules in a `Rules` (or similarly-named pure) module and unit-test them directly.
+- **Refactoring** — candidates are existing context functions that interleave `Repo` calls with `if`/`case` policy logic and writes (often a `with` chain doing pre-flight checks, then a cascade of `upsert_*`/`maybe_apply_*` side-effects). Extract the policy into a pure core, leave a thin orchestrator. Preserve behaviour exactly — pin it with the existing tests first, and watch for post-write timing (project it in Gather).
+
+Not every function needs this. A pure read, a trivial single insert, or a function with no branching policy stays as-is — the pattern earns its keep when **rules** and **IO** are tangled.
+
 ## Development Principles
 
 **Delivery philosophy (read first): [`docs/software-delivery-principles.md`](docs/software-delivery-principles.md).** This is the project-agnostic *why* behind how we ship — Lean flow (Muda/Mura/Muri), trunk-based development / one-piece flow, build-quality-in (jidoka) via a single gate with no local↔remote seam, fast feedback as a defended constraint, and the two decoupling mechanisms that make small-batch delivery safe (dark shipping for release, expand/contract for migration). When a delivery trade-off is unclear, reason in flow/batch-size terms and prefer integrating small over batching onto branches. The concrete instantiation of these principles in this repo lives in [`docs/engineering-principles.md`](docs/engineering-principles.md).
