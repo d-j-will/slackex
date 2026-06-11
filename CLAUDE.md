@@ -35,8 +35,10 @@ The default shape for any context function that mixes **database reads, business
 **Reference implementation:** `Slackex.Chat.Moderation.create_abuse_report/3` (orchestrator) + `Slackex.Chat.Moderation.Rules` (pure core: `ModerationContext`, `ModerationAction`, `evaluate_abuse_report/1`). Pure-core tests in `test/slackex/chat/moderation/rules_test.exs` need no database.
 
 **When to apply:**
-- **New features** — any new context operation that gathers data, applies business rules, and produces side-effects should be built this way from the start. Put the rules in a `Rules` (or similarly-named pure) module and unit-test them directly.
+- **New features** — any new context operation that gathers data, applies business rules, and produces side-effects should be built this way from the start. Put the rules in a `Rules` (or similarly-named pure) module and unit-test them directly. In greenfield code you usually control the timing, so prefer **decide on current state, then write once** — this avoids projection entirely and keeps *all* the decision logic inside the pure, DB-free core (where the cheap unit tests live).
 - **Refactoring** — candidates are existing context functions that interleave `Repo` calls with `if`/`case` policy logic and writes (often a `with` chain doing pre-flight checks, then a cascade of `upsert_*`/`maybe_apply_*` side-effects). Extract the policy into a pure core, leave a thin orchestrator. Preserve behaviour exactly — pin it with the existing tests first, and watch for post-write timing (project it in Gather).
+
+**Projection is a compromise, not a goal.** When the Gather has to project post-write state (as `Moderation` does — the original counted distinct reporters and velocity signals *after* inserting the report and auto-block), the "+1 for the row we're about to write" arithmetic lives in the orchestrator, *outside* the pure core — so it's only covered by DB-backed flow tests, not the pure `Rules` unit tests. Accept this only to preserve existing behaviour during a refactor. For new work, design the timing so you don't need it.
 
 Not every function needs this. A pure read, a trivial single insert, or a function with no branching policy stays as-is — the pattern earns its keep when **rules** and **IO** are tangled.
 
