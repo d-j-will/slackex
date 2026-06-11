@@ -51,8 +51,12 @@ if [ -n "$STAGED_EX" ]; then
     exit 1
   fi
 
+  # MIX_ENV=test to match CI (its quality job runs everything under test). In
+  # :dev, elixirc_paths excludes test/support, so dialyzer never analyses those
+  # modules — a dev-env gate green-lights unmatched_returns in test helpers that
+  # CI then catches under :test. Same local↔CI seam as the credo flag above.
   echo "Pre-commit: running Dialyzer..."
-  mix dialyzer
+  MIX_ENV=test mix dialyzer
   if [ $? -ne 0 ]; then
     echo ""
     echo "Dialyzer check failed. Fix type issues before committing."

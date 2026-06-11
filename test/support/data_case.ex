@@ -115,8 +115,10 @@ defmodule Slackex.DataCase do
 
         _ =
           try do
-            Ecto.Adapters.SQL.Sandbox.allow(Slackex.Repo, dummy_repo, pid)
-            Ecto.Adapters.SQL.Sandbox.allow(Slackex.ReadRepo, dummy_read, pid)
+            # allow/3 returns :ok | {:already, :owner | :allowed}; we don't care
+            # which — bind to _ so :unmatched_returns (a dialyzer flag) stays quiet.
+            _ = Ecto.Adapters.SQL.Sandbox.allow(Slackex.Repo, dummy_repo, pid)
+            _ = Ecto.Adapters.SQL.Sandbox.allow(Slackex.ReadRepo, dummy_read, pid)
             Horde.DynamicSupervisor.terminate_child(Slackex.Messaging.ChannelSupervisor, pid)
           catch
             :exit, _ -> :ok
