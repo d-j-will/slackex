@@ -20,7 +20,7 @@ set -e
 export MIX_ENV=test
 
 # Auto-numbered steps: adding/removing a gate only requires updating TOTAL_STEPS.
-TOTAL_STEPS=13
+TOTAL_STEPS=12
 STEP=0
 step() {
   STEP=$((STEP + 1))
@@ -34,19 +34,20 @@ echo ""
 # Quality — mirrors .github/workflows/ci-deploy.yml `quality` job (MIX_ENV=test)
 # ---------------------------------------------------------------------------
 
-step "Compiling (--warnings-as-errors)..."
+step "Compiling (--warnings-as-errors, clean)..."
+# Forced clean compile: a warm _build can hide warnings that CI's fresh checkout
+# surfaces, so we force a full recompile here as an independent gate before lint.
 mix compile --warnings-as-errors --force
 echo "PASS: Compile"
 echo ""
 
-step "Checking formatting..."
-mix format --check-formatted
-echo "PASS: Formatting"
-echo ""
-
-step "Running Credo..."
-mix credo
-echo "PASS: Credo"
+step "Running lint (format + credo --strict)..."
+# `mix lint` = format --check-formatted + credo --strict + compile
+# --warnings-as-errors, defined once in mix.exs and shared with CI's quality job
+# — no flag drift between local and CI. Its compile step is a fast no-op after
+# the forced clean compile above.
+mix lint
+echo "PASS: Lint"
 echo ""
 
 step "Running Dialyzer..."

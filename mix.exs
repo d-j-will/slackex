@@ -137,7 +137,8 @@ defmodule Slackex.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:boundary, "~> 0.10", runtime: false},
       {:ex_machina, "~> 2.8", only: :test},
-      {:lazy_html, ">= 0.1.0", only: :test}
+      {:lazy_html, ">= 0.1.0", only: :test},
+      {:stream_data, "~> 1.0", only: [:test]}
     ]
   end
 

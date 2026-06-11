@@ -104,8 +104,8 @@ defmodule Slackex.DataCase do
       # Since on_exit runs after the test process exits, the test's Sandbox connection
       # is already revoked and closed. If ChannelServer tries to flush its writes,
       # it will crash with DBConnection.OwnershipError.
-      # To fix this without polluting production code, we provide a temporary dummy 
-      # Sandbox connection for the teardown flush. Because the test transaction has 
+      # To fix this without polluting production code, we provide a temporary dummy
+      # Sandbox connection for the teardown flush. Because the test transaction has
       # rolled back, the flush will safely fail with :target_deleted and cleanly exit.
       dummy_repo = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.Repo, shared: false)
       dummy_read = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.ReadRepo, shared: false)

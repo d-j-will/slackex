@@ -36,22 +36,18 @@ fi
 
 # Elixir checks (only if .ex/.exs files staged)
 if [ -n "$STAGED_EX" ]; then
-  # MIX_ENV=test to match CI's quality job. `mix format` resolves dep formatter
-  # configs (.formatter.exs import_deps / the migrations subdirectory's ecto_sql
-  # import) from _build/$MIX_ENV, so dev and test can disagree on migration files.
-  echo "Pre-commit: checking formatting..."
-  MIX_ENV=test mix format --check-formatted
+  # `mix lint` = format --check-formatted + credo --strict + compile
+  # --warnings-as-errors, all defined once in mix.exs and shared with CI's
+  # quality job — so the flags can't drift between local and CI (the credo
+  # --strict seam that let trailing whitespace pass locally but fail in CI).
+  # MIX_ENV=test matches CI and lets `mix format` resolve dep formatter configs
+  # (the migrations subdir imports ecto_sql) from _build/test.
+  echo "Pre-commit: running lint (format + credo --strict + compile)..."
+  MIX_ENV=test mix lint
   if [ $? -ne 0 ]; then
     echo ""
-    echo "Formatting check failed. Run 'MIX_ENV=test mix format' and re-stage."
-    exit 1
-  fi
-
-  echo "Pre-commit: running Credo..."
-  mix credo
-  if [ $? -ne 0 ]; then
-    echo ""
-    echo "Credo check failed. Fix issues before committing."
+    echo "Lint failed. Run 'MIX_ENV=test mix lint' for details; if it is formatting,"
+    echo "run 'MIX_ENV=test mix format' and re-stage."
     exit 1
   fi
 
