@@ -73,6 +73,19 @@ if [ -n "$STAGED_EX" ]; then
     echo "Tests failed. Fix failures before committing."
     exit 1
   fi
+
+  # Contract tests run as a separate CI step (and in pre-deploy), excluded from
+  # the default `mix test` run above. They're cheap (~3s) and guard things a
+  # normal test run can't see — Boundary enforcement and architecture-doc
+  # accuracy — so a failure here would otherwise only surface in CI. e2e stays
+  # out of pre-commit (slower); pre-deploy covers it before any tag.
+  echo "Pre-commit: running contract tests..."
+  mix test --only contract
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "Contract tests failed. Fix before committing."
+    exit 1
+  fi
 fi
 
 echo "Pre-commit: all checks passed."
