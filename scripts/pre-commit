@@ -36,14 +36,21 @@ fi
 
 # Elixir checks (only if .ex/.exs files staged)
 if [ -n "$STAGED_EX" ]; then
+  # Run every Elixir check under MIX_ENV=test, set ONCE for the whole block to
+  # match CI's quality job (which sets `MIX_ENV: test` globally). Setting it here
+  # rather than per-command is deliberate: dev↔test seams (credo --strict that
+  # only fires in CI; dialyzer skipping test/support because :dev excludes it from
+  # elixirc_paths) all came from a local gate running a weaker env/flag than CI.
+  # A single export means any check added below inherits CI's env automatically
+  # and cannot reopen that seam. It also lets `mix format` resolve dep formatter
+  # configs (the migrations subdir imports ecto_sql) from _build/test.
+  export MIX_ENV=test
+
   # `mix lint` = format --check-formatted + credo --strict + compile
-  # --warnings-as-errors, all defined once in mix.exs and shared with CI's
-  # quality job — so the flags can't drift between local and CI (the credo
-  # --strict seam that let trailing whitespace pass locally but fail in CI).
-  # MIX_ENV=test matches CI and lets `mix format` resolve dep formatter configs
-  # (the migrations subdir imports ecto_sql) from _build/test.
+  # --warnings-as-errors, defined once in mix.exs and shared with CI's quality
+  # job — the flags live in one place and cannot drift between local and CI.
   echo "Pre-commit: running lint (format + credo --strict + compile)..."
-  MIX_ENV=test mix lint
+  mix lint
   if [ $? -ne 0 ]; then
     echo ""
     echo "Lint failed. Run 'MIX_ENV=test mix lint' for details; if it is formatting,"
@@ -51,12 +58,8 @@ if [ -n "$STAGED_EX" ]; then
     exit 1
   fi
 
-  # MIX_ENV=test to match CI (its quality job runs everything under test). In
-  # :dev, elixirc_paths excludes test/support, so dialyzer never analyses those
-  # modules — a dev-env gate green-lights unmatched_returns in test helpers that
-  # CI then catches under :test. Same local↔CI seam as the credo flag above.
   echo "Pre-commit: running Dialyzer..."
-  MIX_ENV=test mix dialyzer
+  mix dialyzer
   if [ $? -ne 0 ]; then
     echo ""
     echo "Dialyzer check failed. Fix type issues before committing."
