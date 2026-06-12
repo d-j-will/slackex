@@ -297,7 +297,13 @@ defmodule SlackexWeb.MCP.Server do
          :member <- check_membership(session.bot_user.id, channel_id),
          {:ok, msg} <-
            Slackex.Messaging.send_message(channel_id, session.bot_user.id, content, []) do
-      {:ok, [%{type: "text", text: Jason.encode!(Serializer.message_from_map(msg))}]}
+      # Enrich with channel human identity for the serialized payload (one cheap
+      # lookup using the channel_id we already validated; data passed through to
+      # message_from_map so agent gets channel_name/channel_slug with no extra
+      # tool calls needed).
+      channel = Slackex.Chat.get_channel!(channel_id)
+      enriched = msg |> Map.put(:channel_name, channel.name) |> Map.put(:channel_slug, channel.slug)
+      {:ok, [%{type: "text", text: Jason.encode!(Serializer.message_from_map(enriched))}]}
     else
       :not_member -> {:error, "Not a member of this channel"}
       {:error, reason} -> {:error, inspect(reason)}
@@ -320,7 +326,12 @@ defmodule SlackexWeb.MCP.Server do
              parent_id,
              content
            ) do
-      {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(msg))}]}
+      # Enrich reply struct with channel for serializer (attach after the Chat
+      # path which only preloads sender; single lookup per reply op). This ensures
+      # reply_to_thread MCP responses include channel_name/channel_slug.
+      channel = Slackex.Chat.get_channel!(channel_id)
+      enriched = Map.put(msg, :channel, channel)
+      {:ok, [%{type: "text", text: Jason.encode!(Serializer.message(enriched))}]}
     else
       :not_member -> {:error, "Not a member of this channel"}
       {:error, reason} -> {:error, inspect(reason)}

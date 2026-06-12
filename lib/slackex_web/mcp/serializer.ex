@@ -25,7 +25,7 @@ defmodule SlackexWeb.MCP.Serializer do
   end
 
   def message(%Message{} = msg) do
-    %{
+    base = %{
       id: to_string(msg.id),
       channel_id: msg.channel_id && to_string(msg.channel_id),
       sender_id: to_string(msg.sender_id),
@@ -35,6 +35,22 @@ defmodule SlackexWeb.MCP.Serializer do
       edited_at: msg.edited_at && DateTime.to_iso8601(msg.edited_at),
       inserted_at: DateTime.to_iso8601(msg.inserted_at)
     }
+
+    # Denormalize channel human identity when the assoc is already preloaded
+    # (from search queries or explicit preload in caller). Pattern match avoids
+    # triggering lazy load (which would be hidden cost/N+1). Only for channel
+    # messages; DM messages (no channel) and bare loads omit the keys (additive).
+    case msg do
+      %Message{channel: %Channel{name: name, slug: slug}} ->
+        Map.merge(base, %{channel_name: name, channel_slug: slug})
+
+      %Message{channel: %{name: name, slug: slug}} ->
+        # Support attached map (e.g. from post-lookup in MCP server for reply)
+        Map.merge(base, %{channel_name: name, channel_slug: slug})
+
+      _ ->
+        base
+    end
   end
 
   @doc """
@@ -43,7 +59,7 @@ defmodule SlackexWeb.MCP.Serializer do
   hasn't been flushed to DB yet (batch writes).
   """
   def message_from_map(msg) when is_map(msg) do
-    %{
+    base = %{
       id: to_string(msg.id),
       channel_id: msg[:channel_id] && to_string(msg.channel_id),
       sender_id: to_string(msg.sender_id),
@@ -53,6 +69,26 @@ defmodule SlackexWeb.MCP.Serializer do
       edited_at: nil,
       inserted_at: DateTime.to_iso8601(msg.inserted_at)
     }
+
+    # Support channel name/slug passed through from MCP server enrichment
+    # (send_message path: lookup once using known channel_id, attach at top level
+    # before calling from_map; keeps serializer cheap, no lookups here).
+    # Omit if absent (backward compat for in-mem maps without).
+    ch = msg[:channel]
+
+    name =
+      msg[:channel_name] ||
+        if is_map(ch), do: ch[:name] || Map.get(ch, :name)
+
+    slug =
+      msg[:channel_slug] ||
+        if is_map(ch), do: ch[:slug] || Map.get(ch, :slug)
+
+    if name && slug do
+      Map.merge(base, %{channel_name: name, channel_slug: slug})
+    else
+      base
+    end
   end
 
   def messages(msgs) when is_list(msgs) do

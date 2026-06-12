@@ -214,6 +214,10 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       msg = Jason.decode!(text)
       assert msg["content"] == "Hello from MCP"
+      # Slice 2b contract: send_message response carries channel human identity (from enrichment + serializer)
+      assert msg["channel_id"] == to_string(channel.id)
+      assert msg["channel_name"] == channel.name
+      assert msg["channel_slug"] == channel.slug
     end
 
     test "rejects send to channel bot is not a member of", %{
@@ -266,6 +270,10 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       msg = Jason.decode!(text)
       assert msg["content"] == "Thread reply from MCP"
+      # Slice 2b: reply_to_thread also returns channel_name/slug (enriched via get_channel + serializer attach)
+      assert msg["channel_id"] == to_string(channel.id)
+      assert msg["channel_name"] == channel.name
+      assert msg["channel_slug"] == channel.slug
     end
 
     test "rejects reply to channel bot is not a member of", %{
@@ -290,6 +298,39 @@ defmodule SlackexWeb.MCP.ServerTest do
                json_response(conn, 200)
 
       assert text =~ "Not a member"
+    end
+  end
+
+  describe "tools/call — search_messages (Slice 2b enrichment)" do
+    test "returns serialized messages carrying channel_name and channel_slug (from preloaded channel in search query)", %{
+      conn: conn,
+      raw_token: raw_token,
+      channel: channel,
+      bot: bot
+    } do
+      # Enable for this test only (DB write rolled back by sandbox tx at end of test; no on_exit writes)
+      FunWithFlags.enable(:message_search)
+
+      # Populate a searchable message via prod path (Chat direct for immediate FTS content)
+      {:ok, _sent} = Slackex.Chat.send_message(channel.id, bot.id, "searchable mcp content for names test")
+
+      params = %{
+        "name" => "search_messages",
+        "arguments" => %{"query" => "searchable mcp content", "limit" => 5}
+      }
+
+      call_conn = mcp_post(conn, raw_token, jsonrpc("tools/call", params))
+
+      assert %{"result" => %{"content" => [%{"type" => "text", "text" => text}]}} =
+               json_response(call_conn, 200)
+
+      results = Jason.decode!(text)
+      assert is_list(results)
+      found = Enum.find(results, &(&1["content"] =~ "searchable mcp content"))
+      assert found, "expected search result for the inserted message"
+      assert found["channel_id"] == to_string(channel.id)
+      assert found["channel_name"] == channel.name
+      assert found["channel_slug"] == channel.slug
     end
   end
 

@@ -261,7 +261,7 @@ defmodule Slackex.Search.MessageSearch do
       },
       limit: ^limit,
       offset: ^offset,
-      preload: [:sender]
+      preload: [:sender, :channel]
     )
   end
 
@@ -313,7 +313,7 @@ defmodule Slackex.Search.MessageSearch do
       },
       limit: ^limit,
       offset: ^offset,
-      preload: [:sender]
+      preload: [:sender, :channel]
     )
   end
 
