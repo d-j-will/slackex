@@ -247,7 +247,9 @@ The size check reads the `content-length` header before parsing; absent that hea
 
 `McpTokens.create_mcp_token/1` is a two-step `Ecto.Multi` (bot user, then token). Tokens are prefixed `mcp_` to distinguish them from webhook tokens. `touch_last_used/1` updates at most once per **300 seconds** (returns `:debounced` otherwise), so the auth path doesn't write to the DB on every request.
 
-Unlike a webhook, an MCP token is **not** auto-subscribed to any channel. The agent's bot must already be a member of a channel for write/react tools to succeed — membership is checked at call time (§6.4).
+Unlike a webhook, an MCP token is **not** auto-subscribed to any channel. The agent's bot must be a member of a channel for write (`send_message`, `reply_to_thread`, `react_to_message`) and scoped search tools to succeed — membership is checked at call time in the MCP server (`check_membership` + `Chat.get_role`).
+
+**Supported operator path (2026-06-12):** The owner (admin+) uses the in-chat slash commands `/subscribe-bot <name>` and `/unsubscribe-bot <name>` (gated by the `:bot_subscription` flag and `manage_members` permission) while inside a public channel. This inserts the `subscriptions` row for the pre-minted `mcp-<name>` bot user (via `Chat.Members.add_bot_member/3`). See operator instructions, exact flash output containing the `channel_id`, and the full design in `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md` (and `docs/evolution/2026-06-10-bot-subscription.md`). The old seeding approach (e.g. `scripts/mcp-join-channels.exs`) is superseded for this use case.
 
 ### 6.2 Transport: pure Plug, not phantom_mcp
 

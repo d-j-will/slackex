@@ -39,10 +39,10 @@ defmodule SlackexWeb.ChatLive.BotSubscription do
   end
 
   defp run(socket, _user, :subscribe_help),
-    do: put_flash(socket, :info, "Usage: /subscribe-bot <name>")
+    do: put_flash(socket, :info, "Usage: /subscribe-bot <name> — <name> is the label chosen at MCP token creation (bot username becomes mcp-<name>)")
 
   defp run(socket, _user, :unsubscribe_help),
-    do: put_flash(socket, :info, "Usage: /unsubscribe-bot <name>")
+    do: put_flash(socket, :info, "Usage: /unsubscribe-bot <name> — <name> is the label chosen at MCP token creation (bot username becomes mcp-<name>)")
 
   defp run(socket, user, {op, name}) do
     case {socket.assigns.active_channel, Accounts.get_bot_by_username("mcp-" <> name)} do

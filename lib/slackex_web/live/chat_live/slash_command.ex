@@ -9,8 +9,8 @@ defmodule SlackexWeb.ChatLive.SlashCommand do
 
     * `/summarize [range]` — summarize channel (24h, 7d, 30d)
     * `/decide` — capture a decision
-    * `/subscribe-bot <name>` — subscribe an MCP bot to the active channel
-    * `/unsubscribe-bot <name>` — remove an MCP bot from the active channel
+    * `/subscribe-bot <name>` — subscribe an MCP bot to the active channel (name = label from token creation; resolves to mcp-<name>)
+    * `/unsubscribe-bot <name>` — remove an MCP bot from the active channel (name = label from token creation; resolves to mcp-<name>)
   """
 
   @type result ::

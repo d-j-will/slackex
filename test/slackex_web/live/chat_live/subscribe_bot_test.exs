@@ -92,7 +92,7 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
 
     html = submit_command(lv, "/subscribe-bot")
 
-    assert html =~ "Usage: /subscribe-bot &lt;name&gt;"
+    assert html =~ "Usage: /subscribe-bot &lt;name&gt; — &lt;name&gt; is the label chosen at MCP token creation (bot username becomes mcp-&lt;name&gt;)"
   end
 
   test "subscribing twice reports already subscribed", %{conn: conn, channel: channel} do
@@ -132,45 +132,87 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
 
   # Full producer -> consumer path (CLAUDE.md spec-driven acceptance rule):
   # the slash command must actually unlock the MCP write path — proving a row
-  # was inserted is not enough.
-  test "INTEGRATION: /subscribe-bot unlocks MCP send_message for the bot", %{
+  # was inserted is not enough. Expanded (TDD) to also cover search_messages
+  # (with channel_id scope), reply_to_thread, and react_to_message after a
+  # fresh subscribe. Pre-subscribe write attempts fail with membership error.
+  test "INTEGRATION: /subscribe-bot unlocks MCP send_message, search_messages (scoped), reply_to_thread, react_to_message for the bot", %{
     conn: conn,
     channel: channel,
     raw_token: raw_token
   } do
-    mcp_send = fn ->
+    mcp_call = fn name, args ->
       Phoenix.ConnTest.build_conn()
       |> put_req_header("authorization", "Bearer #{raw_token}")
       |> put_req_header("content-type", "application/json")
       |> post("/mcp", %{
         "jsonrpc" => "2.0",
-        "id" => 1,
+        "id" => System.unique_integer([:positive]),
         "method" => "tools/call",
         "params" => %{
-          "name" => "send_message",
-          "arguments" => %{
-            "channel_id" => to_string(channel.id),
-            "content" => "Hello from the subscribed bot"
-          }
+          "name" => name,
+          "arguments" => args
         }
       })
     end
 
-    # Before subscription the MCP write path is closed.
+    # Before subscription the MCP write paths are closed (membership gate).
     assert %{"result" => %{"isError" => true, "content" => [%{"text" => before_text}]}} =
-             json_response(mcp_send.(), 200)
+             json_response(mcp_call.("send_message", %{"channel_id" => to_string(channel.id), "content" => "pre-subscribe"}), 200)
 
-    assert before_text =~ "Not a member"
+    assert before_text =~ "Not a member of this channel"
 
-    # Owner subscribes the bot in-chat.
+    # Owner subscribes the bot in-chat (the producer action).
     {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
     submit_command(lv, "/subscribe-bot claude-code-max")
 
-    # The same MCP call now succeeds.
-    assert %{"result" => result} = json_response(mcp_send.(), 200)
-    refute result["isError"]
+    # send_message now succeeds (core consumer path)
+    send_resp = json_response(mcp_call.("send_message", %{"channel_id" => to_string(channel.id), "content" => "Hello from the subscribed bot"}), 200)
+    assert %{"result" => result_send} = send_resp
+    refute result_send["isError"]
 
-    assert [%{"type" => "text", "text" => text}] = result["content"]
-    assert Jason.decode!(text)["content"] == "Hello from the subscribed bot"
+    assert [%{"type" => "text", "text" => send_text}] = result_send["content"]
+    sent_msg = Jason.decode!(send_text)
+    assert sent_msg["content"] == "Hello from the subscribed bot"
+    sent_id = sent_msg["id"]
+
+    # search_messages (scoped via channel_id filter) — now returns the bot's messages
+    # because membership (from subscribe) makes the channel visible to Search for this bot_user_id.
+    search_resp = json_response(
+      mcp_call.("search_messages", %{
+        "query" => "subscribed bot",
+        "channel_id" => to_string(channel.id),
+        "limit" => 5
+      }),
+      200
+    )
+    assert %{"result" => search_res} = search_resp
+    refute search_res["isError"]
+    [%{"type" => "text", "text" => search_json}] = search_res["content"]
+    hits = Jason.decode!(search_json)
+    assert Enum.any?(hits, fn h -> h["content"] =~ "subscribed bot" end)
+
+    # reply_to_thread succeeds using the id from the prior send
+    reply_resp = json_response(
+      mcp_call.("reply_to_thread", %{
+        "channel_id" => to_string(channel.id),
+        "parent_message_id" => sent_id,
+        "content" => "reply from bot after subscribe"
+      }),
+      200
+    )
+    assert %{"result" => result_reply} = reply_resp
+    refute result_reply["isError"]
+
+    # react_to_message succeeds
+    react_resp = json_response(
+      mcp_call.("react_to_message", %{
+        "channel_id" => to_string(channel.id),
+        "message_id" => sent_id,
+        "emoji" => "thumbsup"
+      }),
+      200
+    )
+    assert %{"result" => result_react} = react_resp
+    refute result_react["isError"]
   end
 end

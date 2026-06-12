@@ -1,8 +1,10 @@
 # Bot Channel Subscription Design Spec
 
 **Date:** 2026-06-06
-**Status:** Draft
+**Status:** Implemented (2026-06-12, Slice 1 of tenun-mcp plan)
 **Feature Flag:** `:bot_subscription`
+
+> **Operator note:** With the flag enabled for your account, simply run `/subscribe-bot <name>` (or `/unsubscribe-bot`) from any public channel you manage. See the runbook guidance in `docs/runbooks/agent-ops-dogfood.md` and the exact success flash below. No seeding required. Full producer→consumer path (UI subscribe → real MCP tools/call) is covered by `test/slackex_web/live/chat_live/subscribe_bot_test.exs`.
 
 ## Overview
 
@@ -199,3 +201,47 @@ Owner runs `/subscribe-bot <name>` in a public channel → assert a `subscriptio
 | Schema | `Chat.Subscription` | No change (existing `role`/`on_conflict` semantics reused) |
 | Gate | `:bot_subscription` flag | New |
 | Migration | — | None (no schema change) |
+
+## Implementation Status (Slice 1 complete)
+
+The core implementation, flag gating ("Unknown command" on off), boundary placement (authorization/writes in `Chat.Members`, thin handler in `BotSubscription`), and full integration test were delivered prior to this slice. Slice 1 (bead slackex-si7) added:
+
+- Operator-facing documentation (this section + runbook updates).
+- Test expansion in `subscribe_bot_test.exs` exercising `search_messages` (with `channel_id` scope), `reply_to_thread`, and `react_to_message` after a fresh `/subscribe-bot` (in addition to the original `send_message` producer→consumer path). TDD approach: new test cases written first to demonstrate the MCP JSON-RPC calls, then confirmed against the live server implementation.
+- Minor UX polish in help text to aid discovery of bot `<name>` values (no new commands or large surface).
+- Promotion of this spec and related docs.
+- Verification that `FunWithFlags` handling follows the teardown-safety contract (per-test enable in setup; no `on_exit` writes) and that boundary declarations cover the call sites (`Chat` boundary exports `Members`; web layer is intentionally permissive for LiveView internals).
+
+## Operator Runbook (how to subscribe the real MCP bot)
+
+1. Ensure the `:bot_subscription` flag is enabled **for your operator account only** (use FunWithFlags admin UI or IEx: `FunWithFlags.enable(:bot_subscription, for: <your_user>)`). This keeps the feature dark for others until validated.
+
+2. In any **public** channel where you have manage-members permission (owner or admin+), type:
+
+   ```
+   /subscribe-bot <name>
+   ```
+
+   - `<name>` is the exact label you supplied when running the mint (e.g. `McpTokens.create_mcp_token(%{name: "claude-code-max"})` in IEx). The system resolves internally to the bot user `mcp-<name>` (with `is_bot: true`).
+   - The command is **not** available in private channels (error: "Bots can only be subscribed to public channels").
+   - Only the actor with manage_members can succeed; otherwise "You need the manage-members permission...".
+   - Bare command or unknown bot name gives clear usage / not-found flashes.
+   - Idempotent: second subscribe reports "already subscribed".
+
+3. Success flash (private to you, never broadcast as a channel message; exact text the MCP agent later consumes for channel_id):
+
+   ```
+   ✓ claude-code-max subscribed to #engineering — channel_id: 123456789012345678 (use as the target for send_message / reply_to_thread)
+   ```
+
+   (The human `##{channel.name}` and the raw `channel_id` are both present for convenience.)
+
+4. To revoke: `/unsubscribe-bot <name>` in the same channel. Success: "✓ ... unsubscribed from ##{name}"
+
+5. After subscribe, any agent harness using that bot's raw bearer token (the one-time shown at mint) can immediately call the MCP endpoint (`/mcp`, `tools/call` for `send_message` / `reply_to_thread` / `react_to_message` / `search_messages` with optional `channel_id` for scope) and the membership gate will pass for that channel. No restart or re-auth of the harness needed.
+
+6. Discovery of candidate names: the `<name>` you use is the one you chose at `create_mcp_token` time (the part after the `mcp-` prefix on the bot user). The in-chat help text for bare `/subscribe-bot` now includes a reminder. You can also list your tokens via the domain API or IEx for reference.
+
+References: `docs/evolution/2026-06-10-bot-subscription.md`, `docs/runbooks/agent-ops-dogfood.md`, `docs/architecture/integrations.md` §6.
+
+This replaces any prior seeding scripts for MCP bot channel access. Subscriptions persist across deploys; flag controls only the command surface.

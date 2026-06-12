@@ -16,8 +16,28 @@ This is intentionally narrow. It validates inspectability plus reporting, not fu
 
 - Slackex is running locally
 - test or dev PostgreSQL and Redis are running
-- you have a valid MCP bearer token tied to a bot user
-- the bot user is a member of the channel you will post into
+- you have a valid MCP bearer token tied to a bot user (`McpTokens.create_mcp_token/1` in IEx or equivalent; note the raw token shown once and the `<name>` you supplied)
+- the `:bot_subscription` flag is enabled **for your operator user** (e.g. `FunWithFlags.enable(:bot_subscription, for: operator_user)`)
+- the bot user is a member of the channel you will post into — **achieved by the operator running the in-chat command below (no seeding)**
+
+### Subscribe the MCP bot to a channel (operator step — replaces seeding)
+
+From any **public** channel in the Slackex UI (as a user with manage-members permission):
+
+1. Type `/subscribe-bot <name>` (where `<name>` is the label you chose at token mint time; do **not** include the `mcp-` prefix).
+2. Expect a private success flash (only you see it):
+
+   ```
+   ✓ claude-code-max subscribed to #engineering — channel_id: 123456789012345678 (use as the target for send_message / reply_to_thread)
+   ```
+
+   The `channel_id` value is exactly what you pass in subsequent MCP `tools/call` arguments.
+
+3. To remove later: `/unsubscribe-bot <name>` (same channel).
+
+Flag-off or unauthorized use yields either "Unknown command: /subscribe-bot" (no leak) or precise errors ("Bots can only be subscribed to public channels", permission message, "No bot named '…' found", etc.). See full details + test coverage in `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md`.
+
+After this one-time (per channel) step, the agent harness using the bearer can use all write + scoped search tools in the channel immediately.
 
 ---
 
