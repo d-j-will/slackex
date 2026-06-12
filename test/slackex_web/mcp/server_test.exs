@@ -175,6 +175,7 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       assert tool_names == [
                "find_user",
+               "list_channels",
                "react_to_message",
                "reply_to_thread",
                "search_messages",
@@ -353,6 +354,65 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       msg = Jason.decode!(text)
       assert msg["content"] == "Hello via DM"
+    end
+  end
+
+  describe "tools/call — list_channels" do
+    test "returns only channels the bot is subscribed to, using full Serializer.channel shape with human names", %{
+      conn: conn,
+      raw_token: raw_token,
+      channel: channel,
+      bot: _bot
+    } do
+      # Contract: after membership (here via test setup mirroring prod sub), the tool returns
+      # rich entries an agent can use immediately: numeric id (string) + name/slug etc.
+      # Non-member channels must be excluded (bot-scoped via Subscription).
+      params = %{"name" => "list_channels", "arguments" => %{}}
+
+      call_conn = mcp_post(conn, raw_token, jsonrpc("tools/call", params))
+
+      assert %{"result" => %{"content" => [%{"type" => "text", "text" => text}]}} =
+               json_response(call_conn, 200)
+
+      listed = Jason.decode!(text)
+      assert is_list(listed)
+
+      # The setup channel that bot is subscribed to must be present with name
+      found = Enum.find(listed, &(&1["id"] == to_string(channel.id)))
+      assert found, "expected subscribed channel to appear in list_channels"
+      assert found["name"] == channel.name
+      assert found["slug"] == channel.slug
+      assert Map.has_key?(found, "description")
+      assert Map.has_key?(found, "member_count")
+      assert Map.has_key?(found, "inserted_at")
+
+      # Prove scoping: a channel the bot has no Subscription for must not be returned
+      other_owner = insert(:user)
+      other_channel = insert(:channel, creator: other_owner, name: "secret-other")
+      # (no sub for bot)
+
+      # Re-call using the fresh setup conn (do not reuse sent conn from prior mcp_post)
+      call_conn2 = mcp_post(conn, raw_token, jsonrpc("tools/call", params))
+      listed2 = Jason.decode!(json_response(call_conn2, 200)["result"]["content"] |> hd() |> Map.get("text"))
+
+      ids = Enum.map(listed2, & &1["id"])
+      refute to_string(other_channel.id) in ids
+      assert to_string(channel.id) in ids
+    end
+
+    test "returns empty list when bot has no channel memberships", %{conn: conn} do
+      # Fresh bot with token but no subs at all
+      {:ok, %{raw_token: fresh_raw}} = McpTokens.create_mcp_token(%{name: "fresh-no-subs"})
+
+      params = %{"name" => "list_channels", "arguments" => %{}}
+
+      call_conn = mcp_post(conn, fresh_raw, jsonrpc("tools/call", params))
+
+      assert %{"result" => %{"content" => [%{"type" => "text", "text" => text}]}} =
+               json_response(call_conn, 200)
+
+      listed = Jason.decode!(text)
+      assert listed == []
     end
   end
 

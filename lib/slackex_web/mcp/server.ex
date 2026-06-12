@@ -176,6 +176,16 @@ defmodule SlackexWeb.MCP.Server do
   defp tools do
     [
       %{
+        name: "list_channels",
+        description:
+          "List channels your bot is a member of (via Subscription). Returns the rich Serializer.channel shape with human-readable name and slug so agents can discover usable channel_ids without prior knowledge or the global public list. Preferred discovery mechanism for authenticated MCP bots.",
+        inputSchema: %{
+          type: "object",
+          required: [],
+          properties: %{}
+        }
+      },
+      %{
         name: "send_message",
         description: "Send a message to a channel as your bot user",
         inputSchema: %{
@@ -354,6 +364,24 @@ defmodule SlackexWeb.MCP.Server do
       {:error, reason} ->
         {:error, inspect(reason)}
     end
+  end
+
+  defp call_tool("list_channels", _args, session) do
+    # Bot-scoped via Subscription (reuse existing list_user_channels query exactly).
+    # Augment each with count_members (same pattern as the public channels resource)
+    # then Serializer.channel to emit the contract shape (id+name+slug+desc+member_count+inserted_at).
+    # No new Chat query variant needed; this is the member discovery path for agents.
+    bot_id = session.bot_user.id
+
+    channels = Slackex.Chat.list_user_channels(bot_id)
+
+    data =
+      Enum.map(channels, fn ch ->
+        count = Slackex.Chat.count_members(ch.id)
+        Serializer.channel(ch, count)
+      end)
+
+    {:ok, [%{type: "text", text: Jason.encode!(data)}]}
   end
 
   defp call_tool(name, _args, _session), do: {:error, "Unknown tool: #{name}"}

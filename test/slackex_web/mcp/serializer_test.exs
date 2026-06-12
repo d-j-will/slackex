@@ -19,6 +19,22 @@ defmodule SlackexWeb.MCP.SerializerTest do
       refute Map.has_key?(result, :__struct__)
       refute Map.has_key?(result, :__meta__)
     end
+
+    test "channel/2 produces the rich shape used by the MCP list_channels tool (includes human name + slug for bot-scoped discovery)" do
+      user = insert(:user)
+      channel = insert(:channel, creator: user, name: "deploys", slug: "deploys", description: "CI and releases")
+      result = Serializer.channel(channel, 7)
+
+      # Contract for list_channels responses: id (string for tool args), human name/slug always present,
+      # plus counts/desc/timestamps. Agents rely on this to discover usable channels without ids memorized.
+      assert result.id == to_string(channel.id)
+      assert result.name == "deploys"
+      assert result.slug == "deploys"
+      assert result.description == "CI and releases"
+      assert result.member_count == 7
+      assert is_binary(result.inserted_at)
+      assert String.contains?(result.inserted_at, "T")
+    end
   end
 
   describe "message/1" do

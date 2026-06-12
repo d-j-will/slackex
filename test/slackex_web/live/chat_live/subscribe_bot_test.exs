@@ -16,6 +16,7 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
     # (CI run 27250133107) — and the rollback already cleaned up. Enforced by
     # TestTeardownSafetyTest.
     FunWithFlags.enable(:bot_subscription)
+    FunWithFlags.enable(:message_search)
 
     owner = insert(:user, username: "owner-#{System.unique_integer([:positive])}")
 
@@ -138,7 +139,8 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
   test "INTEGRATION: /subscribe-bot unlocks MCP send_message, search_messages (scoped), reply_to_thread, react_to_message for the bot", %{
     conn: conn,
     channel: channel,
-    raw_token: raw_token
+    raw_token: raw_token,
+    owner: owner
   } do
     mcp_call = fn name, args ->
       Phoenix.ConnTest.build_conn()
@@ -214,5 +216,72 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
     )
     assert %{"result" => result_react} = react_resp
     refute result_react["isError"]
+
+    # list_channels (ih6 names win): after real /subscribe-bot (prod Members path), the bot
+    # can discover its member channels with human names+slugs without prior id knowledge.
+    # This is the core acceptance: agent calls list, gets {id, name, slug, ...} for subscribed.
+    list_resp = json_response(mcp_call.("list_channels", %{}), 200)
+    assert %{"result" => list_res} = list_resp
+    refute list_res["isError"]
+    [%{"type" => "text", "text" => list_json}] = list_res["content"]
+    listed = Jason.decode!(list_json)
+    found = Enum.find(listed, fn e -> e["id"] == to_string(channel.id) end)
+    assert found, "list_channels must return the freshly subscribed channel"
+    assert found["name"] == channel.name
+    assert found["slug"] == channel.slug
+    assert Map.has_key?(found, "description")
+    assert Map.has_key?(found, "member_count")
+    assert is_binary(found["inserted_at"])
+
+    # Scoping: a channel never subscribed via the flow must not appear
+    {:ok, other_ch} = Slackex.Chat.create_channel(owner.id, %{name: "other-#{System.unique_integer([:positive])}"})
+    listed_ids = Enum.map(listed, & &1["id"])
+    refute to_string(other_ch.id) in listed_ids
+  end
+
+  # Dedicated small integration for ih6 (names): uses the exact producer flow (/subscribe-bot via slash -> BotSubscription -> Members.add_bot_member)
+  # then exercises the new consumer list_channels tool. Placed separate from the larger INTEGRATION so it is not blocked by search timing/hybrid index
+  # details (which are orthogonal to the bot-scoped names listing).
+  test "INTEGRATION names (ih6): after real /subscribe-bot, list_channels returns id + human name/slug for the bot's member channels", %{
+    conn: conn,
+    channel: channel,
+    raw_token: raw_token
+  } do
+    mcp_call = fn name, args ->
+      Phoenix.ConnTest.build_conn()
+      |> put_req_header("authorization", "Bearer #{raw_token}")
+      |> put_req_header("content-type", "application/json")
+      |> post("/mcp", %{
+        "jsonrpc" => "2.0",
+        "id" => System.unique_integer([:positive]),
+        "method" => "tools/call",
+        "params" => %{
+          "name" => name,
+          "arguments" => args
+        }
+      })
+    end
+
+    # Producer: subscribe via the polished slash command (uses Members prod path)
+    {:ok, lv, _html} = live(conn, ~p"/chat/#{channel.slug}")
+    submit_command(lv, "/subscribe-bot claude-code-max")
+
+    # Consumer: freshly subscribed bot calls list_channels and gets rich shape with human names (no prior id knowledge required)
+    list_resp = json_response(mcp_call.("list_channels", %{}), 200)
+    assert %{"result" => list_res} = list_resp
+    refute list_res["isError"]
+    [%{"type" => "text", "text" => list_json}] = list_res["content"]
+    listed = Jason.decode!(list_json)
+    found = Enum.find(listed, fn e -> e["id"] == to_string(channel.id) end)
+    assert found, "freshly subscribed bot must see the channel in list_channels"
+    assert found["name"] == channel.name
+    assert found["slug"] == channel.slug
+    assert Map.has_key?(found, "description")
+    assert Map.has_key?(found, "member_count")
+    assert is_binary(found["inserted_at"])
+
+    # Only member channels (scoping)
+    {:ok, other} = Slackex.Chat.create_channel(insert(:user).id, %{name: "unrelated-#{System.unique_integer([:positive])}"})
+    refute Enum.any?(listed, fn e -> e["id"] == to_string(other.id) end)
   end
 end
