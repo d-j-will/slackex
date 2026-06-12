@@ -1,10 +1,10 @@
 # MCP Server -- Architecture Design
 
-**Date:** 2026-03-22
-**Status:** Approved
-**Library:** `phantom_mcp` ~> 0.3.4
-**MCP Protocol Version:** 2025-03-26 (Phantom default)
-**Related:** `docs/research/mcp-product-discovery-workflow-discovery-2026-03-08.md`
+**Date:** 2026-03-22 (updated 2026-06-12 for pure-Plug transport post-RCA, bot channel subscription as supported path, bot-scoped list_channels + human names in payloads + ergonomics + get_channel, cross-cutting verification)
+**Status:** Approved (historical reference; current implementation details in `docs/architecture/integrations.md` §6)
+**Library:** pure Plug implementation of MCP Streamable HTTP (2025-03-26); phantom_mcp removed (see RCA 2026-03-27-mcp-server-connectivity.md)
+**MCP Protocol Version:** 2025-03-26
+**Related:** `docs/research/mcp-product-discovery-workflow-discovery-2026-03-08.md`; `docs/architecture/integrations.md`; `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md` (Implemented)
 
 ---
 
@@ -16,12 +16,13 @@ Tenun exposes an MCP (Model Context Protocol) server that allows external AI age
 
 | Capability | Description |
 |-----------|-------------|
-| Channel resources | List channels, read metadata, paginated messages, threads |
-| Messaging tools | Send messages, reply to threads, react to messages (as bot user) |
-| Search tool | Hybrid FTS/semantic/text search across authorized channels |
+| Channel resources + bot-scoped discovery | Global `tenun:///channels` resource + preferred `list_channels` tool (bot member channels only, with human `name` + `slug` + `id` + counts via Serializer); `get_channel` helper |
+| Messaging tools | Send messages, reply to threads, react to messages (as bot user) — channel names/slugs enriched in results |
+| Search tool | Hybrid FTS/semantic/text search across authorized channels (results carry `channel_name`/`channel_slug` when available) |
 | Real-time subscriptions | SSE notifications for channel events (configurable event types) |
 | Prompt templates | Channel summarization, spec drafting from discussions |
 | Bearer token auth | SHA-256 hashed tokens, one bot user per token, show-once |
+| Operator-granted access | In-app `/subscribe-bot <name>` (flag-gated) for public channels; mint-once token + per-channel subscribe; see runbook "Granting an agent access to a channel" |
 
 ### Quality Attributes (Priority Order)
 
@@ -103,8 +104,8 @@ Resources are read-only data the agent can access.
 
 | Resource URI | Handler | Maps To | Description |
 |---|---|---|---|
-| `tenun:///channels` | `list_channels/2` | `Chat.list_public_channels/1` | All public channels with member counts |
-| `tenun:///channels/:id` | `read_channel/2` | `Chat.get_channel!/1` + `Chat.count_members/1` | Channel metadata: name, slug, description, member count |
+| `tenun:///channels` | `list_channels/2` | `Chat.list_public_channels/1` | All public channels with member counts (global). Agents prefer bot-scoped `list_channels` MCP *tool* (Slice 2) for only their subscribed channels, with rich human names. |
+| `tenun:///channels/:id` | `read_channel/2` | `Chat.get_channel!/1` + `Chat.count_members/1` | Channel metadata: name, slug, description, member count (also exposed via small `get_channel` base tool) |
 | `tenun:///channels/:id/messages` | `read_messages/2` | `Chat.list_messages/2` | Paginated messages. Snowflake cursor: `before`/`after` params. Default limit 50, max 200 |
 | `tenun:///channels/:id/threads/:message_id` | `read_thread/2` | `Chat.list_thread/2` | Full thread from a parent message |
 | `tenun:///users/:id` | `read_user/2` | `Accounts.get_user/1` | Display name, username, avatar_url, is_bot |
@@ -154,10 +155,12 @@ Tools are side-effecting actions the agent can perform.
 
 | Tool | Input Schema | Maps To | Description |
 |---|---|---|---|
-| `send_message` | `{channel_id: string, content: string}` | `Messaging.send_message/4` | Post a message as the bot user |
-| `reply_to_thread` | `{channel_id: string, parent_message_id: string, content: string}` | `Messaging.send_reply/5` | Reply to a thread as the bot user |
-| `react_to_message` | `{channel_id: string, message_id: string, emoji: string}` | `Messaging.toggle_reaction/3` | Add/remove a reaction as the bot user |
-| `search_messages` | `{query: string, mode?: string, channel_id?: string, limit?: integer}` | `Search.search_messages/3` | Search with mode: `text`, `semantic`, or `hybrid` (default). Optional channel scoping. |
+| `send_message` | `{channel_id: string, content: string}` (channel_id desc includes discovery guidance) | `Messaging.send_message/4` | Post a message as the bot user. Result serialized with `channel_name`/`channel_slug` (when available). |
+| `reply_to_thread` | `{channel_id: string, parent_message_id: string, content: string}` (guidance on channel_id) | `Messaging.send_reply/5` | Reply to a thread as the bot user. Enriched result. |
+| `react_to_message` | `{channel_id: string, message_id: string, emoji: string}` (guidance) | `Messaging.toggle_reaction/3` | Add/remove a reaction as the bot user. |
+| `search_messages` | `{query: string, mode?: string, channel_id?: string, limit?: integer}` (guidance on channel_id) | `Search.search_messages/3` | Search with mode: `text`, `semantic`, or `hybrid` (default). Optional channel scoping. Results include `channel_name`/`channel_slug`. Search preloads channel. |
+| `list_channels` | `{}` | bot-scoped via Subscriptions + Serializer.channel + count_members | Preferred discovery: only channels this bot is member of; rich human name + slug + id + counts. Always base (not factory). |
+| `get_channel` | `{channel_id: string}` (with guidance) | thin safe lookup + Serializer.channel | Small helper for single channel details (name-rich). |
 
 ### Tool Handler Wiring
 
@@ -199,7 +202,7 @@ Note: `react_to_message` includes `channel_id` for membership verification. The 
 
 ### Authorization
 
-Every tool call uses the bot user from the MCP session (loaded during `connect/2`). `Messaging.send_message/4` checks sender authorization internally via `Permissions.can?/3`. The `react_to_message` handler adds an explicit membership check since `toggle_reaction/3` does not.
+Every tool call uses the bot user from the MCP session (loaded during `connect/2`). `Messaging.send_message/4` checks sender authorization internally via `Permissions.can?/3`. The `react_to_message` handler adds an explicit membership check since `toggle_reaction/3` does not. Membership for MCP bots is granted via the supported `/subscribe-bot` operator flow (see Channel Access above and integrations.md); not `join_channel`.
 
 ### Search Tool
 
@@ -234,7 +237,7 @@ Pre-built templates that help agents interact with Tenun effectively.
 
 ### Argument Completions
 
-Both prompts offer completions for `channel_id` against the channel list, helping agents discover available channels.
+Both prompts offer completions for `channel_id` against the channel list (aided by `list_channels` tool / resource in practice), helping agents discover available channels. Agents are guided by tool schemas + server `@instructions` to prefer human names (from `list_channels`) over bare IDs in reasoning, and to include `channel_name` context from enriched results.
 
 ### What Prompts Are NOT
 
@@ -341,9 +344,23 @@ def connect(session, %Plug.Conn{} = conn) do
 end
 ```
 
-### Channel Access
+### Channel Access (updated 2026-06-12)
 
-Bot users must be subscribed to channels to read or post. Token creator manually adds the bot to channels via existing `Chat.join_channel/2`. Same model as human users.
+Bot users must be subscribed (via `subscriptions` table, role "member") to channels to read or post via MCP. Membership is checked uniformly (`check_membership` + `Chat.get_role/2` + Permissions) for all tools/resources.
+
+**Supported production operator path (replaces seeding/manual join):** 
+- Mint MCP token once (out-of-band via `McpTokens.create_mcp_token/1` in IEx; captures raw bearer + chosen `<name>`; bot user `mcp-<name>` created atomically).
+- Enable `:bot_subscription` flag for the operator account.
+- In any public channel (as owner/admin+ with `manage_members`), run the slash command `/subscribe-bot <name>` (or `/unsubscribe-bot`).
+- Exact private success flash to operator (contains human name + usable id):
+  ```
+  ✓ claude-code-max subscribed to #engineering — channel_id: 123456789012345678 (use as the target for send_message / reply_to_thread)
+  ```
+- Tell the agent the name + id pair. Agent discovers/acts using `list_channels` (bot-scoped, returns name/slug/id) + enriched message/search results (`channel_name`/`channel_slug`) + guidance in tool schemas/server instructions ("Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning.").
+
+See full spec `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md` (Implemented), operator runbook `docs/runbooks/agent-ops-dogfood.md` ("Granting an agent access to a channel" section with mint→flag→subscribe→tell flow), `docs/architecture/integrations.md` §6, evolution, and `docs/architecture/chat.md` (bot membership note). Full UI-producer → MCP-consumer integration (including names) in `subscribe_bot_test.exs`.
+
+Private channels for MCP bots remain out of scope. Subscriptions are durable. Flag controls only the UI surface (additive names are dark-shippable independently).
 
 ### Revocation
 
@@ -388,7 +405,10 @@ defmodule SlackexWeb.MCP.Serializer do
       sender_id: to_string(msg.sender_id), content: msg.content,
       parent_message_id: msg.parent_message_id && to_string(msg.parent_message_id),
       reply_count: msg.reply_count, edited_at: msg.edited_at,
-      inserted_at: DateTime.to_iso8601(msg.inserted_at)}
+      inserted_at: DateTime.to_iso8601(msg.inserted_at),
+      # Slices 2b+: channel_name + channel_slug included when channel preloaded/passed (additive)
+      channel_name: msg.channel && msg.channel.name,
+      channel_slug: msg.channel && msg.channel.slug}
   end
 
   def user(%User{} = u) do

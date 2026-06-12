@@ -115,6 +115,8 @@ erDiagram
 
 > Table/column notes are abbreviated; see Section 6 for the full data model.
 
+**Note on bot membership for MCP agents (added 2026-06-12):** `SUBSCRIPTIONS` rows (composite PK on user+channel, role "member") are also the mechanism for MCP bot channel access. MCP bot users (`is_bot: true`, `username = "mcp-<name>"`) are never auto-subscribed. Owners grant access from inside the app using the `/subscribe-bot <name>` command (public channels only; flag `:bot_subscription`; `manage_members` permission; implemented via `Chat.Members.add_bot_member/3` with the ghost-struct guard and public_channel checks). This is the supported path (see integrations.md §6 MCP, the 2026-06-06 spec now Implemented, runbook "Granting an agent access to a channel" with mint/flag/subscribe/tell-name+id flow + exact flash, and cross-cutting tests). Bot membership is consulted identically to human/webhook membership via `get_role/2` (for `list_channels` scoping, send/reply/react gates, and read authorization in the MCP server). Unsubscribe is symmetric. Private-channel MCP bot subscriptions are out of scope. Human channel membership uses the same table but different UX flows (browse/join/leave).
+
 ---
 
 ## 3. How To Read This Document

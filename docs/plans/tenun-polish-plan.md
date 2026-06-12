@@ -68,6 +68,16 @@
 - This is the input pipeline for the dark factory — conversations become specs
 - Prerequisite for the full vision: idea on phone → agent refines → factory implements
 
+**Completed / updated (2026-06-12, tenun-mcp bot channel access + names work):** Bot channel access for MCP agents is the supported in-app path via owner `/subscribe-bot <name>` (and `/unsubscribe-bot`) slash commands in public channels (flag `:bot_subscription`, manage_members, public-only, Subscription rows with role "member"). Replaces seeding. See `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md` (Implemented; full operator runbook flow "mint token once → enable flag → /subscribe-bot in public channels → tell agent name + id pair" with exact flash in `docs/runbooks/agent-ops-dogfood.md` § "Granting an agent access to a channel").
+
+Bot-scoped discovery: `list_channels` MCP tool (preferred; returns only the bot's member channels using rich `Serializer.channel` shape incl. human `name` + `slug` + `id` + counts). Global `tenun:///channels` resource remains.
+
+Human names first-class: `channel_name` + `channel_slug` included in `send_message`/`reply`/`search_messages` results (and Serializer) when channel data available (additive; Search preloads channel; cheap guards for DMs/bare cases). Tool `inputSchema` descriptions for `channel_id` (all surfaces incl. factory) + server `@instructions` guide: "Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning." Small `get_channel` helper added (symmetric to find_user).
+
+Cross-cutting verified: UI subscribe → agent lists by human name, sees names in enriched payloads, follows guidance, successfully acts (send/search/reply/react using id), with names visible in factory status where applicable. Architecture updates in `docs/architecture/integrations.md` (MCP), `docs/feature/mcp-server/design/architecture.md`, `docs/architecture/chat.md` (bot membership note). Full gates + integration tests green. Dark-shippable (names additive/read; sub flag per-operator).
+
+See also `docs/evolution/2026-06-10-bot-subscription.md`, parent plan slackex-cdi / bead d50 (Slice 3), and `subscribe_bot_test.exs` for the end-to-end subscribe-in-UI → name-aware MCP consumer proof.
+
 ## Dependencies
 
 ```

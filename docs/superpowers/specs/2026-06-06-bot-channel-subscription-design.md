@@ -1,7 +1,7 @@
 # Bot Channel Subscription Design Spec
 
 **Date:** 2026-06-06
-**Status:** Implemented (2026-06-12, Slice 1 of tenun-mcp plan)
+**Status:** Implemented (2026-06-12; Slice 1 subscription polish + operator docs; Slices 2a-c names + ergonomics; Slice 3 docs/rollout/final verification complete)
 **Feature Flag:** `:bot_subscription`
 
 > **Operator note:** With the flag enabled for your account, simply run `/subscribe-bot <name>` (or `/unsubscribe-bot`) from any public channel you manage. See the runbook guidance in `docs/runbooks/agent-ops-dogfood.md` and the exact success flash below. No seeding required. Full producer→consumer path (UI subscribe → real MCP tools/call) is covered by `test/slackex_web/live/chat_live/subscribe_bot_test.exs`.
@@ -245,3 +245,32 @@ The core implementation, flag gating ("Unknown command" on off), boundary placem
 References: `docs/evolution/2026-06-10-bot-subscription.md`, `docs/runbooks/agent-ops-dogfood.md`, `docs/architecture/integrations.md` §6.
 
 This replaces any prior seeding scripts for MCP bot channel access. Subscriptions persist across deploys; flag controls only the command surface.
+
+## Post-implementation notes (Slice 3 — docs + rollout + final verification)
+
+Full end-to-end story verified and documented:
+
+- Subscribe in-app (UI `/subscribe-bot` by owner with flag) → bot gains membership.
+- Agent discovers subscribed channels by human name via `list_channels` MCP tool (bot-scoped, rich Serializer.channel shape with name/slug/id/etc; also `count_members`).
+- Message/search payloads enriched with `channel_name` + `channel_slug` (when channel preloaded/passed; additive, no breakage for bare/DM cases).
+- Tool inputSchemas for every `channel_id` (send/reply/react/search/prompts/factory) + server `@instructions` updated with discovery guidance: "Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning." (numeric IDs + names story).
+- Small `get_channel` helper (base tool, symmetric to find_user; thin safe_get + Serializer.channel).
+- Factory coordination: name attached in queue/claim responses when channel_id chosen (via thin lookup).
+- Cross-cutting integration test (subscribe_bot_test.exs): real UI producer flow (/subscribe-bot) → real `/mcp` consumer (list_channels by name, enriched results visible, schema-guided discovery, successful send/search/reply/react using id while name-aware). Full producer→consumer per CLAUDE.md.
+- Operator runbook section "Granting an agent access to a channel" (exact mint-once → flag → /subscribe-bot → tell name+id flow + exact flash).
+- Architecture docs updated (integrations.md MCP section, mcp-server/design/architecture.md, chat.md bot membership note, tenun-polish-plan.md channel ref closed).
+- Spec promoted; evolution + runbook + integrations reference the supported path.
+- Quality gates (format/credo/dialyzer/compile --warnings-as-errors + targeted/full test + contract) + specific subscribe/MCP paths green.
+- No open work under parent slackex-cdi. Dark shipping preserved (additive for names; subscription flag per-operator).
+
+Key decisions archived (implemented as specified):
+- Subscription is the sole supported in-app grant mechanism for MCP bots (no token handling in command, flash-only id surfacing, public-only, manage_members reuse, ghost-struct guard, "Unknown command" on flag off).
+- list_channels as the preferred bot-scoped discovery tool (additive to global tenun:///channels resource).
+- Names first-class in common payloads + ergonomics (no extra roundtrips for agents; guidance to prefer names for reasoning).
+- get_channel as small symmetric helper (documented rationale).
+- All surfaces (commands, MCP tools, factory) stay behind appropriate flags from the start.
+- Producer-consumer integration tests mandatory for the subscribe + MCP unlock paths.
+
+References for operators/agents: runbook "Granting..." section, `docs/evolution/2026-06-10-bot-subscription.md`, `docs/architecture/integrations.md` §6, `docs/architecture/chat.md`, full test evidence in subscribe_bot_test.exs (and sibling MCP integration tests), prior slices (si7/ih6/dx5/209).
+
+Parent bead (slackex-cdi) marked done only after this evidence + all listed docs current.

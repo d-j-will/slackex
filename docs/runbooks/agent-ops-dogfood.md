@@ -41,6 +41,51 @@ After this one-time (per channel) step, the agent harness using the bearer can u
 
 ---
 
+## Granting an agent access to a channel
+
+**Mint token once → enable flag for the operator → `/subscribe-bot` in the desired public channels → tell the agent the name + id pair.**
+
+This is the supported, documented operator path for giving a Tenun MCP bot (agent) access to public channels. It replaces any prior seeding. The flow keeps token minting out-of-band (one time), uses the in-app slash command for repeatable per-channel grants, and hands the agent human-friendly coordinates (name + id) so it can discover and act without memorizing bare IDs.
+
+1. **Mint the token once (out of band)**: Run in IEx (production path):
+   ```
+   {:ok, %{bot_user: bot, raw_token: raw_token}} = McpTokens.create_mcp_token(%{name: "claude-code-max"})
+   ```
+   Record the `<name>` you supplied ("claude-code-max") and the **raw bearer token** (shown once only; its SHA-256 hash is stored). The bot identity is the user `mcp-<name>` (`is_bot: true`). Configure your MCP client/harness (e.g. hermes `mcp add` or `.mcp.json`) with the server URL + this bearer. One agent identity, N channels.
+
+2. **Enable the flag for the operator (per-user, initially)**: 
+   ```
+   FunWithFlags.enable(:bot_subscription, for: <your_operator_user>)
+   ```
+   (Or use the FunWithFlags admin UI.) This keeps the command surface dark for everyone else. The flag also gates the MCP list_channels scoping and related ergonomics in a dark-shippable way (additive reads).
+
+3. **Subscribe the bot via `/subscribe-bot <name>` in the desired public channels** (repeat for each channel you want the agent in):
+   - In the Slackex UI, enter any **public** channel where you have `manage_members` permission (owner/admin+).
+   - Type exactly:
+     ```
+     /subscribe-bot claude-code-max
+     ```
+     (Use the bare `<name>` from mint time; the system resolves `mcp-<name>` internally.)
+   - Success is a **private flash** (only the operator sees it; never broadcast to the channel):
+     ```
+     ✓ claude-code-max subscribed to #engineering — channel_id: 123456789012345678 (use as the target for send_message / reply_to_thread)
+     ```
+     (Exact flash text; includes the human `##{channel.name}` and the raw Snowflake `channel_id` for convenience.)
+   - The bot is now a member (Subscription row, role "member"). It can immediately use `send_message`, `reply_to_thread`, `react_to_message`, and scoped `search_messages` (and see itself in `list_channels`).
+   - Idempotent; errors are clear ("Bots can only be subscribed to public channels", permission denied, "No bot named '…' found", "Unknown command: /subscribe-bot" when flag off — no leak).
+   - Revoke with `/unsubscribe-bot claude-code-max` in the same channel.
+
+4. **Tell the agent the name + id pair**: Pass the channel human name (e.g. "engineering" or "#engineering") and/or id to the agent (in its initial prompt, a config note, or a setup message in a channel it can see). The agent is expected to:
+   - Discover/confirm via the `list_channels` tool (bot-scoped; returns rich `{id, name, slug, description, member_count, ...}` for only the channels this bot is subscribed to) or the `tenun:///channels` resource.
+   - Use human names in its reasoning (per updated tool `inputSchema` descriptions and server `@instructions`).
+   - Pass the `channel_id` (string) to action tools.
+
+Full details, rationale, error cases, and authorization matrix: `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md` (Implemented). Evolution: `docs/evolution/2026-06-10-bot-subscription.md`. Architecture: `docs/architecture/integrations.md` §6 (MCP) and `docs/architecture/chat.md`. Cross-cutting integration test (UI subscribe producer → real MCP consumer using names + ids + enriched results) lives in `test/slackex_web/live/chat_live/subscribe_bot_test.exs`.
+
+Subscriptions are durable (survive deploys/restarts). The `:bot_subscription` flag controls only the command/UX surface.
+
+---
+
 ## 1. Initialize MCP
 
 Send an authenticated JSON-RPC request to `/mcp`:

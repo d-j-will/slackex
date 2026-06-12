@@ -177,6 +177,12 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
     assert sent_msg["content"] == "Hello from the subscribed bot"
     sent_id = sent_msg["id"]
 
+    # Cross-cutting (d50 Slice 3): enriched payload — send result carries channel_name + channel_slug
+    # (proves dx5 enrichment + no extra roundtrip; agent sees human name alongside id after UI subscribe producer)
+    assert sent_msg["channel_name"] == channel.name
+    assert sent_msg["channel_slug"] == channel.slug
+    assert sent_msg["channel_id"] == to_string(channel.id)
+
     # search_messages (scoped via channel_id filter) — now returns the bot's messages
     # because membership (from subscribe) makes the channel visible to Search for this bot_user_id.
     search_resp = json_response(
@@ -192,6 +198,12 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
     [%{"type" => "text", "text" => search_json}] = search_res["content"]
     hits = Jason.decode!(search_json)
     assert Enum.any?(hits, fn h -> h["content"] =~ "subscribed bot" end)
+
+    # Cross-cutting: enriched search hits also carry channel_name/channel_slug (when channel preloaded in Search)
+    bot_hit = Enum.find(hits, fn h -> h["content"] =~ "subscribed bot" end)
+    assert bot_hit, "search must return the bot's own post"
+    assert bot_hit["channel_name"] == channel.name
+    assert bot_hit["channel_slug"] == channel.slug
 
     # reply_to_thread succeeds using the id from the prior send
     reply_resp = json_response(
@@ -232,6 +244,26 @@ defmodule SlackexWeb.ChatLive.SubscribeBotTest do
     assert Map.has_key?(found, "description")
     assert Map.has_key?(found, "member_count")
     assert is_binary(found["inserted_at"])
+
+    # Cross-cutting (d50): discovery by human name (agent "uses name + id successfully")
+    # list_channels (post real UI /subscribe-bot) returns the channel; test "agent" matches on the human name
+    # then uses the id for prior actions; names visible in results above. Guidance followed via schema (assert below).
+    name_from_list = found["name"]
+    id_from_list = found["id"]
+    assert name_from_list == channel.name, "agent discovers the channel using its human name from list_channels"
+    assert id_from_list == to_string(channel.id)
+
+    # Schema guidance + instructions present (proves 209 ergonomics): channel_id descriptions steer to list_channels + prefer name
+    tools_list_resp = json_response(
+      mcp_call.("tools/list", %{}),
+      200
+    )
+    assert %{"result" => %{"tools" => tools}} = tools_list_resp
+    send_tool = Enum.find(tools, fn t -> t["name"] == "send_message" end)
+    assert send_tool, "tools/list must include send_message"
+    chan_desc = get_in(send_tool, ["inputSchema", "properties", "channel_id", "description"]) || ""
+    assert chan_desc =~ "list_channels", "channel_id schema must guide discovery via list_channels"
+    assert chan_desc =~ "Prefer using the name in your reasoning", "channel_id schema must guide to prefer human name"
 
     # Scoping: a channel never subscribed via the flow must not appear
     {:ok, other_ch} = Slackex.Chat.create_channel(owner.id, %{name: "other-#{System.unique_integer([:positive])}"})

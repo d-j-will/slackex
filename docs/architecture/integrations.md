@@ -249,7 +249,17 @@ The size check reads the `content-length` header before parsing; absent that hea
 
 Unlike a webhook, an MCP token is **not** auto-subscribed to any channel. The agent's bot must be a member of a channel for write (`send_message`, `reply_to_thread`, `react_to_message`) and scoped search tools to succeed — membership is checked at call time in the MCP server (`check_membership` + `Chat.get_role`).
 
-**Supported operator path (2026-06-12):** The owner (admin+) uses the in-chat slash commands `/subscribe-bot <name>` and `/unsubscribe-bot <name>` (gated by the `:bot_subscription` flag and `manage_members` permission) while inside a public channel. This inserts the `subscriptions` row for the pre-minted `mcp-<name>` bot user (via `Chat.Members.add_bot_member/3`). See operator instructions, exact flash output containing the `channel_id`, and the full design in `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md` (and `docs/evolution/2026-06-10-bot-subscription.md`). The old seeding approach (e.g. `scripts/mcp-join-channels.exs`) is superseded for this use case.
+**Supported operator path (2026-06-12, complete in Slice 3):** The owner (admin+ with `manage_members`) uses the in-chat slash commands `/subscribe-bot <name>` and `/unsubscribe-bot <name>` (gated by the `:bot_subscription` flag) while inside a **public** channel. This inserts the `subscriptions` row for the pre-minted `mcp-<name>` bot user (via `Chat.Members.add_bot_member/3`, role "member", ghost-struct guard, public-channel enforcement). 
+
+Exact success flash (private to operator):
+```
+✓ <name> subscribed to #<channel.name> — channel_id: <id> (use as the target for send_message / reply_to_thread)
+```
+(See `docs/runbooks/agent-ops-dogfood.md` § "Granting an agent access to a channel" for the full flow: mint token once (out-of-band) → enable `:bot_subscription` for the operator → `/subscribe-bot` in desired public channels → tell the agent the (human) name + id pair. Also `docs/superpowers/specs/2026-06-06-bot-channel-subscription-design.md` (Implemented; key decisions archived) and `docs/evolution/2026-06-10-bot-subscription.md`.)
+
+**Human names + discovery (Slices 2+3):** After subscribe, the bot can call the always-available base tool `list_channels` (bot-scoped via Subscriptions; rich name/slug/id + counts via `Serializer.channel` + `count_members`). Message and search results carry `channel_name` + `channel_slug` (enriched in `Serializer` when channel preloaded by Search.MessageSearch or send/reply paths). `get_channel` helper provides single-channel lookup. Every `channel_id` schema description (and server `@instructions`) steers agents to discover via `list_channels` / resource and "Prefer using the name in your reasoning." Factory queue/claim responses attach the name for status channels chosen. This makes human names first-class for agents with no extra roundtrips. Old seeding superseded.
+
+The cross-cutting integration (subscribe in UI → agent discovers by name + sees/uses enriched names + acts successfully) is covered by real producer-consumer tests in `subscribe_bot_test.exs` (UI slash → BotSubscription/Members → real /mcp tools/call list/send/search/reply/react + Jason-decoded assertions on names + scoping) plus layered server + serializer contract tests.
 
 ### 6.2 Transport: pure Plug, not phantom_mcp
 
@@ -294,16 +304,22 @@ Authentication (`authenticate/1`) extracts the `Bearer` token, hashes it, requir
 
 **Methods:** `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `prompts/list`, `prompts/get`.
 
-**Base tools** (always available):
+**Base tools** (always available, unless noted):
 
 | Tool | Domain call | Notes |
 |---|---|---|
-| `send_message` | `Messaging.send_message/4` | Checks `check_membership` first; serializes the in-memory map via `Serializer.message_from_map/1` (pre-persist). |
-| `reply_to_thread` | `Messaging.send_reply/5` (`:channel`) | Threads on channels only; returns Ecto-loaded message via `Serializer.message/1`. |
-| `react_to_message` | `Messaging.toggle_reaction/3` | Membership-checked; reports `added` / `removed` / `swapped`. |
-| `search_messages` | `Search.search_messages/3` | Modes `text` / `semantic` / `hybrid` (default); `limit` clamped to 1–100. |
+| `send_message` | `Messaging.send_message/4` | Membership-checked; returns via `Serializer.message_from_map/1` (pre-persist in-memory). `channel_id` inputSchema: "Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning." |
+| `reply_to_thread` | `Messaging.send_reply/5` (`:channel`) | Threads on channels only; Ecto-loaded via `Serializer.message/1`. `channel_id` description includes discovery guidance (see send_message). |
+| `react_to_message` | `Messaging.toggle_reaction/3` | Membership-checked; `channel_id` required for verification + description guidance. |
+| `search_messages` | `Search.search_messages/3` | Modes text/semantic/hybrid; optional `channel_id` for scope (enforced by bot membership). Results and `message` payloads include `channel_name`/`channel_slug` when channel preloaded (additive). `channel_id` description includes list_channels discovery guidance. Search preloads `[:sender, :channel]`. |
+| `list_channels` | `Chat.list_user_channels/1` (via Subscriptions + `count_members`) | **Preferred bot-scoped discovery tool** (Slice 2a/ih6). Returns only channels the authenticated bot is a member of (via Subscription), using rich `Serializer.channel` shape: id (string), name, slug, description, member_count, inserted_at. Always in base tools (not dark). |
+| `get_channel` | thin `safe_get_channel/2` + `Serializer.channel` | Small symmetric helper (Slice 2c/209) to `find_user`; base tool; returns single rich channel shape (or error). Useful once id known or for confirmation. |
 | `find_user` | `Accounts.search_users/1` | Trigram search; no membership scope (any agent can resolve users). |
 | `send_dm` | `DMs.find_or_create_dm/2` + `DMs.send_dm/3` | Opens the DM if needed, then sends as the bot. |
+
+**Factory tools** are appended... (see below). All `channel_id` inputs across tools/prompts/factory queue carry the same discovery guidance text in their JSON Schema `description` (prefer human name from list_channels in reasoning; use id for the call).
+
+**Enriched payloads (Slice 2b/dx5):** `Serializer.message/1` and `message_from_map/1` (and search results) now include `channel_name` and `channel_slug` (when channel association preloaded/passed; omitted for bare/DM cases to stay additive and safe). No extra agent round-trips required to display human context alongside numeric `channel_id`.
 
 **Factory tools** are appended to `tools/list` and routed by `factory_tool?/1` only when `:dark_factory` is enabled; otherwise a factory call returns `"Dark factory is not enabled"`. Their handlers live in `SlackexWeb.MCP.FactoryTools` (see [dark-factory.md](dark-factory.md) for the pipeline).
 
@@ -311,9 +327,11 @@ Authentication (`authenticate/1`) extracts the `Bearer` token, hashes it, requir
 
 | URI | Returns |
 |---|---|
-| `tenun:///channels` | Public channels with member counts (`Chat.list_public_channels` + `Chat.count_members`). |
+| `tenun:///channels` | Public channels with member counts (`Chat.list_public_channels` + `Chat.count_members`). Global view; agents typically prefer the bot-scoped `list_channels` tool for their accessible channels (names + ids). |
 | `tenun:///users/{id}` | User profile via `Accounts.get_user/1`. |
 | `tenun:///ops/summary` | Operational snapshot from `Slackex.Ops.SystemSummary.snapshot/0`. |
+
+(The `list_channels` tool + `tenun:///channels` resource + `get_channel` helper, combined with human names in message/search results, give agents convenient discovery without ID memorization.)
 
 `initialize` advertises `resources: {subscribe: false}` — agents cannot subscribe to live resource changes; they poll (call tools / re-read resources).
 
