@@ -27,7 +27,10 @@ defmodule SlackexWeb.MCP.Server do
   @instructions """
   Tenun is a messaging platform. You can read channels, send messages, \
   search message history, and subscribe to real-time channel events. \
-  Use the bot user identity associated with your token.\
+  Use the bot user identity associated with your token. \
+  Channel identifiers are numeric; discover human-readable names + IDs via \
+  the list_channels tool (your bot's subscriptions) or the tenun:///channels \
+  resource. Prefer using the human name in your reasoning, plans, and logs.\
   """
 
   # -- Plug callbacks -------------------------------------------------------
@@ -186,13 +189,33 @@ defmodule SlackexWeb.MCP.Server do
         }
       },
       %{
+        name: "get_channel",
+        description:
+          "Get full details for a channel by ID (returns the rich Serializer.channel shape with id, name, slug, description, member_count, inserted_at). Complements list_channels and the tenun:///channels resource for direct lookup by discovered ID.",
+        inputSchema: %{
+          type: "object",
+          required: ["channel_id"],
+          properties: %{
+            "channel_id" => %{
+              type: "string",
+              description:
+                "Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning."
+            }
+          }
+        }
+      },
+      %{
         name: "send_message",
         description: "Send a message to a channel as your bot user",
         inputSchema: %{
           type: "object",
           required: ["channel_id", "content"],
           properties: %{
-            "channel_id" => %{type: "string", description: "Channel ID"},
+            "channel_id" => %{
+              type: "string",
+              description:
+                "Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning."
+            },
             "content" => %{type: "string", description: "Message content (supports markdown)"}
           }
         }
@@ -204,7 +227,11 @@ defmodule SlackexWeb.MCP.Server do
           type: "object",
           required: ["channel_id", "parent_message_id", "content"],
           properties: %{
-            "channel_id" => %{type: "string", description: "Channel ID"},
+            "channel_id" => %{
+              type: "string",
+              description:
+                "Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning."
+            },
             "parent_message_id" => %{type: "string", description: "Parent message Snowflake ID"},
             "content" => %{type: "string", description: "Reply content"}
           }
@@ -217,7 +244,11 @@ defmodule SlackexWeb.MCP.Server do
           type: "object",
           required: ["channel_id", "message_id", "emoji"],
           properties: %{
-            "channel_id" => %{type: "string", description: "Channel ID (for authorization)"},
+            "channel_id" => %{
+              type: "string",
+              description:
+                "Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning."
+            },
             "message_id" => %{type: "string", description: "Message Snowflake ID"},
             "emoji" => %{type: "string", description: "Emoji name (e.g. thumbsup, heart)"}
           }
@@ -233,7 +264,11 @@ defmodule SlackexWeb.MCP.Server do
           properties: %{
             "query" => %{type: "string", description: "Search query"},
             "mode" => %{type: "string", description: "text, semantic, or hybrid (default)"},
-            "channel_id" => %{type: "string", description: "Optional: scope to specific channel"},
+            "channel_id" => %{
+              type: "string",
+              description:
+                "Optional: Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning."
+            },
             "limit" => %{type: "integer", description: "Max results (default 20)"}
           }
         }
@@ -302,7 +337,10 @@ defmodule SlackexWeb.MCP.Server do
       # message_from_map so agent gets channel_name/channel_slug with no extra
       # tool calls needed).
       channel = Slackex.Chat.get_channel!(channel_id)
-      enriched = msg |> Map.put(:channel_name, channel.name) |> Map.put(:channel_slug, channel.slug)
+
+      enriched =
+        msg |> Map.put(:channel_name, channel.name) |> Map.put(:channel_slug, channel.slug)
+
       {:ok, [%{type: "text", text: Jason.encode!(Serializer.message_from_map(enriched))}]}
     else
       :not_member -> {:error, "Not a member of this channel"}
@@ -395,6 +433,20 @@ defmodule SlackexWeb.MCP.Server do
     {:ok, [%{type: "text", text: Jason.encode!(data)}]}
   end
 
+  defp call_tool("get_channel", %{"channel_id" => cid}, _session) do
+    # Tiny lookup for symmetry with find_user. Returns full Serializer.channel
+    # (id+name+slug+...) so agents can resolve a numeric ID discovered via
+    # list_channels or resource without guessing. Always available (no bot
+    # membership required for metadata; names are not sensitive). Thin wrapper.
+    with {:ok, channel_id} <- parse_id(cid),
+         ch when not is_nil(ch) <- safe_get_channel(channel_id) do
+      count = Slackex.Chat.count_members(channel_id)
+      {:ok, [%{type: "text", text: Jason.encode!(Serializer.channel(ch, count))}]}
+    else
+      _ -> {:error, "Channel not found"}
+    end
+  end
+
   defp call_tool(name, _args, _session), do: {:error, "Unknown tool: #{name}"}
 
   # -- Resources ------------------------------------------------------------
@@ -474,7 +526,12 @@ defmodule SlackexWeb.MCP.Server do
         name: "summarize_channel",
         description: "Summarize recent activity in a channel",
         arguments: [
-          %{name: "channel_id", description: "Channel ID to summarize", required: true},
+          %{
+            name: "channel_id",
+            description:
+              "Channel ID to summarize. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning.",
+            required: true
+          },
           %{name: "since", description: "ISO 8601 timestamp (optional)"}
         ]
       },
@@ -484,7 +541,8 @@ defmodule SlackexWeb.MCP.Server do
         arguments: [
           %{
             name: "channel_id",
-            description: "Channel ID containing the discussion",
+            description:
+              "Channel ID containing the discussion. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning.",
             required: true
           },
           %{name: "thread_id", description: "Optional: specific thread message ID to focus on"}
@@ -607,6 +665,17 @@ defmodule SlackexWeb.MCP.Server do
   end
 
   defp parse_id(_), do: {:error, "Invalid ID"}
+
+  # Safe lookup (no ! crash) for get_channel tool and factory name enrichment.
+  # Channel metadata (name/slug) is not access-controlled; get_channel! is thin
+  # Repo lookup. Used only in MCP surface for ergonomics.
+  defp safe_get_channel(id) do
+    try do
+      Slackex.Chat.get_channel!(id)
+    rescue
+      _ -> nil
+    end
+  end
 
   defp factory_tool?(name) do
     String.starts_with?(name, "queue_factory") or

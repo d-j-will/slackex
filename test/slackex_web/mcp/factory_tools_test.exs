@@ -53,6 +53,10 @@ defmodule SlackexWeb.MCP.FactoryToolsTest do
       result = parse_tool_result(conn1)
       run_id = result["run_id"]
       assert result["status"] == "queued"
+      # Factory coordination polish (2c): human name for the chosen status channel_id
+      # must be visible in the queue response (so operator/plan sees where thread appears).
+      # Additive to shape; uses the channel from setup.
+      assert result["channel_name"] == channel.name
 
       # List work
       conn2 = call_tool(build_conn(), token, "list_factory_work")

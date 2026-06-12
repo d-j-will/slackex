@@ -19,7 +19,11 @@ defmodule SlackexWeb.MCP.FactoryTools do
               type: "string",
               description: "Path to spec directory (e.g. docs/feature/my-feature/)"
             },
-            "channel_id" => %{type: "string", description: "Channel ID for status updates"}
+            "channel_id" => %{
+              type: "string",
+              description:
+                "Channel ID. Discover human names + IDs via the `list_channels` tool or `tenun:///channels` resource. Prefer using the name in your reasoning."
+            }
           }
         }
       },
@@ -161,7 +165,18 @@ defmodule SlackexWeb.MCP.FactoryTools do
              channel_id: channel_id
            }) do
         {:ok, run} ->
-          {:ok, json_content(%{run_id: to_string(run.id), status: run.status})}
+          # Factory coordination polish (slice 2c): resolve human name for the
+          # chosen status channel_id here in the MCP response (thin lookup).
+          # This makes the name visible to the calling agent / in plans/logs
+          # without altering the core run record or channel_id contract.
+          channel_name = get_channel_name(channel_id)
+
+          {:ok,
+           json_content(%{
+             run_id: to_string(run.id),
+             status: run.status,
+             channel_name: channel_name
+           })}
 
         {:error, changeset} ->
           {:error, format_errors(changeset)}
@@ -179,12 +194,18 @@ defmodule SlackexWeb.MCP.FactoryTools do
     with {:ok, run_id} <- parse_id(rid) do
       case Factory.claim_run(run_id, %{commit_sha: sha}) do
         {:ok, run} ->
+          # Factory polish: surface human-readable channel name alongside the
+          # numeric channel_id in the claim response (the point at which the
+          # agent learns/operates the status thread location).
+          channel_name = get_channel_name(run.channel_id)
+
           {:ok,
            json_content(%{
              claim_token: run.claim_token,
              spec_path: run.spec_path,
              spec_commit_sha: run.spec_commit_sha,
              channel_id: to_string(run.channel_id),
+             channel_name: channel_name,
              thread_message_id: run.thread_message_id && to_string(run.thread_message_id),
              attempt: run.attempt,
              max_attempts: run.max_attempts
@@ -330,6 +351,26 @@ defmodule SlackexWeb.MCP.FactoryTools do
   end
 
   defp parse_id(_), do: {:error, "Invalid ID"}
+
+  # Thin name resolver for factory coordination polish (visible channel name
+  # when queue/claim use a status channel_id). Safe (no crash on bad ID).
+  # Uses same Chat lookup as server get_channel / send enrichment.
+  defp get_channel_name(channel_id) when is_integer(channel_id) do
+    case safe_get_channel(channel_id) do
+      %{name: name} -> name
+      _ -> nil
+    end
+  end
+
+  defp get_channel_name(_), do: nil
+
+  defp safe_get_channel(id) do
+    try do
+      Slackex.Chat.get_channel!(id)
+    rescue
+      _ -> nil
+    end
+  end
 
   defp json_content(data) do
     [%{type: "text", text: Jason.encode!(data)}]

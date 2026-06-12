@@ -175,6 +175,7 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       assert tool_names == [
                "find_user",
+               "get_channel",
                "list_channels",
                "react_to_message",
                "reply_to_thread",
@@ -214,6 +215,7 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       msg = Jason.decode!(text)
       assert msg["content"] == "Hello from MCP"
+
       # Slice 2b contract: send_message response carries channel human identity (from enrichment + serializer)
       assert msg["channel_id"] == to_string(channel.id)
       assert msg["channel_name"] == channel.name
@@ -270,6 +272,7 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       msg = Jason.decode!(text)
       assert msg["content"] == "Thread reply from MCP"
+
       # Slice 2b: reply_to_thread also returns channel_name/slug (enriched via get_channel + serializer attach)
       assert msg["channel_id"] == to_string(channel.id)
       assert msg["channel_name"] == channel.name
@@ -302,17 +305,19 @@ defmodule SlackexWeb.MCP.ServerTest do
   end
 
   describe "tools/call — search_messages (Slice 2b enrichment)" do
-    test "returns serialized messages carrying channel_name and channel_slug (from preloaded channel in search query)", %{
-      conn: conn,
-      raw_token: raw_token,
-      channel: channel,
-      bot: bot
-    } do
+    test "returns serialized messages carrying channel_name and channel_slug (from preloaded channel in search query)",
+         %{
+           conn: conn,
+           raw_token: raw_token,
+           channel: channel,
+           bot: bot
+         } do
       # Enable for this test only (DB write rolled back by sandbox tx at end of test; no on_exit writes)
       FunWithFlags.enable(:message_search)
 
       # Populate a searchable message via prod path (Chat direct for immediate FTS content)
-      {:ok, _sent} = Slackex.Chat.send_message(channel.id, bot.id, "searchable mcp content for names test")
+      {:ok, _sent} =
+        Slackex.Chat.send_message(channel.id, bot.id, "searchable mcp content for names test")
 
       params = %{
         "name" => "search_messages",
@@ -378,6 +383,48 @@ defmodule SlackexWeb.MCP.ServerTest do
     end
   end
 
+  describe "tools/call — get_channel" do
+    test "returns full Serializer.channel shape (id+name+slug+...) for a valid ID", %{
+      conn: conn,
+      raw_token: raw_token,
+      channel: channel
+    } do
+      # Thin helper (symmetric to find_user). Uses real /mcp tools/call.
+      # Covers discovery flow: agent would list or read resource, then get_channel(id)
+      # to resolve details; returns same rich shape as list_channels entries.
+      params = %{
+        "name" => "get_channel",
+        "arguments" => %{"channel_id" => to_string(channel.id)}
+      }
+
+      conn = mcp_post(conn, raw_token, jsonrpc("tools/call", params))
+
+      assert %{"result" => %{"content" => [%{"type" => "text", "text" => text}]}} =
+               json_response(conn, 200)
+
+      ch = Jason.decode!(text)
+      assert ch["id"] == to_string(channel.id)
+      assert ch["name"] == channel.name
+      assert ch["slug"] == channel.slug
+      assert is_integer(ch["member_count"])
+      assert ch["inserted_at"] != nil
+    end
+
+    test "returns error for unknown channel id", %{conn: conn, raw_token: raw_token} do
+      params = %{
+        "name" => "get_channel",
+        "arguments" => %{"channel_id" => "999999999"}
+      }
+
+      conn = mcp_post(conn, raw_token, jsonrpc("tools/call", params))
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => msg}]}} =
+               json_response(conn, 200)
+
+      assert msg =~ "Channel not found"
+    end
+  end
+
   describe "tools/call — send_dm" do
     test "sends a DM to a user", %{conn: conn, raw_token: raw_token, user: user} do
       params = %{
@@ -399,12 +446,13 @@ defmodule SlackexWeb.MCP.ServerTest do
   end
 
   describe "tools/call — list_channels" do
-    test "returns only channels the bot is subscribed to, using full Serializer.channel shape with human names", %{
-      conn: conn,
-      raw_token: raw_token,
-      channel: channel,
-      bot: _bot
-    } do
+    test "returns only channels the bot is subscribed to, using full Serializer.channel shape with human names",
+         %{
+           conn: conn,
+           raw_token: raw_token,
+           channel: channel,
+           bot: _bot
+         } do
       # Contract: after membership (here via test setup mirroring prod sub), the tool returns
       # rich entries an agent can use immediately: numeric id (string) + name/slug etc.
       # Non-member channels must be excluded (bot-scoped via Subscription).
@@ -434,7 +482,13 @@ defmodule SlackexWeb.MCP.ServerTest do
 
       # Re-call using the fresh setup conn (do not reuse sent conn from prior mcp_post)
       call_conn2 = mcp_post(conn, raw_token, jsonrpc("tools/call", params))
-      listed2 = Jason.decode!(json_response(call_conn2, 200)["result"]["content"] |> hd() |> Map.get("text"))
+
+      listed2 =
+        Jason.decode!(
+          json_response(call_conn2, 200)["result"]["content"]
+          |> hd()
+          |> Map.get("text")
+        )
 
       ids = Enum.map(listed2, & &1["id"])
       refute to_string(other_channel.id) in ids
