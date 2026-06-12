@@ -10,7 +10,12 @@ defmodule SlackexWeb.Plugs.AnalyticsPlug do
   def call(conn, _opts) do
     if FunWithFlags.enabled?(:website_analytics) do
       try do
+        # This plug runs in the endpoint, before the router's browser
+        # pipeline — the session is configured (Plug.Session) but not yet
+        # fetched. fetch_session/1 is idempotent, so the router fetching
+        # again later is safe.
         conn
+        |> fetch_session()
         |> ensure_session_id()
         |> register_page_view_callback()
       rescue
