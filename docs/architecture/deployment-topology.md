@@ -30,7 +30,7 @@ C4Deployment
   title Deployment Diagram -- Slackex Production
 
   Deployment_Node(gh, "GitHub Actions", "ubuntu-latest runner") {
-    Container(quality, "quality job", "Elixir 1.19.2 / OTP 28.1.1", "Compile, format, credo, dialyzer, tests, audit")
+    Container(quality, "quality job", "Elixir 1.20.1 / OTP 28.5", "Compile, format, credo, dialyzer, tests, audit")
     Container(deploy, "deploy job", "Docker Buildx + Tailscale SSH", "Build image, push, drive rollout")
   }
 
@@ -85,7 +85,7 @@ The workflow is `.github/workflows/ci-deploy.yml`. It has three jobs: `quality`,
 
 ### 3.1 Quality gate (every push + PR)
 
-The `quality` job runs on `MIX_ENV=test` against ephemeral `pgvector/pgvector:pg16` (port 5433) and `redis:7-alpine` (port 6379) service containers, pinned to **Elixir 1.19.2 / OTP 28.1.1** via `erlef/setup-beam`. It caches `deps`, `_build`, and the Dialyzer PLTs, then runs, in order: `mix compile --warnings-as-errors`, `mix format --check-formatted`, `mix credo`, `mix dialyzer`, `mix ecto.create && mix ecto.migrate`, `mix test --warnings-as-errors`, the `contract` and `e2e` tagged suites, `mix hex.audit`, and `mix deps.unlock --check-unused`.
+The `quality` job runs on `MIX_ENV=test` against ephemeral `pgvector/pgvector:pg16` (port 5433) and `redis:7-alpine` (port 6379) service containers, pinned to **Elixir 1.20.1 / OTP 28.5** via `erlef/setup-beam`. It caches `deps`, `_build`, and the Dialyzer PLTs, then runs, in order: `mix compile --warnings-as-errors`, `mix format --check-formatted`, `mix credo`, `mix dialyzer`, `mix ecto.create && mix ecto.migrate`, `mix test --warnings-as-errors`, the `contract` and `e2e` tagged suites, `mix hex.audit`, and `mix deps.unlock --check-unused`.
 
 This is the same checklist `scripts/pre-deploy` runs locally before tagging (see [`../runbooks/deployment.md`](../runbooks/deployment.md) §"Pre-deploy verification").
 
@@ -97,7 +97,7 @@ The image is built from a two-stage `Dockerfile`:
 
 | Stage | Base | Responsibility |
 |---|---|---|
-| `build` | `hexpm/elixir:1.19.2-erlang-28.1.1-debian-bookworm-...-slim` | `mix deps.get --only prod`, compile, `mix assets.deploy` (esbuild + tailwind), `mix release` |
+| `build` | `hexpm/elixir:1.20.1-erlang-28.5-debian-bookworm-...-slim` | `mix deps.get --only prod`, compile, `mix assets.deploy` (esbuild + tailwind), `mix release` |
 | `runtime` | `debian:bookworm-slim` | Minimal OS deps; copies `/app/_build/prod/rel/slackex`; runs as non-root `appuser`; `ENV PHX_SERVER=true`; `CMD ["/app/bin/server"]` |
 
 The runtime image carries no Mix and no build toolchain — it is the compiled OTP release plus a thin Debian base. The container entrypoint is `rel/overlays/bin/server`, which runs migrations and then `./bin/slackex start` (see §6).

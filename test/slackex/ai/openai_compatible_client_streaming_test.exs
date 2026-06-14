@@ -126,22 +126,16 @@ defmodule Slackex.AI.OpenAICompatibleClientStreamingTest do
     test "handles API error responses", %{port: port} do
       configure_client(port, "/error")
 
-      result =
+      # stream/2 returns {:ok, stream}; an upstream 500 surfaces as an empty
+      # stream because the error halts enumeration rather than being returned
+      # from stream/2 itself.
+      {:ok, stream} =
         OpenAICompatibleClient.stream(
           [%{role: "user", content: "test"}],
           []
         )
 
-      # stream/2 returns {:ok, stream} even for errors because the error
-      # happens during enumeration, OR it may fail at start_stream
-      case result do
-        {:ok, stream} ->
-          chunks = Enum.to_list(stream)
-          assert chunks == []
-
-        {:error, {:api_error, 500, _}} ->
-          :ok
-      end
+      assert Enum.to_list(stream) == []
     end
 
     test "handles stream with no content (only [DONE])", %{port: port} do

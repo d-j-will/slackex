@@ -167,13 +167,13 @@ defmodule Slackex.Docs.ArchitectureDocsContractTest do
   # --- Toolchain version (deployment-topology.md §3) ---
 
   test "Elixir/OTP toolchain matches deployment-topology.md" do
-    # Anchored to whole lines: a bare substring like "elixir 1.19.2" would
-    # still match after a bump to 1.19.20 and silently stop enforcing the doc.
+    # Anchored to whole lines: a bare substring like "elixir 1.20.1" would
+    # still match after a bump to 1.20.10 and silently stop enforcing the doc.
     tv = source(".tool-versions")
-    assert tv =~ ~r/^erlang 28\.1\.1$/m, "deployment-topology.md §3 pins OTP 28.1.1"
+    assert tv =~ ~r/^erlang 28\.5$/m, "deployment-topology.md §3 pins OTP 28.5"
 
-    assert tv =~ ~r/^elixir 1\.19\.2(-otp-\d+)?$/m,
-           "deployment-topology.md §3 pins Elixir 1.19.2"
+    assert tv =~ ~r/^elixir 1\.20\.1(-otp-\d+)?$/m,
+           "deployment-topology.md §3 pins Elixir 1.20.1"
   end
 
   # --- Prod embedding client (deep-dive-hybrid-rrf-search.md §9.4) ---

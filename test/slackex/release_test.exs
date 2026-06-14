@@ -5,8 +5,6 @@ defmodule Slackex.ReleaseTest do
 
   import ExUnit.CaptureLog
 
-  require Logger
-
   alias Slackex.Chat.Message
   alias Slackex.Release
 

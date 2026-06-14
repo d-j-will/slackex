@@ -1,7 +1,7 @@
 # =============================================================================
 # Build stage
 # =============================================================================
-FROM hexpm/elixir:1.19.2-erlang-28.1.1-debian-bookworm-20260223-slim AS build
+FROM hexpm/elixir:1.20.1-erlang-28.5-debian-bookworm-20260610-slim AS build
 
 ENV MIX_ENV=prod
 

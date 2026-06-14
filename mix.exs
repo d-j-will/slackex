@@ -123,7 +123,7 @@ defmodule Slackex.MixProject do
       {:cloak_ecto, "~> 1.3"},
 
       # Vector embeddings (EXLA excluded from prod — uses DeepInfra API, not local inference)
-      {:pgvector, "~> 0.3"},
+      {:pgvector, "~> 0.4"},
       {:bumblebee, "~> 0.6.0"},
       {:exla, ">= 0.0.0", only: [:dev, :test]},
 

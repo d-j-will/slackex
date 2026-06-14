@@ -3,8 +3,6 @@ defmodule Slackex.AI.TelemetryTest do
 
   import ExUnit.CaptureLog
 
-  require Logger
-
   alias Slackex.AI.Telemetry
 
   setup do

@@ -1,8 +1,6 @@
 defmodule Slackex.Analytics.TelemetryHandler do
   @moduledoc "Attaches to Phoenix and Oban telemetry events to track exceptions."
 
-  require Logger
-
   def attach do
     _ =
       :telemetry.attach(

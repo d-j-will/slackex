@@ -17,8 +17,6 @@ defmodule Slackex.Links.LinkPreviewWorker do
     max_attempts: 1,
     unique: [fields: [:args], keys: [:message_id], period: 60]
 
-  require Logger
-
   alias Slackex.Links.{LinkPreview, MetadataParser, SafetyChecker}
   alias Slackex.Repo
 

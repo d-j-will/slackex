@@ -19,8 +19,6 @@ defmodule Slackex.Cache do
 
   use Boundary, deps: [], exports: []
 
-  require Logger
-
   alias Slackex.Cache.Local
   alias Slackex.Cache.Redis
 

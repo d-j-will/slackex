@@ -84,5 +84,4 @@ defmodule Slackex.Links.URLExtractorTest do
   end
 
   defp safe_to_string({:safe, str}), do: str
-  defp safe_to_string(str) when is_binary(str), do: str
 end
