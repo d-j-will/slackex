@@ -62,30 +62,24 @@ defmodule SlackexWeb.Telemetry do
       ),
 
       # Database Metrics
+      #
+      # Every Ecto query emits one [:slackex, :repo, :query] event carrying
+      # five measurements. Each distribution bound here writes a separate
+      # raw sample row into the Prometheus dist table, and scrape/1 folds
+      # every accumulated row in the request process — so each unused
+      # distribution directly inflates /metrics scrape latency under load
+      # (slackex-0ku). We keep only the two the Grafana dashboard consumes:
+      # total_time (overall query latency) and queue_time (pool pressure).
+      # decode_time/query_time/idle_time were dropped — no panel queries
+      # them. Keep this in lockstep with metrics_exporter_test.exs.
       distribution("slackex.repo.query.total_time",
         unit: {:native, :millisecond},
         description: "The sum of the other measurements",
         reporter_options: [buckets: @db_duration_buckets]
       ),
-      distribution("slackex.repo.query.decode_time",
-        unit: {:native, :millisecond},
-        description: "The time spent decoding the data received from the database",
-        reporter_options: [buckets: @db_duration_buckets]
-      ),
-      distribution("slackex.repo.query.query_time",
-        unit: {:native, :millisecond},
-        description: "The time spent executing the query",
-        reporter_options: [buckets: @db_duration_buckets]
-      ),
       distribution("slackex.repo.query.queue_time",
         unit: {:native, :millisecond},
         description: "The time spent waiting for a database connection",
-        reporter_options: [buckets: @db_duration_buckets]
-      ),
-      distribution("slackex.repo.query.idle_time",
-        unit: {:native, :millisecond},
-        description:
-          "The time the connection spent waiting before being checked out for the query",
         reporter_options: [buckets: @db_duration_buckets]
       ),
 

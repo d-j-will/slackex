@@ -5,6 +5,14 @@ global:
 scrape_configs:
   # Scrape Slackex app nodes directly
   - job_name: "slackex"
+    # TelemetryMetricsPrometheus.Core folds all accumulated distribution
+    # samples in the request process at scrape time, so scrape latency
+    # scales with inter-scrape query volume (slackex-0ku). The default 10s
+    # timeout was clipping the tail under bursts and recording false
+    # "down". Widen to 14s (must stay < the 15s scrape_interval). This is
+    # headroom, not the fix — the sample-volume reduction in telemetry.ex
+    # is; revisit if p99 still approaches the timeout.
+    scrape_timeout: 14s
     static_configs:
       - targets: ["app1:4000", "app2:4000"]
     metrics_path: /metrics

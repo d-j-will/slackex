@@ -61,10 +61,21 @@ defmodule SlackexWeb.Plugs.MetricsExporterTest do
       assert body =~ "vm_total_run_queue_lengths_io "
     end
 
-    test "exports Ecto query histograms without unit suffix", %{body: body} do
+    test "exports the two Ecto query histograms the dashboard consumes", %{body: body} do
       assert body =~ "slackex_repo_query_total_time_bucket{"
-      assert body =~ "slackex_repo_query_query_time_bucket{"
       assert body =~ "slackex_repo_query_queue_time_bucket{"
+    end
+
+    test "does not export the unconsumed Ecto query histograms", %{body: body} do
+      # decode_time/query_time/idle_time were dropped (slackex-0ku): every
+      # repo query emits one dist-table sample per metric, and scrape folds
+      # all accumulated samples in the request process — so each unused
+      # distribution directly inflates /metrics scrape latency under load.
+      # No Grafana panel queries these three; keep this in lockstep with
+      # SlackexWeb.Telemetry.metrics/0.
+      refute body =~ "slackex_repo_query_decode_time"
+      refute body =~ "slackex_repo_query_query_time"
+      refute body =~ "slackex_repo_query_idle_time"
     end
 
     test "exports application metrics", %{body: body} do
