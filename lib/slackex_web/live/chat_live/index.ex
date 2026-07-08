@@ -15,9 +15,9 @@ defmodule SlackexWeb.ChatLive.Index do
   alias Slackex.Search
   alias SlackexWeb.ChatLive.BotSubscription
   alias SlackexWeb.ChatLive.BrowseChannelsModal
+  alias SlackexWeb.ChatLive.ChannelMembersModal
   alias SlackexWeb.ChatLive.ChatRuntime
   alias SlackexWeb.ChatLive.ChatShell
-  alias SlackexWeb.ChatLive.ChannelMembersModal
   alias SlackexWeb.ChatLive.Conversations
   alias SlackexWeb.ChatLive.CreateChannelModal
   alias SlackexWeb.ChatLive.Helpers
