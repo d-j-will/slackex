@@ -206,11 +206,11 @@ Every entry below is grounded in a live `FunWithFlags.enabled?` call site. This 
 
 | Flag | Scope | Purpose | Enforced at |
 |---|---|---|---|
-| `:message_search` | Global | FTS + semantic + hybrid message search | `lib/slackex/search.ex:33`; UI assign `ChatLive.Index` (`:search_enabled`) |
-| `:channel_summarization` | Global | AI channel summaries | `ChatLive.Index` (`:summarization_enabled`) |
+| `:message_search` | Global | FTS + semantic + hybrid message search | `lib/slackex/search.ex:33`; UI assign `ChatLive.ChatShell` (`:search_enabled`) |
+| `:channel_summarization` | Global | AI channel summaries | `ChatLive.ChatShell` (`:summarization_enabled`) |
 | `:incoming_webhooks` | Global | Inbound webhook delivery endpoint | `lib/slackex_web/controllers/webhook_controller.ex:61` |
-| `:push_notifications` | Global | Web-push dispatch + notif preferences | `push_worker.ex:28,36`; `subscription_cleanup_worker.ex:17`; `ChatLive.Index`; `conversations.ex:44` |
-| `:catchup_on_reconnect` | Global | Rebuild unread state on reconnect | `lib/slackex_web/live/chat_live/index.ex:63` |
+| `:push_notifications` | Global | Web-push dispatch + notif preferences | `push_worker.ex:28,36`; `subscription_cleanup_worker.ex:17`; `ChatLive.ChatShell`; `conversations.ex:44` |
+| `:catchup_on_reconnect` | Global | Reconcile unread state from catchup data on connected mounts; only reconnects show the flash | `lib/slackex_web/live/chat_live/chat_shell.ex` |
 | `:website_analytics` | Global | Page-view / event tracking pipeline | `analytics.ex:47`; `analytics_plug.ex:11`; `analytics_tracker.ex:11`; `metrics_bridge.ex:12`; `telemetry_handler.ex:27,49`; `AdminLive.Analytics:15`; chat layout data attr |
 | `:exclude_from_analytics` | Per-actor | Per-user analytics opt-out | `lib/slackex/analytics.ex:54` |
 | `:dark_factory` | Global | Claude Code dark-factory MCP tools + channel notifier | `mcp/server.ex:111,124`; `factory/channel_notifier.ex:30`; `factory/lifecycle_worker.ex:14` |
@@ -344,7 +344,8 @@ This is what makes flag tests deterministic — without it, a flag enabled in on
 | `lib/slackex/notifications/push_worker.ex` | `:push_notifications` worker gate |
 | `lib/slackex/notifications/subscription_cleanup_worker.ex` | `:push_notifications` worker gate |
 | `lib/slackex_web/controllers/webhook_controller.ex` | `:incoming_webhooks` controller gate (404 when off) |
-| `lib/slackex_web/live/chat_live/index.ex` | `:loom_redesign`, `:message_search`, `:channel_summarization`, `:push_notifications`, `:catchup_on_reconnect`, `:sous` |
+| `lib/slackex_web/live/chat_live/index.ex` | `:sous` |
+| `lib/slackex_web/live/chat_live/chat_shell.ex` | `:loom_redesign`, `:message_search`, `:channel_summarization`, `:push_notifications`, `:catchup_on_reconnect` |
 | `lib/slackex_web/live/sous_live/in_service.ex` | `:sous` mount-level redirect gate |
 | `lib/slackex_web/mcp/server.ex` | `:dark_factory` tool-list + tool-call gate |
 | `lib/slackex/factory/channel_notifier.ex` | `:dark_factory` listener (`restart: :temporary`) |

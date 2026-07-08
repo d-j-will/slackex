@@ -1,22 +1,22 @@
 defmodule SlackexWeb.ChatLive.Index do
   use SlackexWeb, :live_view
 
+  require Logger
+
   alias Slackex.Accounts
   alias Slackex.Accounts.User
   alias Slackex.Chat
   alias Slackex.Chat.MessageGrouping
   alias Slackex.Messaging
-  alias Slackex.Notifications.ActiveTracker
-  alias Slackex.Notifications.CatchupServer
   alias Slackex.Notifications.DeviceTokens
-  alias Slackex.Notifications.OnlineTracker
   alias Slackex.Notifications.Preference
   alias Slackex.Notifications.PushHealth
   alias Slackex.Notifications.TestPush
   alias Slackex.Search
   alias SlackexWeb.ChatLive.BotSubscription
   alias SlackexWeb.ChatLive.BrowseChannelsModal
-  alias SlackexWeb.ChatLive.Catchup
+  alias SlackexWeb.ChatLive.ChatRuntime
+  alias SlackexWeb.ChatLive.ChatShell
   alias SlackexWeb.ChatLive.ChannelMembersModal
   alias SlackexWeb.ChatLive.Conversations
   alias SlackexWeb.ChatLive.CreateChannelModal
@@ -34,129 +34,30 @@ defmodule SlackexWeb.ChatLive.Index do
 
   import SlackexWeb.ChatComponents
 
-  @heartbeat_interval_ms 60_000
-  @active_heartbeat_interval_ms 10_000
   @typing_timeout_ms 3_000
-  @presence_topic "presence:online"
 
   @impl true
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
-    channels = Chat.list_user_channels(user.id)
-    dm_conversations = Chat.list_user_dm_conversations(user.id)
-    dm_requests = Chat.list_pending_requests_for_user(user.id)
+    connected = connected?(socket)
+    mode = ChatShell.mount_mode(connected, connect_params(socket))
 
-    _ =
-      if connected?(socket) do
-        _ = Messaging.subscribe_user(user.id)
-        Conversations.subscribe_all_conversations(channels, dm_conversations)
-        _ = Phoenix.PubSub.subscribe(Slackex.PubSub, @presence_topic)
-        _ = Phoenix.PubSub.subscribe(Slackex.PubSub, "profile:updates")
-        OnlineTracker.mark_online(user.id)
-        ActiveTracker.mark_active(user.id)
+    case build_mount_shell(user, connected, mode) do
+      {:ok, shell} ->
+        {:ok,
+         socket
+         |> ChatShell.assign(shell)
+         |> assign_push_health()
+         |> Helpers.push_initial_badge()}
 
-        _ =
-          Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :online, user.id})
-
-        Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
-        Process.send_after(self(), :active_heartbeat, @active_heartbeat_interval_ms)
-      end
-
-    base_unread_counts = Chat.batch_unread_counts(user.id)
-
-    catchup_enabled = connected?(socket) and FunWithFlags.enabled?(:catchup_on_reconnect)
-
-    {unread_counts, catchup_summary} =
-      if catchup_enabled do
-        try do
-          catchup = CatchupServer.build_catchup(user.id)
-
-          {Catchup.merge_unread(base_unread_counts, catchup), Catchup.summary(catchup)}
-        rescue
-          e ->
-            require Logger
-
-            Logger.warning(
-              "catchup_on_reconnect failed for user #{user.id}: #{Exception.message(e)}"
-            )
-
-            {base_unread_counts, nil}
-        end
-      else
-        {base_unread_counts, nil}
-      end
-
-    online_user_ids =
-      if connected?(socket) do
-        dm_conversations
-        |> Enum.map(& &1.other_user.id)
-        |> OnlineTracker.online_user_ids()
-      else
-        MapSet.new()
-      end
-
-    {:ok,
-     socket
-     |> assign(:channels, channels)
-     |> assign(:dm_conversations, dm_conversations)
-     |> assign(:dm_requests, dm_requests)
-     |> assign(:dm_request_count, length(dm_requests))
-     |> assign(:unread_counts, unread_counts)
-     |> assign(:online_user_ids, online_user_ids)
-     |> assign(:active_channel, nil)
-     |> assign(:active_dm, nil)
-     |> assign(:can_send, false)
-     |> assign(:user_role, nil)
-     |> assign(:typing_users, MapSet.new())
-     |> assign(:message_form, to_form(%{"content" => ""}, as: :message))
-     |> assign(:sidebar_open, true)
-     |> assign(:oldest_message_id, nil)
-     |> assign(:has_more_messages, false)
-     |> assign(:show_report_modal, false)
-     |> assign(:report_message_id, nil)
-     |> assign(:report_form, to_form(%{}, as: :report))
-     |> assign(:profile_user, nil)
-     |> assign(:show_edit_profile, false)
-     |> assign(:show_push_explainer, false)
-     |> assign(:edit_profile_form, Helpers.build_profile_form(user))
-     |> assign(:editing_message_id, nil)
-     |> assign(:reactions, %{})
-     |> assign(:thread_parent, nil)
-     |> assign(:member_count, 0)
-     |> assign(:pin_count, 0)
-     |> assign(:show_quick_switcher, false)
-     |> assign(:show_appearance, false)
-     |> assign(:loom, FunWithFlags.enabled?(:loom_redesign, for: user))
-     |> assign(:search_open, false)
-     |> assign(:search_enabled, FunWithFlags.enabled?(:message_search))
-     |> assign(:summarization_enabled, FunWithFlags.enabled?(:channel_summarization))
-     |> assign(:link_previews, %{})
-     |> assign(:show_summary_modal, false)
-     |> assign(:show_decide, false)
-     |> assign(:card_messages, %{})
-     |> assign(:summary_text, "")
-     |> assign(:summary_state, :idle)
-     |> assign(:summary_error, nil)
-     |> assign(:active_summary_task, nil)
-     |> assign(:last_message, nil)
-     |> assign(:push_notifications_enabled, FunWithFlags.enabled?(:push_notifications))
-     |> assign(:push_permission, "default")
-     |> assign(:push_subscribed, false)
-     |> assign(:push_health, :not_set_up)
-     |> assign(
-       :notification_level,
-       if FunWithFlags.enabled?(:push_notifications) do
-         Preference.resolve_level(user.id, nil)
-       else
-         "all"
-       end
-     )
-     |> assign(:channel_notification_level, "all")
-     |> assign(:page_visible, true)
-     |> stream(:messages, [])
-     |> maybe_put_catchup_flash(catchup_summary)
-     |> assign_push_health()
-     |> Helpers.push_initial_badge()}
+      {:degraded, shell, warnings} ->
+        {:ok,
+         socket
+         |> ChatShell.assign(shell)
+         |> ChatShell.put_warnings(warnings)
+         |> assign_push_health()
+         |> Helpers.push_initial_badge()}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -1160,18 +1061,13 @@ defmodule SlackexWeb.ChatLive.Index do
 
   @impl true
   def handle_info(:online_heartbeat, socket) do
-    OnlineTracker.refresh(socket.assigns.current_user.id)
-    _ = Process.send_after(self(), :online_heartbeat, @heartbeat_interval_ms)
+    ChatRuntime.refresh_online(socket.assigns.current_user.id)
     {:noreply, socket}
   end
 
   @impl true
   def handle_info(:active_heartbeat, socket) do
-    if socket.assigns.page_visible do
-      ActiveTracker.mark_active(socket.assigns.current_user.id)
-    end
-
-    _ = Process.send_after(self(), :active_heartbeat, @active_heartbeat_interval_ms)
+    ChatRuntime.refresh_active(socket.assigns.current_user.id, socket.assigns.page_visible)
     {:noreply, socket}
   end
 
@@ -1473,10 +1369,7 @@ defmodule SlackexWeb.ChatLive.Index do
   def terminate(_reason, socket) do
     _ =
       if socket.assigns[:current_user] do
-        user_id = socket.assigns.current_user.id
-        OnlineTracker.mark_offline(user_id)
-        ActiveTracker.mark_inactive(user_id)
-        Phoenix.PubSub.broadcast(Slackex.PubSub, @presence_topic, {:presence, :offline, user_id})
+        ChatRuntime.stop(socket.assigns.current_user.id)
       end
 
     :ok
@@ -1537,10 +1430,35 @@ defmodule SlackexWeb.ChatLive.Index do
       )
   end
 
-  defp maybe_put_catchup_flash(socket, nil), do: socket
+  defp build_mount_shell(user, false, mode) do
+    ChatShell.run(user, connected?: false, mode: mode)
+  end
 
-  defp maybe_put_catchup_flash(socket, msg),
-    do: Phoenix.LiveView.put_flash(socket, :info, msg)
+  defp build_mount_shell(user, true, mode) do
+    seeded_shell = ChatShell.seed(user)
+    initial_runtime_plan = %{channel_ids: [], dm_ids: []}
+
+    ChatRuntime.start_session(user.id)
+    ChatRuntime.sync_conversation_subscriptions(initial_runtime_plan, seeded_shell.runtime_plan)
+
+    case ChatShell.refresh_connected_state(seeded_shell, mode) do
+      {:ok, shell} ->
+        ChatRuntime.sync_conversation_subscriptions(seeded_shell.runtime_plan, shell.runtime_plan)
+        {:ok, shell}
+
+      {:degraded, shell, warnings} ->
+        ChatRuntime.sync_conversation_subscriptions(seeded_shell.runtime_plan, shell.runtime_plan)
+        {:degraded, shell, warnings}
+    end
+  end
+
+  defp connect_params(socket) do
+    if connected?(socket) do
+      Phoenix.LiveView.get_connect_params(socket)
+    else
+      nil
+    end
+  end
 
   # Adapts socket assigns into PushHealth.derive/3 and assigns the result. The
   # socket→values translation stays in the web layer; the derivation and the

@@ -178,13 +178,12 @@ File: `lib/slackex_web/channels/user_socket.ex`. `connect/3` requires a `"token"
 
 File: `lib/slackex_web/live/chat_live/index.ex`. Measured surface: **9 `handle_params`**, **48 `handle_event`**, **39 `handle_info`** clauses.
 
-**`mount/3`** loads the user's channels, DM conversations and pending DM requests, then (only when `connected?/1`):
+**`mount/3`** is now a thin adapter over two plain modules:
 
-- subscribes to all conversations (`Conversations.subscribe_all_conversations/2`), the presence topic `"presence:online"`, and `"profile:updates"`;
-- marks the user online and active (`OnlineTracker` / `ActiveTracker`) and broadcasts `{:presence, :online, user_id}`;
-- schedules two heartbeats: `:online_heartbeat` (60 s, refreshes the Redis presence TTL) and `:active_heartbeat` (10 s).
+- `ChatLive.ChatShell.run/2` loads the user's channels, DM conversations, pending DM requests, feature flags, online DM contacts, unread state, and the initial assign shape;
+- `ChatLive.ChatRuntime.start/2` (only when `connected?/1`) subscribes to the user's messaging topics plus `"presence:online"` / `"profile:updates"`, marks the user online and active, broadcasts `{:presence, :online, user_id}`, and schedules `:online_heartbeat` (60 s) and `:active_heartbeat` (10 s).
 
-It computes base unread counts (`Chat.batch_unread_counts/1`), and — **only if `FunWithFlags.enabled?(:catchup_on_reconnect)`** — overlays catchup counts (see §6.5). It then assigns ~40 keys, including the `:messages` stream, `:reactions`, `:typing_users` (a `MapSet`), `:online_user_ids` (a `MapSet`), `:unread_counts`, and feature-flag toggles (`:loom`, `:search_enabled`, `:summarization_enabled`).
+The shell mode comes from `get_connect_params(socket)["_mounts"]`: `"0"` means first connected mount, while values greater than zero mean reconnect. When `FunWithFlags.enabled?(:catchup_on_reconnect)` is true, `ChatShell` always reconciles unread counts from catchup data on connected mounts; only reconnects show the "while you were away" flash. `ChatShell.assign/2` then seeds ~40 keys, including the `:messages` stream, `:reactions`, `:typing_users` (a `MapSet`), `:online_user_ids` (a `MapSet`), `:unread_counts`, and feature-flag toggles (`:loom`, `:search_enabled`, `:summarization_enabled`).
 
 **`handle_params/3`** dispatches on `live_action`, calling `Conversations.enter_channel/5`, `enter_dm/3`, or `enter_modal/2` to swap the active conversation, manage subscriptions, load history, and reset the stream.
 
@@ -200,6 +199,8 @@ These hold logic pulled out of the LiveView; they are plain modules, not LiveCom
 
 | Module | Responsibility |
 |---|---|
+| `ChatLive.ChatShell` | Shell data loading, reconnect-aware catchup, online DM contact query, initial assign shape, runtime plan |
+| `ChatLive.ChatRuntime` | Messaging/PubSub subscriptions, presence lifecycle, heartbeat scheduling, disconnect cleanup |
 | `ChatLive.Conversations` | `enter_channel/5`, `enter_dm/3`, `enter_modal/2`, `leave_conversation/1`, `load_older_messages/5`, `subscribe_all_conversations/2`, `refresh_channels_and_navigate/2` |
 | `ChatLive.Helpers` | Send/typing helpers, stream enrichment/edit/delete/reaction updates, unread bookkeeping, channel authorization, profile-form helpers |
 | `ChatLive.Catchup` | Pure functions `merge_unread/2` and `summary/1` (no side effects) |
@@ -283,6 +284,7 @@ sequenceDiagram
   participant Browser
   participant CS as ConnectionStatus (JS)
   participant LV as ChatLive.Index
+  participant Shell as ChatLive.ChatShell
   participant Catch as CatchupServer
   participant C as ChatLive.Catchup
 
@@ -290,17 +292,21 @@ sequenceDiagram
   Browser->>CS: visibilitychange / focus
   CS->>CS: guard _reconnecting, disconnect+connect liveSocket
   CS->>LV: new mount (connected?=true)
-  LV->>LV: base unread = Chat.batch_unread_counts/1
+  LV->>Shell: run(user, mode: :reconnect)
+  Shell->>Shell: base unread = Chat.batch_unread_counts/1
   alt FunWithFlags :catchup_on_reconnect enabled
-    LV->>Catch: build_catchup(user_id)
-    Catch-->>LV: catchup (channels, timestamp)
-    LV->>C: merge_unread(base, catchup)
-    C-->>LV: reconciled counts
-    LV->>C: summary(catchup)
-    C-->>LV: summary text or nil
+    Shell->>Catch: safe_build_catchup(user_id)
+    Catch-->>Shell: catchup (channels, timestamp)
+    Shell->>C: merge_unread(base, catchup)
+    C-->>Shell: reconciled counts
+    opt reconnect only
+      Shell->>C: summary(catchup)
+      C-->>Shell: summary text or nil
+    end
+    Shell-->>LV: shell with reconciled unread state
     LV->>Browser: put_flash (if summary not nil)
-  else flag off OR catchup raises
-    LV->>LV: keep base counts (rescue logs warning)
+  else flag off OR catchup fails
+    Shell-->>LV: shell with base unread state
   end
 ```
 

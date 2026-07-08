@@ -17,6 +17,8 @@ defmodule Slackex.Notifications.CatchupServer do
   alias Slackex.Chat.{Channel, Message, ReadCursor, Subscription}
   alias Slackex.Repo
 
+  require Logger
+
   @max_missed_messages 100
 
   @type channel_catchup :: %{
@@ -65,6 +67,18 @@ defmodule Slackex.Notifications.CatchupServer do
       channels: channel_catchups,
       timestamp: DateTime.utc_now()
     }
+  end
+
+  @spec safe_build_catchup(integer()) :: {:ok, catchup_result()} | {:error, Exception.t()}
+  def safe_build_catchup(user_id) do
+    {:ok, build_catchup(user_id)}
+  rescue
+    error ->
+      Logger.warning(
+        "catchup_on_reconnect failed for user #{user_id}: #{Exception.message(error)}"
+      )
+
+      {:error, error}
   end
 
   # ---------------------------------------------------------------------------
