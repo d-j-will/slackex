@@ -284,6 +284,25 @@ defmodule Slackex.MarkdownTest do
       refute result =~ "<img"
       refute result =~ "onerror"
     end
+
+    test "neutralizes earmark's unescaped-attribute-value stored XSS (CVE-2026-48591)" do
+      # earmark itself does not escape quote characters inside a link URL,
+      # so a crafted URL can break out of the href="..." attribute and inject
+      # a new one (GHSA-52mm-h59v-f3c7). This is the advisory's own PoC.
+      # Defense-in-depth: the Scrubber re-parses earmark's raw HTML string
+      # with a real HTML parser (mochiweb_html) rather than trusting earmark's
+      # attribute boundaries, so the injected attribute lands on the same
+      # allowlist as everything else and gets dropped.
+      malicious_markdown = ~s{[click](http://example.com/?a=x" onerror="alert(1))}
+
+      raw_earmark_output = Earmark.as_html!(malicious_markdown)
+      assert raw_earmark_output =~ ~s{onerror="alert(1)"}, "PoC must reproduce earmark's own bug"
+
+      result = html(malicious_markdown)
+      refute result =~ "onerror"
+      refute result =~ "alert(1)"
+      assert result =~ ~s(href="http://example.com/?a=x")
+    end
   end
 
   describe "XSS defense in depth (render-time only)" do

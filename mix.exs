@@ -128,7 +128,7 @@ defmodule Slackex.MixProject do
       {:exla, ">= 0.0.0", only: [:dev, :test]},
 
       # HTTP client (OpenAI embeddings API) + HTML parsing (link previews)
-      {:req, "~> 0.5"},
+      {:req, "~> 0.6"},
       {:floki, "~> 0.37"},
 
       # Dev & Test

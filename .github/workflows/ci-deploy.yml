@@ -101,7 +101,7 @@ jobs:
         run: mix test --only e2e
 
       - name: Hex audit
-        run: mix hex.audit
+        run: mix slackex.hex_audit_gate
 
       - name: Check unused deps
         run: mix deps.unlock --check-unused

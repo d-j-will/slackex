@@ -71,7 +71,7 @@ echo "PASS: E2E tests"
 echo ""
 
 step "Auditing dependencies..."
-mix hex.audit
+mix slackex.hex_audit_gate
 echo "PASS: hex.audit"
 echo ""
 
