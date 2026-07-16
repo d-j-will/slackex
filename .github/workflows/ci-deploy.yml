@@ -196,6 +196,7 @@ jobs:
           scp infra/grafana/provisioning/datasources/datasources.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/datasources/datasources.yaml
           scp infra/grafana/provisioning/dashboards/dashboard.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/dashboards/dashboard.yaml
           scp infra/grafana/dashboards/slackex-overview.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/slackex-overview.json
+          scp infra/grafana/dashboards/grocery-planner-receipts.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/grocery-planner-receipts.json
           # Copy caddy-docker-proxy infra files to server (Dockerfile, compose, fallback Caddyfile)
           ssh root@${{ secrets.DEPLOY_HOST }} "mkdir -p /root/caddy"
           scp infra/caddy/Dockerfile root@${{ secrets.DEPLOY_HOST }}:/root/caddy/Dockerfile
