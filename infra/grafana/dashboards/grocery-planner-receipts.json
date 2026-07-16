@@ -1,0 +1,88 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "schemaVersion": 39,
+  "tags": ["grocery_planner", "ai-006"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Grocery Planner — Receipt Pipeline",
+  "uid": "grocery-planner-receipts",
+  "panels": [
+    {
+      "title": "Receipts awaiting AI (outage signal)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "grocery_planner_prom_ex_receipt_condition_count{condition=\"awaiting_ai\"}", "legendFormat": "awaiting_ai" }
+      ]
+    },
+    {
+      "title": "Receipts failed",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "grocery_planner_prom_ex_receipt_condition_count{condition=\"failed\"}", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "title": "Dead-letter jobs (discarded + cancelled)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(grocery_planner_prom_ex_oban_queue_length_count{state=~\"discarded|cancelled\"})", "legendFormat": "dead-letter" }
+      ]
+    },
+    {
+      "title": "Receipts by condition",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "grocery_planner_prom_ex_receipt_condition_count", "legendFormat": "{{condition}}" }
+      ]
+    },
+    {
+      "title": "Oban queue depth by state",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum by (state) (grocery_planner_prom_ex_oban_queue_length_count)", "legendFormat": "{{state}}" }
+      ]
+    }
+  ]
+}

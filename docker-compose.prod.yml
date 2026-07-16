@@ -123,6 +123,9 @@ services:
       - "4318:4318"
     networks:
       - default
+      # Shared observability net so other homelab apps (e.g. grocery_planner)
+      # can push OTLP traces to `otel-collector` by name (grocery_planner-k9c).
+      - monitoring
 
   prometheus:
     image: prom/prometheus:v3.12.0
@@ -138,6 +141,9 @@ services:
       - '--web.enable-remote-write-receiver'
     networks:
       - default
+      # Shared observability net so Prometheus can scrape other homelab apps'
+      # /metrics by name (e.g. grocery-planner:4000) (grocery_planner-k9c).
+      - monitoring
 
   tempo:
     image: grafana/tempo:2.7.2
@@ -184,4 +190,9 @@ volumes:
 
 networks:
   proxy:
+    external: true
+  # Shared observability network. Created once on the host
+  # (`docker network create monitoring`); other apps join it to expose /metrics
+  # to Prometheus and push OTLP traces to the collector (grocery_planner-k9c).
+  monitoring:
     external: true
