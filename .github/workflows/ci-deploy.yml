@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [master]
+  # Manual trigger for the infra-only deploy (deploy-infra job): sync the
+  # observability config + recreate the observability stack WITHOUT cutting an
+  # app release. Lets a Prometheus/Grafana change ship on its own.
+  workflow_dispatch:
 
 jobs:
   quality:
@@ -455,6 +459,95 @@ jobs:
             exit 1
           }
           echo "Cloudflare cache purged for /service-worker.js and /manifest.json."
+
+  # Infra-only deploy — manual dispatch. Syncs the observability config
+  # (Prometheus scrape targets, Grafana dashboards, OTEL/Tempo) and recreates the
+  # observability stack WITHOUT building/migrating/recreating the app. This
+  # decouples observability changes from the tag-gated app release: the coupling
+  # that left grocery_planner's scrape target undeployed for weeks despite a green
+  # push (the obs commit merged to master but the deploy job only runs on v* tags).
+  # Deliberately does NOT `needs: quality` — infra config is independent of the
+  # Elixir suite, and gating on it would re-introduce a coupling.
+  deploy-infra:
+    name: Deploy observability infra
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
+
+      - name: Sync infra config and recreate observability stack
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Prometheus's `monitoring`-network membership lives in the compose file,
+          # so the compose must sync alongside the infra configs. Only the infra
+          # services are recreated below, so app-service definitions in this file
+          # stay inert until the next tag release.
+          scp docker-compose.prod.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/docker-compose.prod.yml
+          ssh root@${{ secrets.DEPLOY_HOST }} "mkdir -p /root/slackex/infra/grafana/provisioning/datasources /root/slackex/infra/grafana/provisioning/dashboards /root/slackex/infra/grafana/dashboards"
+          scp infra/otel-collector-config.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/otel-collector-config.yaml
+          scp infra/prometheus.yml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/prometheus.yml
+          scp infra/tempo.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/tempo.yaml
+          scp infra/grafana/provisioning/datasources/datasources.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/datasources/datasources.yaml
+          scp infra/grafana/provisioning/dashboards/dashboard.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/dashboards/dashboard.yaml
+          scp infra/grafana/dashboards/slackex-overview.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/slackex-overview.json
+          scp infra/grafana/dashboards/grocery-planner-receipts.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/grocery-planner-receipts.json
+
+          ssh -o StrictHostKeyChecking=accept-new root@${{ secrets.DEPLOY_HOST }} << 'EOF'
+            set -e
+            cd /root/slackex
+
+            echo "=== Recreating observability stack (otel-collector, prometheus, tempo, grafana) ==="
+            docker compose -f docker-compose.prod.yml pull otel-collector prometheus tempo grafana 2>&1
+            docker compose -f docker-compose.prod.yml up -d --force-recreate --no-build otel-collector prometheus tempo grafana 2>&1
+
+            echo "=== Verifying grocery_planner scrape target is UP ==="
+            # scrape_interval is 15s; poll up to 90s (6x) so a hard-fail cannot be
+            # first-scrape flakiness. A green run must MEAN Prometheus is scraping
+            # grocery-planner — the exact thing a green tag-deploy failed to guarantee.
+            TARGET_UP=0
+            for i in $(seq 1 18); do
+              # wget runs inside the prometheus container; sed/grep parse on the host.
+              # Targets are comma-and-brace separated; `},{` only occurs between
+              # array elements, so it reliably splits one JSON object per line.
+              HEALTH=$(docker exec slackex-prometheus-1 wget -qO- \
+                "http://localhost:9090/api/v1/targets?state=active" 2>/dev/null \
+                | sed 's/},{/}\n{/g' \
+                | grep '"scrapePool":"grocery_planner"' \
+                | grep -o '"health":"[a-z]*"' | head -1)
+              echo "  attempt ${i}/18: ${HEALTH:-<no grocery_planner target yet>}"
+              if echo "$HEALTH" | grep -q '"health":"up"'; then
+                TARGET_UP=1
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$TARGET_UP" != "1" ]; then
+              echo "FAIL: grocery_planner scrape target is not UP after 90s."
+              echo "--- target diagnostics ---"
+              docker exec slackex-prometheus-1 wget -qO- \
+                "http://localhost:9090/api/v1/targets?state=any" 2>/dev/null \
+                | sed 's/},{/}\n{/g' | grep 'grocery_planner' | head -5
+              exit 1
+            fi
+
+            echo "PASS: grocery_planner scrape target is UP."
+            echo "Infra deploy complete."
+          EOF
 
   notify:
     name: Discord Notification
