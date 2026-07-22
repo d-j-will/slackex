@@ -46,6 +46,8 @@ defmodule Slackex.Andon do
   alias Slackex.Accounts
   alias Slackex.Andon.{Affordances, Channel, Grammar, Mirror, ServiceClient}
   alias Slackex.Chat
+  alias Slackex.Chat.Channels
+  alias Slackex.Chat.Messages
   alias Slackex.Messaging
   alias Slackex.Repo
 
@@ -88,7 +90,7 @@ defmodule Slackex.Andon do
     # The bot must be a channel member to post/edit (the same constraint the
     # webhook bot has); join_channel is idempotent and rejects private channels.
     bot = bot_user()
-    _ = Slackex.Chat.Channels.join_channel(bot.id, channel_id)
+    _ = Channels.join_channel(bot.id, channel_id)
 
     %Channel{}
     |> Channel.enable_changeset(%{channel_id: channel_id})
@@ -330,7 +332,7 @@ defmodule Slackex.Andon do
         nil ->
           # Create synchronously (Chat, not the async Messaging hot path) so the
           # row exists for the edit-in-place that every later update performs.
-          case Slackex.Chat.Messages.send_message(channel_id, bot.id, text) do
+          case Messages.send_message(channel_id, bot.id, text) do
             {:ok, message} ->
               update_mirror_row(row, %{status_message_id: message.id, last_watermark: watermark})
 
