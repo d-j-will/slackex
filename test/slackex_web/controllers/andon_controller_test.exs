@@ -184,5 +184,31 @@ defmodule SlackexWeb.AndonControllerTest do
       assert reply.content =~ "@backup-dri"
       assert reply.content =~ "acknowledge window"
     end
+
+    test "uses the command's explicit channel and lands the reply there", %{
+      conn: conn,
+      channel: channel,
+      user: puller
+    } do
+      backup_user = insert(:user, username: "backup-two")
+      root = insert(:message, channel: channel, sender: puller)
+
+      # The channel now rides the payload (service fix), so resolution reads it
+      # directly instead of looking the thread message up. The reply still
+      # threads under the real parent message id.
+      command = %{
+        "command" => "notify_backup",
+        "backup" => %{"relay" => "slackex", "token" => to_string(backup_user.id)},
+        "channel" => to_string(channel.id),
+        "thread" => to_string(root.id)
+      }
+
+      assert %{"ok" => true} =
+               json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+
+      assert [reply] = Chat.list_thread(root.id)
+      assert reply.content =~ "@backup-two"
+      assert reply.channel_id == channel.id
+    end
   end
 end

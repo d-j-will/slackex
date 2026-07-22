@@ -275,8 +275,10 @@ defmodule Slackex.Andon do
   not serve is dropped, not an error.
   """
   @spec apply_command(map()) :: :ok
-  def apply_command(%{"command" => "notify_backup", "backup" => backup, "thread" => thread}) do
-    case channel_of_thread(thread) do
+  def apply_command(
+        %{"command" => "notify_backup", "backup" => backup, "thread" => thread} = command
+      ) do
+    case notify_backup_channel(command) do
       {:ok, channel_id} ->
         ctx = %{channel_id: channel_id, bot_id: bot_user().id}
 
@@ -448,6 +450,19 @@ defmodule Slackex.Andon do
       "@#{username}"
     else
       _ -> "@#{token}"
+    end
+  end
+
+  # Every thread-addressed command now carries its channel (service fix,
+  # andon-proto-claude 8d6d431), so prefer the explicit token and skip the DB
+  # lookup. Fall back to resolving it from the thread message for robustness
+  # (a pre-fix payload, or a malformed/absent channel token).
+  defp notify_backup_channel(command) do
+    with channel when not is_nil(channel) <- command["channel"],
+         {channel_id, ""} <- Integer.parse(to_string(channel)) do
+      {:ok, channel_id}
+    else
+      _ -> channel_of_thread(command["thread"])
     end
   end
 
