@@ -118,6 +118,12 @@ config :slackex, :redis_url, "redis://localhost:6379"
 # Embedding client — overridden to StubClient in dev/test
 config :slackex, :embedding_client, Slackex.Embeddings.StubClient
 
+# Andon relay (ADR-0002, relay #1). Dark-shipped behind the :andon_relay flag.
+# The outbound seam is HTTP by default; :andon_service (url/token) is filled in
+# runtime.exs from env. Missing config is inert (the client no-ops), matching
+# the flag-off default.
+config :slackex, :andon_service_client, Slackex.Andon.HTTPServiceClient
+
 # OpenTelemetry — default to console exporter for dev
 config :opentelemetry,
   span_processor: :batch,

@@ -81,3 +81,10 @@ config :slackex, :embedding_client, Slackex.Embeddings.StubClient
 
 # Use deterministic stub for LLM in tests
 config :slackex, :llm_client, Slackex.AI.StubLLMClient
+
+# Andon relay: stub the service seam; each test starts its own listener with
+# explicit channels, so the boot listener must not query the DB (no sandbox
+# yet at boot). The inbound endpoint's shared relay token lives here too.
+config :slackex, :andon_service_client, Slackex.Andon.StubServiceClient
+config :slackex, :andon_subscribe_on_boot, false
+config :slackex, :andon_service, token: "test-relay-token"

@@ -58,6 +58,13 @@ defmodule SlackexWeb.Router do
     post "/:token", WebhookController, :deliver
   end
 
+  # Andon relay inbound — bearer-token auth (see AndonController), no session
+  scope "/api/andon", SlackexWeb do
+    pipe_through :api
+
+    post "/commands", AndonController, :command
+  end
+
   scope "/", SlackexWeb do
     pipe_through :browser
 

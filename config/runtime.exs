@@ -139,6 +139,13 @@ if config_env() == :prod do
     }
   end
 
+  # Andon relay (ADR-0002). Dark-shipped behind the :andon_relay flag, so this
+  # config is optional: with no URL/token the outbound client no-ops and the
+  # inbound endpoint fails closed. No raise — a missing var must not block boot.
+  config :slackex, :andon_service,
+    url: System.get_env("ANDON_SERVICE_URL"),
+    token: System.get_env("ANDON_RELAY_TOKEN")
+
   # OpenTelemetry — allow runtime override of collector endpoint
   if otel_endpoint = System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
     config :opentelemetry_exporter,

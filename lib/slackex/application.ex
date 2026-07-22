@@ -53,6 +53,7 @@ defmodule Slackex.Application do
           Supervisor.child_spec(Slackex.Embeddings.PersistenceListener, restart: :temporary),
           Supervisor.child_spec(Slackex.Links.LinkPreviewListener, restart: :temporary),
           Supervisor.child_spec(Slackex.Factory.ChannelNotifier, restart: :temporary),
+          Supervisor.child_spec(Slackex.Andon.Listener, restart: :temporary),
           # FunWithFlags auto-starts via OTP app dependency ordering (before Slackex.Application).
           # Its Ecto adapter queries are lazy, so the Repo being started here first is safe.
           # Start to serve requests, typically the last entry
