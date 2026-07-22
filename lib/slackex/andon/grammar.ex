@@ -43,8 +43,11 @@ defmodule Slackex.Andon.Grammar do
 
   defp classify(rest) do
     case String.split(rest, " ", parts: 2) do
-      [class, sentence] when class in @classes and sentence != "" ->
-        {:pull, class, sentence}
+      [class, sentence] when class in @classes ->
+        # A blank sentence (empty or whitespace-only, e.g. "pull: defect   ")
+        # is a missing sentence, not a pull with an empty description. Only the
+        # emptiness check trims — the stored sentence stays verbatim.
+        if blank?(sentence), do: :correction, else: {:pull, class, sentence}
 
       _ ->
         # Opens a pull (`pull: ` prefix) but the class is unknown or the
@@ -52,4 +55,6 @@ defmodule Slackex.Andon.Grammar do
         :correction
     end
   end
+
+  defp blank?(sentence), do: String.trim(sentence) == ""
 end

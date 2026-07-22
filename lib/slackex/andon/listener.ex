@@ -83,13 +83,29 @@ defmodule Slackex.Andon.Listener do
   # -- internals --------------------------------------------------------------
 
   defp process(payload, channel_id, state) do
-    state = ensure_bot(state)
-    Andon.process_message(payload, %{channel_id: channel_id, bot_id: state.bot_id})
-    state
+    case ensure_bot(state) do
+      {:ok, state} ->
+        Andon.process_message(payload, %{channel_id: channel_id, bot_id: state.bot_id})
+        state
+
+      {:error, state} ->
+        # Bot lookup failed (e.g. a DB blip); skip this message and retry the
+        # resolution on the next one. Never crash — this GenServer is
+        # restart: :temporary, so a crash would take the relay dark on this
+        # node with no self-heal.
+        state
+    end
   end
 
-  defp ensure_bot(%{bot_id: nil} = state), do: %{state | bot_id: Andon.bot_user().id}
-  defp ensure_bot(state), do: state
+  defp ensure_bot(%{bot_id: nil} = state) do
+    {:ok, %{state | bot_id: Andon.bot_user().id}}
+  rescue
+    error ->
+      Logger.warning("andon relay: could not resolve bot user: #{inspect(error)}")
+      {:error, state}
+  end
+
+  defp ensure_bot(%{bot_id: bot_id} = state) when not is_nil(bot_id), do: {:ok, state}
 
   defp subscribe_all(channel_ids, acc \\ MapSet.new()) do
     Enum.reduce(channel_ids, acc, fn channel_id, set ->

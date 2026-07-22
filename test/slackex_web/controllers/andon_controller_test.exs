@@ -8,6 +8,8 @@ defmodule SlackexWeb.AndonControllerTest do
   """
   use SlackexWeb.ConnCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Slackex.Andon
   alias Slackex.Chat
 
@@ -209,6 +211,23 @@ defmodule SlackexWeb.AndonControllerTest do
       assert [reply] = Chat.list_thread(root.id)
       assert reply.content =~ "@backup-two"
       assert reply.channel_id == channel.id
+    end
+
+    test "an unresolvable channel logs a warning instead of dropping silently", %{conn: conn} do
+      command = %{
+        "command" => "notify_backup",
+        "backup" => %{"relay" => "slackex", "token" => "U-x"},
+        # No channel field, and a thread that resolves to no message.
+        "thread" => "T-unresolvable"
+      }
+
+      log =
+        capture_log(fn ->
+          assert %{"ok" => true} =
+                   json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+        end)
+
+      assert log =~ "dropped notify_backup"
     end
   end
 end

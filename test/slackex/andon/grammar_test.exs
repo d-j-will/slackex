@@ -58,6 +58,18 @@ defmodule Slackex.Andon.GrammarTest do
     end
   end
 
+  describe "whitespace hardening (beyond the fixtures)" do
+    test "a whitespace-only sentence is a correction, not an empty-sentence pull" do
+      assert Grammar.parse("pull: defect   ") == :correction
+      assert Grammar.parse("pull: burden \t ") == :correction
+    end
+
+    test "a real sentence keeps its interior/leading whitespace verbatim" do
+      assert Grammar.parse("pull: defect  the build is red") ==
+               {:pull, "defect", " the build is red"}
+    end
+  end
+
   test "every class the fixture claims is a recognised class" do
     claimed =
       for c <- @fixture["grammar_cases"],

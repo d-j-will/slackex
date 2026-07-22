@@ -289,6 +289,14 @@ defmodule Slackex.Andon do
         )
 
       :error ->
+        # A safety-critical escalation we cannot place. Never silent — losing a
+        # backup notification without a trace is exactly the failure a response
+        # system must surface.
+        Logger.warning(
+          "andon relay: dropped notify_backup, unresolvable channel " <>
+            "(channel=#{inspect(command["channel"])} thread=#{inspect(thread)})"
+        )
+
         :ok
     end
   end
@@ -317,33 +325,43 @@ defmodule Slackex.Andon do
     text = Mirror.render(mirror)
     bot = bot_user()
 
-    case row.status_message_id do
-      nil ->
-        # Create synchronously (Chat, not the async Messaging hot path) so the
-        # row exists for the edit-in-place that every later update performs.
-        case Slackex.Chat.Messages.send_message(channel_id, bot.id, text) do
-          {:ok, message} ->
-            update_mirror_row(row, %{status_message_id: message.id, last_watermark: watermark})
+    _ =
+      case row.status_message_id do
+        nil ->
+          # Create synchronously (Chat, not the async Messaging hot path) so the
+          # row exists for the edit-in-place that every later update performs.
+          case Slackex.Chat.Messages.send_message(channel_id, bot.id, text) do
+            {:ok, message} ->
+              update_mirror_row(row, %{status_message_id: message.id, last_watermark: watermark})
 
-          {:error, reason} ->
-            Logger.warning("andon relay: mirror create failed: #{inspect(reason)}")
-        end
+            {:error, reason} ->
+              Logger.warning("andon relay: mirror create failed: #{inspect(reason)}")
+          end
 
-      status_message_id ->
-        case Messaging.edit_message(status_message_id, bot.id, text) do
-          {:ok, _} ->
-            update_mirror_row(row, %{last_watermark: watermark})
+        status_message_id ->
+          case Messaging.edit_message(status_message_id, bot.id, text) do
+            {:ok, _} ->
+              update_mirror_row(row, %{last_watermark: watermark})
 
-          {:error, reason} ->
-            Logger.warning("andon relay: mirror edit failed: #{inspect(reason)}")
-        end
-    end
+            {:error, reason} ->
+              Logger.warning("andon relay: mirror edit failed: #{inspect(reason)}")
+          end
+      end
 
     :ok
   end
 
   defp update_mirror_row(row, attrs) do
-    row |> Channel.mirror_changeset(attrs) |> Repo.update()
+    case row |> Channel.mirror_changeset(attrs) |> Repo.update() do
+      {:ok, updated} ->
+        {:ok, updated}
+
+      {:error, changeset} ->
+        # The mirror message posted/edited but the row didn't record it; log so
+        # a stuck watermark or a lost status_message_id isn't silent.
+        Logger.warning("andon relay: mirror row update failed: #{inspect(changeset.errors)}")
+        {:error, changeset}
+    end
   end
 
   # ---------------------------------------------------------------------------

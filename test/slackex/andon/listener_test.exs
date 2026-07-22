@@ -277,4 +277,24 @@ defmodule Slackex.Andon.ListenerTest do
       end)
     end
   end
+
+  describe "lazy bot resolution (started without an explicit bot_id)" do
+    test "resolves the bot from the DB on the first message and processes it", %{user: user} do
+      # Every other test injects bot_id, so ensure_bot's DB-resolution branch
+      # is otherwise never exercised. A fresh channel + a listener with no
+      # bot_id makes the first message drive the lookup.
+      channel = insert(:channel, creator: user, is_private: false)
+      {:ok, _} = Chat.Channels.join_channel(user.id, channel.id)
+
+      start_supervised!(
+        {Andon.Listener,
+         name: :listener_lazy_bot, channels: [channel.id], subscribe_on_boot: false},
+        id: :listener_lazy_bot
+      )
+
+      post_message(channel, user, "pull: defect the build is red on main")
+
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+    end
+  end
 end
