@@ -1,0 +1,60 @@
+{
+  "contract": "relay-conformance",
+  "version": 1,
+  "notes": "C1 grammar as executable expectations. A relay's parser must map each input to the expected outcome. 'correction' means an immediate in-thread correction (never a modal) and NO domain event to the service. 'not_a_pull' means the message is ordinary channel traffic. The keyword is the exact token 'pull:' at message start (v1 reads the spec literally; kaizen-open).",
+  "grammar_cases": [
+    {
+      "name": "defect pull parses with sentence verbatim",
+      "input": { "kind": "message", "text": "pull: defect the build is red on main" },
+      "expect": { "outcome": "pull_created", "class": "defect", "sentence": "the build is red on main" }
+    },
+    {
+      "name": "delay pull parses",
+      "input": { "kind": "message", "text": "pull: delay the review has sat two days with no ack" },
+      "expect": { "outcome": "pull_created", "class": "delay", "sentence": "the review has sat two days with no ack" }
+    },
+    {
+      "name": "burden pull parses",
+      "input": { "kind": "message", "text": "pull: burden the deploy needs three manual steps" },
+      "expect": { "outcome": "pull_created", "class": "burden", "sentence": "the deploy needs three manual steps" }
+    },
+    {
+      "name": "confusion pull parses",
+      "input": { "kind": "message", "text": "pull: confusion I cannot tell which error state this AC covers" },
+      "expect": { "outcome": "pull_created", "class": "confusion", "sentence": "I cannot tell which error state this AC covers" }
+    },
+    {
+      "name": "keyword mid-message is not a pull (message start only)",
+      "input": { "kind": "message", "text": "we could pull: defect this later if it recurs" },
+      "expect": { "outcome": "not_a_pull" }
+    },
+    {
+      "name": "keyword uppercase is not the keyword (exact token, v1)",
+      "input": { "kind": "message", "text": "Pull: defect the build is red on main" },
+      "expect": { "outcome": "not_a_pull" }
+    },
+    {
+      "name": "invalid class gets an in-thread correction, never a modal, no event",
+      "input": { "kind": "message", "text": "pull: severity-1 the build is red on main" },
+      "expect": { "outcome": "correction" }
+    },
+    {
+      "name": "missing sentence gets a correction, no event",
+      "input": { "kind": "message", "text": "pull: defect" },
+      "expect": { "outcome": "correction" }
+    }
+  ],
+  "identical_event_rule": {
+    "notes": "C1: the optional /pull adapter and the canonical text grammar produce the IDENTICAL domain event, thread, and log entry. Usage is never compared by input method. A conforming relay must produce byte-equal domain events from both inputs across the full equality scope — matching only class and sentence does not conform.",
+    "equality": {
+      "scope": "full_domain_event",
+      "excluded_fields": ["event_id", "occurred_at"],
+      "notes": "Every field of the POSTed domain event (puller, class, sentence, origin tokens) must be equal between the two inputs; only the per-delivery identity (event_id) and timestamp may differ. The relay must also target the same thread for both."
+    },
+    "inputs": [
+      { "kind": "message", "text": "pull: burden the deploy needs three manual steps" },
+      { "kind": "adapter", "class": "burden", "sentence": "the deploy needs three manual steps" }
+    ],
+    "expect": { "outcome": "pull_created", "class": "burden", "sentence": "the deploy needs three manual steps" }
+  }
+}
