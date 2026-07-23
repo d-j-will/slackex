@@ -280,7 +280,7 @@ defmodule Slackex.Andon do
   def apply_command(
         %{"command" => "notify_backup", "backup" => backup, "thread" => thread} = command
       ) do
-    case notify_backup_channel(command) do
+    case resolve_channel(command) do
       {:ok, channel_id} ->
         ctx = %{channel_id: channel_id, bot_id: bot_user().id}
 
@@ -312,6 +312,25 @@ defmodule Slackex.Andon do
       apply_mirror(row, watermark, mirror)
     else
       _ -> :ok
+    end
+  end
+
+  # The service pushes the DRI notification here (off its own request path) so
+  # it rides the one channel the relay reliably renders. Reuse the response-path
+  # renderer — the ping is identical whether it arrives inline on a 201 or as an
+  # outbound push.
+  def apply_command(%{"command" => "notify_dri", "thread" => thread} = command) do
+    case resolve_channel(command) do
+      {:ok, channel_id} ->
+        run_command(command, %{channel_id: channel_id, bot_id: bot_user().id})
+
+      :error ->
+        Logger.warning(
+          "andon relay: dropped notify_dri, unresolvable channel " <>
+            "(channel=#{inspect(command["channel"])} thread=#{inspect(thread)})"
+        )
+
+        :ok
     end
   end
 
@@ -477,7 +496,7 @@ defmodule Slackex.Andon do
   # andon-proto-claude 8d6d431), so prefer the explicit token and skip the DB
   # lookup. Fall back to resolving it from the thread message for robustness
   # (a pre-fix payload, or a malformed/absent channel token).
-  defp notify_backup_channel(command) do
+  defp resolve_channel(command) do
     with channel when not is_nil(channel) <- command["channel"],
          {channel_id, ""} <- Integer.parse(to_string(channel)) do
       {:ok, channel_id}

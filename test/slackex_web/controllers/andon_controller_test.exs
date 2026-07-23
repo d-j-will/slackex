@@ -230,4 +230,47 @@ defmodule SlackexWeb.AndonControllerTest do
       assert log =~ "dropped notify_backup"
     end
   end
+
+  describe "notify_dri: an in-thread reply telling the DRI they're on the clock" do
+    test "posts a reply in the pull's thread mentioning the DRI user", %{
+      conn: conn,
+      channel: channel,
+      user: puller
+    } do
+      dri_user = insert(:user, username: "stage-dri")
+      root = insert(:message, channel: channel, sender: puller)
+
+      command = %{
+        "command" => "notify_dri",
+        "dri" => %{"relay" => "slackex", "token" => to_string(dri_user.id)},
+        "channel" => to_string(channel.id),
+        "thread" => to_string(root.id)
+      }
+
+      assert %{"ok" => true} =
+               json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+
+      assert [reply] = Chat.list_thread(root.id)
+      assert reply.content =~ "@stage-dri"
+      assert reply.content =~ "on the clock"
+      assert reply.channel_id == channel.id
+    end
+
+    test "an unresolvable channel logs a warning instead of dropping silently", %{conn: conn} do
+      command = %{
+        "command" => "notify_dri",
+        "dri" => %{"relay" => "slackex", "token" => "U-x"},
+        # No channel field, and a thread that resolves to no message.
+        "thread" => "T-unresolvable"
+      }
+
+      log =
+        capture_log(fn ->
+          assert %{"ok" => true} =
+                   json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+        end)
+
+      assert log =~ "dropped notify_dri"
+    end
+  end
 end
