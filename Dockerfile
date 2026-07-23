@@ -18,10 +18,11 @@ RUN mix local.hex --force && mix local.rebar --force
 # Copy dependency manifests first for layer caching
 COPY mix.exs mix.lock ./
 RUN mix deps.get --only prod
-RUN mix deps.compile
 
-# Copy config (needed before compile)
+# Config must exist BEFORE deps compile: mime (and friends) bake
+# compile-time config into their builds (canonical phx.gen.release order).
 COPY config config
+RUN mix deps.compile
 
 # Copy static assets (favicon, images, robots.txt)
 COPY priv priv
@@ -30,9 +31,6 @@ COPY priv priv
 COPY lib lib
 
 # Compile the application
-# mime bakes config-time types into its build; deps compile before config
-# is copied, so force it to recompile against the real config (SSE types).
-RUN mix deps.clean mime --build && mix deps.compile mime
 RUN mix compile
 
 # Install esbuild + tailwind binaries
