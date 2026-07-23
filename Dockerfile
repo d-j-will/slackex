@@ -30,6 +30,9 @@ COPY priv priv
 COPY lib lib
 
 # Compile the application
+# mime bakes config-time types into its build; deps compile before config
+# is copied, so force it to recompile against the real config (SSE types).
+RUN mix deps.clean mime --build && mix deps.compile mime
 RUN mix compile
 
 # Install esbuild + tailwind binaries
