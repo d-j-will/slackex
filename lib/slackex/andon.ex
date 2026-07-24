@@ -44,7 +44,7 @@ defmodule Slackex.Andon do
   import Ecto.Query
 
   alias Slackex.Accounts
-  alias Slackex.Andon.{Affordances, Channel, Grammar, Mirror, ServiceClient}
+  alias Slackex.Andon.{Affordances, Channel, Grammar, Mirror, ServiceClient, ThreadReplyWorker}
   alias Slackex.Chat
   alias Slackex.Chat.Channels
   alias Slackex.Chat.Messages
@@ -414,50 +414,24 @@ defmodule Slackex.Andon do
 
   defp run_command(_unknown, _ctx), do: :ok
 
-  # Posts as the bot into the Slack thread rooted at `thread` (a message id).
-  #
-  # slackex persists channel messages asynchronously (ChannelServer broadcasts
-  # message.new, then a Task writes the row), so the parent a relay reply
-  # targets can lag its broadcast. `send_reply` needs the parent row, so we wait
-  # briefly for it to materialise rather than crash. FINDING: the relay contract
-  # assumes a thread can be posted into as soon as its message exists; slackex's
-  # async persistence forces this bounded wait. It also blocks the listener —
-  # acceptable for the synchronous skeleton, revisit with a Task/Oban seam.
+  # Posts as the bot into the Slack thread rooted at `thread` (a message id) by
+  # enqueuing a durable ThreadReplyWorker job. slackex persists channel messages
+  # asynchronously (ChannelServer broadcasts message.new, then a Task writes the
+  # row), so the parent a relay reply targets can lag its broadcast past any
+  # in-listener wait (slackex-xqd: the field lag was >700ms). The worker owns the
+  # retry-until-persisted off this path, so the listener never blocks and a reply
+  # is never dropped to a slow write. Enqueue only — the listener must not crash.
   defp post_in_thread(%{channel_id: channel_id, bot_id: bot_id}, thread, text) do
-    with {parent_id, ""} <- Integer.parse(to_string(thread)),
-         {:ok, _parent} <- await_message(parent_id),
-         {:ok, _reply} <- safe_send_reply(channel_id, bot_id, parent_id, text) do
-      :ok
-    else
-      other ->
+    case ThreadReplyWorker.enqueue(channel_id, bot_id, thread, text) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
         Logger.warning(
-          "andon relay: post_in_thread failed for thread #{inspect(thread)}: #{inspect(other)}"
+          "andon relay: could not enqueue thread reply for #{inspect(thread)}: #{inspect(reason)}"
         )
 
         :ok
-    end
-  end
-
-  defp safe_send_reply(channel_id, bot_id, parent_id, text) do
-    Messaging.send_reply(channel_id, :channel, bot_id, parent_id, text)
-  rescue
-    error -> {:error, error}
-  end
-
-  @await_attempts 25
-  @await_interval_ms 20
-
-  defp await_message(message_id, attempts \\ @await_attempts) do
-    case Chat.get_message(message_id) do
-      {:ok, message} ->
-        {:ok, message}
-
-      {:error, :not_found} when attempts > 0 ->
-        Process.sleep(@await_interval_ms)
-        await_message(message_id, attempts - 1)
-
-      other ->
-        other
     end
   end
 

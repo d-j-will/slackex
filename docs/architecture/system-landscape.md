@@ -84,7 +84,7 @@ C4Container
     Container(batchwriter, "Pipeline.BatchWriter", "Task + Ecto", "Async batched persistence with writer-epoch fencing")
     Container(pubsub, "Phoenix.PubSub", "Distributed event bus", "Realtime envelopes + pipeline:events / factory:events")
     Container(cache, "Cache (ETS + Redis)", "GenServer + Redix", "Hot message cache")
-    Container(oban, "Oban", "Postgres-backed queues", "embeddings, notifications, link_previews, analytics, facets")
+    Container(oban, "Oban", "Postgres-backed queues", "embeddings, notifications, link_previews, analytics, facets, andon")
     Container(snowflake, "Infrastructure.Snowflake", "GenServer", "Distributed 64-bit ID generation")
     Container(cluster, "Cluster.Supervisor + NodeListener + Horde", "libcluster / Horde", "Node discovery, distributed registry/supervisor")
   }
@@ -183,7 +183,7 @@ Multi-node operation is real, not aspirational — production runs more than one
 
 ### Oban queues (`config/config.exs`)
 
-`default: 10`, `notifications: 20`, `embeddings: 5`, `link_previews: 5`, `analytics: 5`, `facets: 3`.
+`default: 10`, `notifications: 20`, `embeddings: 5`, `link_previews: 5`, `analytics: 5`, `facets: 3`, `andon: 10`.
 
 ### Oban cron (`Oban.Plugins.Cron`)
 

@@ -2,7 +2,7 @@
 
 **Status:** Reference
 **Zoom level:** L1 (cross-cutting subsystem — the "X" view of all background work)
-**Scope:** The entire Oban background-job ecosystem — the single queue/plugin configuration, all 11 workers, what triggers each one, their retry and uniqueness semantics, every enqueue path (the `pipeline:events` PubSub bridge, direct `ChannelServer` enqueues, cron, and synchronous context calls), and the operational rules that keep a failing job from cascading into a full outage. This is the map of *everything that runs off the request path*.
+**Scope:** The entire Oban background-job ecosystem — the single queue/plugin configuration, all 12 workers, what triggers each one, their retry and uniqueness semantics, every enqueue path (the `pipeline:events` PubSub bridge, direct `ChannelServer` enqueues, cron, synchronous context calls, and the Andon relay's in-thread reply enqueue), and the operational rules that keep a failing job from cascading into a full outage. This is the map of *everything that runs off the request path*.
 
 ---
 
@@ -10,14 +10,14 @@
 
 Slackex pushes all non-realtime, fallible, or rate-sensitive work onto **Oban** (Postgres-backed job queue). The realtime hot path stays free of these concerns: a user's message is broadcast over PubSub and persisted by `BatchWriter` before any background job runs (see `docs/architecture/realtime-chat.md`). Only *after* a batch is durably written do downstream jobs fire — embeddings, link previews, push notifications.
 
-There are **11 workers** across six queues. They fall into two trigger classes:
+There are **12 workers** across seven queues. They fall into two trigger classes:
 
 - **6 cron workers** driven by `Oban.Plugins.Cron` — periodic maintenance, reconciliation, and metrics emission.
-- **5 event-triggered workers** enqueued in response to application activity — analytics tracking, embeddings, link previews, push notifications, and Sous facet generation.
+- **6 event-triggered workers** enqueued in response to application activity — analytics tracking, embeddings, link previews, push notifications, Sous facet generation, and the Andon relay's durable in-thread replies (a distinct bounded context, `Slackex.Andon`).
 
 Three design facts shape the whole subsystem and are worth holding in mind while reading:
 
-1. **Jobs are enqueued by three distinct mechanisms, not one.** Some flow through the `pipeline:events` PubSub bridge (embeddings, link previews); push notifications are enqueued **directly** by `ChannelServer` in the same handler but *without* the bridge; the rest are enqueued by synchronous context calls (`Analytics.track/3`, the Sous drawer) or by cron.
+1. **Jobs are enqueued by four distinct mechanisms, not one.** Some flow through the `pipeline:events` PubSub bridge (embeddings, link previews); push notifications are enqueued **directly** by `ChannelServer` in the same handler but *without* the bridge; some are enqueued by synchronous context calls (`Analytics.track/3`, the Sous drawer) or by cron; and the Andon relay enqueues a durable `ThreadReplyWorker` job whenever it renders an in-thread reply (`notify_dri`, affordance acks, corrections).
 2. **The bridge listeners are non-essential and started `restart: :temporary`.** A crash loop in the embeddings/link-preview/factory listeners must *not* exhaust the root supervisor budget and take the app down — the incident precedent (v0.5.36) is codified in `CLAUDE.md` and `lib/slackex/application.ex`.
 3. **A worker's `perform/1` must return its result.** Returning `:ok` when the underlying operation failed silently denies Oban its only retry signal. This is the single most load-bearing rule in the subsystem and the direct cause of the v0.5.36 outage (Section 6.1).
 
@@ -47,11 +47,12 @@ C4Container
     Container(analytics_ctx, "Analytics", "Elixir Context", "track/3 -> TrackWorker.new |> Oban.insert")
     Container(sous_live, "SousLive.InService", "LiveView", "Drawer-open / retry -> FacetWorker.new |> Oban.insert")
     Container(backfill_task, "mix slackex.backfill_embeddings", "Mix task", "EmbeddingWorker.enqueue_backfill/1")
+    Container(andon_relay, "Andon relay", "Bounded context (relay #1)", "Renders an in-thread reply -> ThreadReplyWorker.enqueue/4")
 
-    Container(oban, "Oban", "Job runtime", "6 queues: default/notifications/embeddings/link_previews/analytics/facets; Pruner + Cron plugins")
+    Container(oban, "Oban", "Job runtime", "7 queues: default/notifications/embeddings/link_previews/analytics/facets/andon; Pruner + Cron plugins")
     Container(cron, "Oban.Plugins.Cron", "Scheduler", "Fires 6 cron workers on schedule")
 
-    Container_Boundary(workers, "Oban Workers (11)") {
+    Container_Boundary(workers, "Oban Workers (12)") {
       Container(track_w, "TrackWorker", "analytics", "Persist analytics event")
       Container(embed_w, "EmbeddingWorker", "embeddings", "Generate + upsert vectors")
       Container(recon_w, "ReconciliationWorker", "embeddings cron", "Find unembedded -> enqueue EmbeddingWorker")
@@ -63,6 +64,7 @@ C4Container
       Container(life_w, "LifecycleWorker", "default cron", "Release stale factory claims")
       Container(prune_w, "PruneWorker", "analytics cron", "Delete aged analytics events")
       Container(metrics_w, "MetricsBridge", "analytics cron", "Emit analytics -> telemetry")
+      Container(reply_w, "Andon.ThreadReplyWorker", "andon", "Durable in-thread relay reply; retry until the parent row persists")
     }
   }
 
@@ -82,6 +84,7 @@ C4Container
   Rel(link_listener, link_w, "Enqueues")
   Rel(analytics_ctx, track_w, "Enqueues")
   Rel(sous_live, facet_w, "Enqueues")
+  Rel(andon_relay, reply_w, "Enqueues")
   Rel(backfill_task, embed_w, "Enqueues backfill job")
   Rel(cron, recon_w, "Fires")
   Rel(cron, cache_w, "Fires")
@@ -176,7 +179,8 @@ queues: [
   embeddings: 5,
   link_previews: 5,
   analytics: 5,
-  facets: 3
+  facets: 3,
+  andon: 10
 ]
 ```
 
@@ -186,6 +190,7 @@ The number is the per-node concurrency limit. The split is deliberate:
 - **`embeddings: 5` / `link_previews: 5`** — bounded so a burst of messages can't saturate the node with model/HTTP calls.
 - **`facets: 3`** — the most constrained; each job is an LLM completion, the most expensive and rate-limited dependency.
 - **`default: 10`** — cron maintenance (`CacheWarmer`, `LifecycleWorker`) plus anything unqueued.
+- **`andon: 10`** — the Andon relay's in-thread replies, isolated from core chat work so the relay (a separate bounded context, dogfooded in-house) is independently observable and pausable in prod.
 
 ### 4.2 Plugins
 
@@ -231,6 +236,7 @@ plugins: [
 | `Slackex.Notifications.SubscriptionCleanupWorker` | `lib/slackex/notifications/subscription_cleanup_worker.ex` | `notifications` | cron (monthly) | 1 | no |
 | `Slackex.Sous.FacetWorker` | `lib/slackex/sous/facet_worker.ex` | `facets` | `SousLive.InService` (drawer open / retry) | 3 | yes — `[period: :infinity, fields: [:worker, :args], keys: [:work_item_id, :viewer_id, :prompt_version, :state_version]]` |
 | `Slackex.Workers.CacheWarmer` | `lib/slackex/workers/cache_warmer.ex` | `default` | cron (hourly) | 1 | no |
+| `Slackex.Andon.ThreadReplyWorker` | `lib/slackex/andon/thread_reply_worker.ex` | `andon` | `Andon` relay (in-thread reply render) | 15 | yes — `[period: 120, states: [:available, :scheduled, :executing, :retryable, :completed]]` |
 
 ### Per-worker notes (the "why")
 
@@ -241,13 +247,14 @@ plugins: [
 - **`ReconciliationWorker` (max_attempts 1).** The durability backstop for the `pipeline:events` bridge: if `PersistenceListener` was down during a `{:messages_persisted, ...}` broadcast (deploy, restart, node loss), this cron LEFT-JOINs `messages` against `message_embeddings` over a 1-hour lookback and feeds the gaps back into `EmbeddingWorker.enqueue/1`. This is *why* the bridge listener can safely be `restart: :temporary`.
 - **`LinkPreviewWorker` (max_attempts 1, unique per `:message_id`/60s).** Single attempt by design — "if a URL can't load fast and clean, it doesn't get a preview"; a failed fetch is stored as a `"blocked"` preview, not retried. Uniqueness stops duplicate preview jobs for the same message within a minute. Uses the Ecto `on_conflict: :nothing` + nil-id re-fetch pattern (the project's documented upsert-safety rule).
 - **`PushWorker` (max_attempts 3, no uniqueness).** Fans out per subscriber and per device token, accumulating the *first* error and returning it so Oban retries (Section 6.3). Re-pushing already-delivered tokens on retry is acceptable because the client service worker dedupes on the `tag` field. Gated behind `:push_notifications`.
+- **`ThreadReplyWorker` (max_attempts 15, `unique: [period: 120, ...]`).** The Andon relay's single durable path for posting one bot reply into a Slack thread (`notify_dri`, affordance acks/resolved/note/withdraw, corrections, error notes). It exists because slackex broadcasts `message.new` *before* `BatchWriter` commits the row (see §6 / realtime-chat.md), so a relay reply can target a parent that hasn't landed — the field lag was >700ms, past the old in-listener 500ms busy-wait, and the reply was silently dropped (slackex-xqd). The worker looks up the parent and, if absent, returns `{:snooze, 1}` (a *scheduling*, keeping error telemetry clean) up to the 15-attempt cap, then `{:cancel, _}` — a bounded wait that gives up rather than snoozing forever, durable across a restart. Genuine send failures return `{:error, _}` for backoff retry; an unparseable thread token is `{:cancel, _}` (never retriable). Uniqueness collapses a duplicate identical reply within 120s — an at-least-once re-delivery of an outbound command from the service, or an accidental double-enqueue. The `states` list includes `:completed` (Oban's full default set): the parent is usually already persisted so the first job completes in ms, and a duplicate arriving just after must still collapse against the completed job, not only a pending one. The residual double-post window is a crash *after* the reply commits but *before* the job acks — accepted, matching the relay's 201/200 dedup caveat.
 - **`FacetWorker` (max_attempts 3, `unique: [period: :infinity, ...]`).** The only LLM caller in Sous. Uniqueness keys include `state_version`, which the worker passes through to the event payload **unchanged** — re-querying `Sous.state_version/1` inside `perform/1` would write a different value than the one hashed into the uniqueness key at enqueue time and silently defeat dedup. Returns `{:discard, :llm_not_configured}` / `{:discard, :missing_dependency}` for non-retryable conditions and `{:error, reason}` for retryable LLM failures (Section 6.3).
 
 ---
 
 ## 6. Enqueue Paths
 
-There is no single enqueue funnel. Jobs reach `oban_jobs` four ways:
+There is no single enqueue funnel. Jobs reach `oban_jobs` five ways:
 
 ### 6.1 The `pipeline:events` bridge (embeddings + link previews)
 
@@ -271,6 +278,10 @@ In the **same** `{:batch_result, ref, :ok}` handler, `ChannelServer` calls `enqu
 ### 6.4 Cron
 
 The 6 cron workers (Section 4.3) have no application caller; `Oban.Plugins.Cron` inserts them on schedule. `ReconciliationWorker` is itself an enqueue *source* — it cron-fires and then enqueues `EmbeddingWorker` jobs, so `EmbeddingWorker` is fed by both the bridge and cron.
+
+### 6.5 Andon relay in-thread reply enqueue
+
+`Slackex.Andon` (relay #1, a separate bounded context) calls `ThreadReplyWorker.enqueue/4` from `post_in_thread/3` whenever it renders a bot reply into a Slack thread — for a `notify_dri`/`request_subject` response command, an affordance echo, a grammar correction, or a service error note. The enqueue is the relay's only reply mechanism: it replaced an in-listener busy-wait that blocked the listener and dropped replies when the parent row lagged its broadcast (slackex-xqd; see the `ThreadReplyWorker` catalog note). Like the direct push enqueue, it treats an insert failure as log-and-continue so the relay listener never crashes.
 
 ---
 
@@ -324,7 +335,7 @@ The tradeoff: a `:temporary` listener that dies stays dead until the next deploy
 
 | File | Responsibility |
 |---|---|
-| `config/config.exs` | Oban config: 6 queues, Pruner, Cron crontab (6 entries) |
+| `config/config.exs` | Oban config: 7 queues, Pruner, Cron crontab (6 entries) |
 | `config/test.exs` | `Oban, testing: :inline` |
 | `lib/slackex/application.ex` | Starts `{Oban, ...}`, the 3 `restart: :temporary` listeners, conditional embedding serving |
 | `lib/slackex/messaging/channel_server.ex` | Broadcasts `pipeline:events`; directly enqueues `PushWorker` after a durable batch |
@@ -344,6 +355,8 @@ The tradeoff: a `:temporary` listener that dies stays dead until the next deploy
 | `lib/slackex/notifications/subscription_cleanup_worker.ex` | Cron: sample-probe web_push tokens |
 | `lib/slackex/sous/facet_worker.ex` | LLM facet text per `(work_item, viewer)` |
 | `lib/slackex/workers/cache_warmer.ex` | Cron: pre-warm hot channels |
+| `lib/slackex/andon/thread_reply_worker.ex` | Durable in-thread relay reply; retry until the parent row persists |
+| `lib/slackex/andon.ex` | `post_in_thread/3` → `ThreadReplyWorker.enqueue/4` (relay reply enqueue) |
 
 ---
 

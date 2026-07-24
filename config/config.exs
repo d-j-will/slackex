@@ -68,7 +68,8 @@ config :slackex, Oban,
     embeddings: 5,
     link_previews: 5,
     analytics: 5,
-    facets: 3
+    facets: 3,
+    andon: 10
   ],
   plugins: [
     Oban.Plugins.Pruner,
