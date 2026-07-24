@@ -41,50 +41,26 @@ defmodule Slackex.Application do
         Slackex.Messaging.ChannelRegistry,
         Slackex.Messaging.ChannelSupervisor,
         {Task.Supervisor, name: Slackex.WriteSupervisor},
-        {Task.Supervisor, name: Slackex.TaskSupervisor}
-      ] ++
-        maybe_embedding_serving([]) ++
-        [
-          {Oban, Application.fetch_env!(:slackex, Oban)},
-          # Listeners are non-essential PubSub→Oban bridges. If they repeatedly
-          # crash, :permanent restart would exhaust the root supervisor budget
-          # and take down the app. ReconciliationWorker is the safety net for
-          # missed embedding events; link previews are cosmetic.
-          Supervisor.child_spec(Slackex.Embeddings.PersistenceListener, restart: :temporary),
-          Supervisor.child_spec(Slackex.Links.LinkPreviewListener, restart: :temporary),
-          Supervisor.child_spec(Slackex.Factory.ChannelNotifier, restart: :temporary),
-          Supervisor.child_spec(Slackex.Andon.Listener, restart: :temporary),
-          # FunWithFlags auto-starts via OTP app dependency ordering (before Slackex.Application).
-          # Its Ecto adapter queries are lazy, so the Repo being started here first is safe.
-          # Start to serve requests, typically the last entry
-          SlackexWeb.Endpoint
-        ]
+        {Task.Supervisor, name: Slackex.TaskSupervisor},
+        {Oban, Application.fetch_env!(:slackex, Oban)},
+        # Listeners are non-essential PubSub→Oban bridges. If they repeatedly
+        # crash, :permanent restart would exhaust the root supervisor budget
+        # and take down the app. ReconciliationWorker is the safety net for
+        # missed embedding events; link previews are cosmetic.
+        Supervisor.child_spec(Slackex.Embeddings.PersistenceListener, restart: :temporary),
+        Supervisor.child_spec(Slackex.Links.LinkPreviewListener, restart: :temporary),
+        Supervisor.child_spec(Slackex.Factory.ChannelNotifier, restart: :temporary),
+        Supervisor.child_spec(Slackex.Andon.Listener, restart: :temporary),
+        # FunWithFlags auto-starts via OTP app dependency ordering (before Slackex.Application).
+        # Its Ecto adapter queries are lazy, so the Repo being started here first is safe.
+        # Start to serve requests, typically the last entry
+        SlackexWeb.Endpoint
+      ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Slackex.Supervisor]
     Supervisor.start_link(children, opts)
-  end
-
-  @doc """
-  Conditionally includes the Embeddings.Supervisor in the children list when
-  the configured embedding client is BumblebeeClient.
-
-  The supervisor is started with `restart: :temporary` so that if it exhausts
-  its own restart budget and dies, the main application supervisor does NOT
-  attempt to restart it — the app keeps serving traffic with embeddings
-  degraded rather than cascading a full shutdown.
-  """
-  @spec maybe_embedding_serving([Supervisor.child_spec()]) :: [Supervisor.child_spec()]
-  def maybe_embedding_serving(children) do
-    case Application.get_env(:slackex, :embedding_client) do
-      Slackex.Embeddings.BumblebeeClient ->
-        spec = Supervisor.child_spec(Slackex.Embeddings.Supervisor, restart: :temporary)
-        children ++ [spec]
-
-      _other ->
-        children
-    end
   end
 
   # Tell Phoenix to update the endpoint configuration

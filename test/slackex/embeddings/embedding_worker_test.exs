@@ -2,7 +2,6 @@ defmodule Slackex.Embeddings.EmbeddingWorkerTest do
   use Slackex.DataCase, async: false
 
   alias Slackex.Chat.Message
-  alias Slackex.Embeddings.BumblebeeClient
   alias Slackex.Embeddings.EmbeddingClient
   alias Slackex.Embeddings.{EmbeddingWorker, MessageEmbedding}
 
@@ -123,19 +122,6 @@ defmodule Slackex.Embeddings.EmbeddingWorkerTest do
 
         # No embedding should be created since the client returned an error
         assert Repo.get(MessageEmbedding, msg.id) == nil
-      after
-        Application.put_env(:slackex, :embedding_client, original_client)
-      end
-    end
-
-    test "snoozes when BumblebeeClient configured but EmbeddingServing not running" do
-      original_client = Application.get_env(:slackex, :embedding_client)
-      Application.put_env(:slackex, :embedding_client, BumblebeeClient)
-
-      try do
-        # EmbeddingServing is not started in the test env, so Process.whereis returns nil
-        result = EmbeddingWorker.perform(%Oban.Job{args: %{"message_ids" => [1]}})
-        assert {:snooze, 30} = result
       after
         Application.put_env(:slackex, :embedding_client, original_client)
       end

@@ -122,14 +122,8 @@ defmodule Slackex.MixProject do
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.3"},
 
-      # Vector embeddings (EXLA excluded from prod — uses DeepInfra API, not local inference)
+      # Vector embeddings (pgvector; embeddings generated via DeepInfra API)
       {:pgvector, "~> 0.4"},
-      {:bumblebee, "~> 0.6.0"},
-      # EXLA is dev-only: test uses StubClient + Nx.BinaryBackend (config/test.exs),
-      # so nothing in the test env needs it — pulling it into :test forced its native
-      # XLA C++ build there, breaking `mix test` on current-libc++ toolchains (89z).
-      # Full removal of EXLA + Bumblebee (local inference) is a separate teardown.
-      {:exla, ">= 0.0.0", only: :dev},
 
       # HTTP client (OpenAI embeddings API) + HTML parsing (link previews)
       {:req, "~> 0.6"},

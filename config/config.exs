@@ -7,9 +7,6 @@
 # General application configuration
 import Config
 
-# Nx: use EXLA for hardware-accelerated tensor operations (overridden in test.exs)
-config :nx, default_backend: EXLA.Backend
-
 config :slackex,
   ecto_repos: [Slackex.Repo],
   generators: [timestamp_type: :utc_datetime_usec]

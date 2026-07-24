@@ -63,8 +63,6 @@ defmodule Slackex.Release do
       Logger.info("[BackfillEmbeddings] Deleted #{count} existing embeddings (force: true)")
     end
 
-    wait_for_embedding_serving()
-
     sc_count = do_backfill_search_content(repo)
 
     if sc_count > 0,
@@ -338,37 +336,6 @@ defmodule Slackex.Release do
     end)
 
     length(messages)
-  end
-
-  defp wait_for_embedding_serving do
-    case Application.get_env(:slackex, :embedding_client) do
-      Slackex.Embeddings.BumblebeeClient ->
-        Logger.info("[BackfillEmbeddings] Waiting for EmbeddingServing to load model...")
-        do_wait_for_serving(120)
-
-      _other ->
-        :ok
-    end
-  end
-
-  defp do_wait_for_serving(0) do
-    Logger.error("[BackfillEmbeddings] EmbeddingServing did not become ready in time")
-    raise "EmbeddingServing timeout"
-  end
-
-  defp do_wait_for_serving(retries) do
-    case GenServer.call(Slackex.Embeddings.EmbeddingServing, :get_state, 5_000) do
-      %{status: :ready} ->
-        Logger.info("[BackfillEmbeddings] EmbeddingServing ready")
-
-      _ ->
-        Process.sleep(1_000)
-        do_wait_for_serving(retries - 1)
-    end
-  catch
-    :exit, _ ->
-      Process.sleep(1_000)
-      do_wait_for_serving(retries - 1)
   end
 
   defp repos do

@@ -9,9 +9,6 @@ defmodule Slackex.Embeddings do
     exports: [
       MessageEmbedding,
       EmbeddingClient,
-      EmbeddingServing,
-      Supervisor,
-      BumblebeeClient,
       StubClient,
       OpenAIClient,
       EmbeddingWorker,

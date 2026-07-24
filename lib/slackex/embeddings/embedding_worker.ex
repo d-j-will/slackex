@@ -90,44 +90,17 @@ defmodule Slackex.Embeddings.EmbeddingWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"message_ids" => message_ids}}) do
-    with :ok <- ensure_serving_available() do
-      message_ids
-      |> fetch_embeddable_messages()
-      |> generate_and_persist_embeddings()
-    end
+    message_ids
+    |> fetch_embeddable_messages()
+    |> generate_and_persist_embeddings()
   end
 
   def perform(%Oban.Job{args: %{"channel_id" => channel_id, "backfill" => true}}) do
-    with :ok <- ensure_serving_available() do
-      backfill_conversation({:channel_id, channel_id})
-    end
+    backfill_conversation({:channel_id, channel_id})
   end
 
   def perform(%Oban.Job{args: %{"dm_conversation_id" => dm_id, "backfill" => true}}) do
-    with :ok <- ensure_serving_available() do
-      backfill_conversation({:dm_conversation_id, dm_id})
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # Serving availability check
-  # ---------------------------------------------------------------------------
-
-  defp ensure_serving_available do
-    case Application.get_env(:slackex, :embedding_client) do
-      Slackex.Embeddings.BumblebeeClient ->
-        case Process.whereis(Slackex.Embeddings.EmbeddingServing) do
-          nil ->
-            Logger.warning("[EmbeddingWorker] EmbeddingServing not running, snoozing 30s")
-            {:snooze, 30}
-
-          _pid ->
-            :ok
-        end
-
-      _other ->
-        :ok
-    end
+    backfill_conversation({:dm_conversation_id, dm_id})
   end
 
   # ---------------------------------------------------------------------------

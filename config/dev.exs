@@ -113,8 +113,9 @@ config :slackex, :flags_admin_auth,
 config :opentelemetry,
   traces_exporter: {:otel_exporter_stdout, []}
 
-# Use Bumblebee for real ML embeddings in development (all-MiniLM-L6-v2, 384-dim)
-config :slackex, :embedding_client, Slackex.Embeddings.BumblebeeClient
+# Local Bumblebee inference retired — dev uses the deterministic StubClient by default.
+# For real dev embeddings, use OpenAIClient (DeepInfra) with an API key, as prod does.
+config :slackex, :embedding_client, Slackex.Embeddings.StubClient
 
 # Use real LLM API in development (same as prod)
 config :slackex, :llm_client, Slackex.AI.OpenAICompatibleClient
