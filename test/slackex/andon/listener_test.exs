@@ -297,4 +297,88 @@ defmodule Slackex.Andon.ListenerTest do
       assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
     end
   end
+
+  describe "puller confirmation on a bound pull (ENG-13 gap 3)" do
+    test "a bound pull_created posts a confirmation teaching the puller's release affordance", %{
+      channel: channel,
+      user: user
+    } do
+      Application.put_env(:slackex, :andon_service_stub_response, fn _event ->
+        {:ok,
+         %{
+           status: 201,
+           body: %{
+             "data" => %{
+               "binding" => %{
+                 "bound" => true,
+                 "subject" => %{"external_id" => "ENG-11"}
+               }
+             },
+             "commands" => []
+           }
+         }}
+      end)
+
+      message =
+        post_message(channel, user, "pull: burden ENG-11 deploying a service is tribal knowledge")
+
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      eventually(fn ->
+        assert [reply] = Chat.list_thread(message.id)
+        assert reply.content =~ "bound to ENG-11"
+        # Teaches the puller's release affordance; not the DRI's (that's the notify).
+        assert reply.content =~ "`resolved`"
+        refute reply.content =~ "`ack`"
+        assert reply.sender_id == Andon.bot_user().id
+      end)
+    end
+
+    test "subject_provided on a previously-unbound pull posts the confirmation", %{
+      channel: channel,
+      user: user
+    } do
+      # Unbound pull gets request_subject; the confirmation waits until the
+      # puller supplies the key and the pull actually binds.
+      Application.put_env(:slackex, :andon_service_stub_response, fn event ->
+        case event["event"] do
+          "subject_provided" ->
+            {:ok,
+             %{
+               status: 201,
+               body: %{
+                 "data" => %{
+                   "binding" => %{"bound" => true, "subject" => %{"external_id" => "ENG-321"}}
+                 },
+                 "commands" => []
+               }
+             }}
+
+          _ ->
+            {:ok,
+             %{
+               status: 201,
+               body: %{
+                 "data" => %{"binding" => %{"bound" => false}},
+                 "commands" => [
+                   %{"command" => "request_subject", "thread" => event["origin"]["thread"]}
+                 ]
+               }
+             }}
+        end
+      end)
+
+      pull = post_message(channel, user, "pull: confusion which state does this cover")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      post_reply(channel, user, pull.id, "ENG-321")
+      assert_receive {:andon_event_posted, %{"event" => "subject_provided"}}, 1_000
+
+      eventually(fn ->
+        assert Enum.any?(Chat.list_thread(pull.id), fn r ->
+                 r.content =~ "bound to ENG-321" and r.content =~ "`resolved`"
+               end)
+      end)
+    end
+  end
 end

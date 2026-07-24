@@ -249,6 +249,7 @@ defmodule Slackex.Andon do
     case ServiceClient.post_event(event) do
       {:ok, %{status: 201, body: body}} ->
         run_commands(Map.get(body, "commands", []), ctx)
+        maybe_confirm_pull(event, body, ctx, thread_id)
 
       {:ok, %{status: 200}} ->
         # Idempotent replay — commands already rendered on the original 201.
@@ -265,6 +266,37 @@ defmodule Slackex.Andon do
         # Already logged by the client; the listener must not crash.
         :ok
     end
+  end
+
+  # The puller's own confirmation (ENG-13 gap 3): on a fresh bind, tell the
+  # puller their pull landed and how they release it, so a pull never *feels*
+  # unanswered while humans are slow. Rendered from the 201 the relay already
+  # has — a bound `pull_created` (explicit key) or a `subject_provided` that
+  # binds a previously-unbound pull. An unbound pull gets `request_subject`
+  # instead; its confirmation follows when the subject is provided. Only the
+  # puller's affordance (`resolved`) is taught here — the DRI's (`ack`/`note:`)
+  # rides the separate notify_dri ping (response-protocol role split). Only on
+  # the 201 (a 200 is an idempotent replay already rendered).
+  defp maybe_confirm_pull(%{"event" => event}, body, ctx, thread_id)
+       when event in ["pull_created", "subject_provided"] do
+    case get_in(body, ["data", "binding"]) do
+      %{"bound" => true} = binding -> post_in_thread(ctx, thread_id, puller_confirmation(binding))
+      _ -> :ok
+    end
+  end
+
+  defp maybe_confirm_pull(_event, _body, _ctx, _thread_id), do: :ok
+
+  defp puller_confirmation(binding) do
+    subject = get_in(binding, ["subject", "external_id"])
+    bound = if is_binary(subject), do: " · bound to #{subject}", else: ""
+
+    # "held at its gate" holds for a work-item pull (the skeleton's only kind —
+    # binding applies the hold, ENG-6). A system-object pull (gate/line/rollout)
+    # does NOT hold ("nothing holds — the pull is notify, clocks, and log",
+    # response-protocol); revisit this line when those land.
+    "Logged#{bound} · held at its gate.\n" <>
+      "On the clock — reply `resolved` when what you flagged is contained."
   end
 
   # ---------------------------------------------------------------------------
