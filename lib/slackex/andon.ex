@@ -287,7 +287,8 @@ defmodule Slackex.Andon do
         post_in_thread(
           ctx,
           thread,
-          "Backup #{mention(backup)} — the acknowledge window lapsed; you now carry this pull."
+          "Backup #{mention(backup)} — the acknowledge window lapsed; you now carry this pull.\n" <>
+            dri_affordances()
         )
 
       :error ->
@@ -408,11 +409,21 @@ defmodule Slackex.Andon do
     post_in_thread(
       ctx,
       thread,
-      "#{mention(dri)} — you're the DRI for this pull. It's on the clock."
+      "#{mention(dri)} — you're the DRI for this pull. It's on the clock.\n" <>
+        dri_affordances()
     )
   end
 
   defp run_command(_unknown, _ctx), do: :ok
+
+  # The DRI's in-thread affordances (ENG-13 gap 2), taught wherever someone
+  # becomes the DRI — the initial notify and a backup inheriting the pull. The
+  # puller's affordances (`resolved` to release, `withdraw`) are the puller's,
+  # taught in the puller confirmation, not here (response-protocol role split).
+  # `ack` is bare; `note:` carries the note text after the colon (Affordances).
+  defp dri_affordances do
+    "Reply `ack` to acknowledge · `note: <text>` once it's addressed."
+  end
 
   # Posts as the bot into the Slack thread rooted at `thread` (a message id) by
   # enqueuing a durable ThreadReplyWorker job. slackex persists channel messages
