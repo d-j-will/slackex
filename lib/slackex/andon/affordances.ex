@@ -42,21 +42,24 @@ defmodule Slackex.Andon.Affordances do
   @spec parse(String.t()) :: intent()
   def parse(text) when is_binary(text) do
     trimmed = String.trim(text)
+    # Bare words and the `note:` prefix are case-insensitive (2026-07-24 field
+    # finding — `Resolved`/`ACK` should act). Issue keys stay case-sensitive:
+    # their grammar is uppercase (`ENG-123`), so they match on `trimmed`.
+    lower = String.downcase(trimmed)
 
     cond do
-      trimmed == "ack" -> :ack
-      trimmed == "resolved" -> :witness_close
-      trimmed == "withdraw" -> :withdraw
-      closure_note?(trimmed) -> closure_note(trimmed)
+      lower == "ack" -> :ack
+      lower == "resolved" -> :witness_close
+      lower == "withdraw" -> :withdraw
+      String.starts_with?(lower, "note:") -> closure_note(trimmed)
       Regex.match?(@issue_key, trimmed) -> {:subject, trimmed}
       true -> :none
     end
   end
 
-  defp closure_note?("note:" <> _rest), do: true
-  defp closure_note?(_), do: false
-
-  defp closure_note("note:" <> rest) do
+  # Strip the (case-insensitive) 5-byte "note:" prefix, keeping the note text
+  # verbatim — only called when the trimmed message starts with the prefix.
+  defp closure_note(<<_prefix::binary-size(5), rest::binary>>) do
     case String.trim(rest) do
       "" -> :none
       note -> {:closure_note, note}

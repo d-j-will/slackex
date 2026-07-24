@@ -109,17 +109,22 @@ defmodule SlackexWeb.ChatLive.ThreadPanelComponent do
       <div class="px-4 py-3 border-t border-base-300">
         <.form
           for={@reply_form}
+          id={"thread-reply-form-#{@parent_message.id}"}
           phx-submit="send_reply"
+          phx-hook="Compose"
           phx-target={@myself}
         >
           <div class="flex gap-2 items-end">
+            <%!-- Compose hook lives on the <form> (like the main composer) so it
+                  can querySelector the textarea and wire Enter-to-submit /
+                  Shift+Enter-newline. On the textarea itself the hook no-ops
+                  (ENG-19). --%>
             <textarea
               name="reply[content]"
               value={@reply_form[:content].value}
               placeholder="Reply..."
               class="textarea textarea-bordered textarea-sm flex-1 min-h-[36px] max-h-[120px] resize-none"
               rows="1"
-              phx-hook="Compose"
               id={"thread-compose-#{@parent_message.id}"}
             />
             <button type="submit" class="btn btn-primary btn-sm h-[36px]">

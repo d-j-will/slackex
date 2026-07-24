@@ -40,6 +40,24 @@ defmodule Slackex.Andon.AffordancesTest do
     end
   end
 
+  describe "case-insensitive bare words + note: prefix (2026-07-24 field finding)" do
+    test "bare-word affordances ignore case" do
+      assert Affordances.parse("ACK") == :ack
+      assert Affordances.parse("Ack") == :ack
+      assert Affordances.parse("Resolved") == :witness_close
+      assert Affordances.parse("WITHDRAW") == :withdraw
+    end
+
+    test "the note: prefix is case-insensitive but the note text stays verbatim" do
+      assert Affordances.parse("Note: Flaky Fixture") == {:closure_note, "Flaky Fixture"}
+      assert Affordances.parse("NOTE: quarantined") == {:closure_note, "quarantined"}
+    end
+
+    test "case-insensitivity does not extend to issue keys (still uppercase-only)" do
+      assert Affordances.parse("eng-123") == :none
+    end
+  end
+
   describe "subject key (anchored, Linear grammar)" do
     test "a bare registered key is a subject" do
       assert Affordances.parse("ENG-123") == {:subject, "ENG-123"}
