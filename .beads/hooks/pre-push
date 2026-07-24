@@ -1,12 +1,19 @@
 #!/bin/bash
-# Git pre-push hook: headless Claude Code check for common issues.
+# Git pre-push hook — the file git actually runs (core.hooksPath -> .beads/hooks).
 #
-# SECURITY: --allowedTools is Read,Grep only — NO Bash. A pre-push hook runs
-# unattended with your host environment (secrets, SSH keys, .env) in scope, so
-# granting an autonomous `claude -p` a shell here is an arbitrary-code-execution
-# risk (agent permission bypass). Read-only; any command it suggests, you run.
+# A former `claude -p` review lived here; removed. An LLM-in-a-hook blocks every
+# push on a model call and runs an autonomous agent unattended — and the usage
+# terms no longer permit it. Deterministic and non-blocking instead: flag
+# uncommitted Elixir source (CI only sees what you push). Version/stdlib
+# compatibility is CI's job (it compiles with the pinned Elixir in .tool-versions);
+# feature-flag gating is a code-review concern. Do NOT read stdin here — the beads
+# integration block below consumes it.
 
-claude -p "Read-only pre-push review. Inspect the working tree and report pass/fail (do NOT run commands): 1) Any unstaged or untracked files that look like they should be committed? 2) Are all new user-facing features gated behind a feature flag (grep for FunWithFlags usage in changed areas)? 3) Any stdlib functions used that may not exist in the CI Elixir version in .tool-versions? Report findings; suggest commands for the human to run rather than running them." --allowedTools "Read,Grep"
+DIRTY=$(git status --porcelain -- '*.ex' '*.exs' 2>/dev/null)
+if [ -n "$DIRTY" ]; then
+  echo "pre-push: NOTE — uncommitted/untracked Elixir files (CI won't see these):"
+  echo "$DIRTY" | sed 's/^/  /'
+fi
 
 # --- BEGIN BEADS INTEGRATION v1.0.4 ---
 # This section is managed by beads. Do not remove these markers.
