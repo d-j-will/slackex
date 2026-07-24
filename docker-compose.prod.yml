@@ -23,15 +23,11 @@ x-app: &app-defaults
     LLM_API_KEY: "${LLM_API_KEY}"
     ANDON_SERVICE_URL: "${ANDON_SERVICE_URL}"
     ANDON_RELAY_TOKEN: "${ANDON_RELAY_TOKEN}"
-    BUMBLEBEE_CACHE_DIR: "/app/models"
-    EXLA_TARGET: "host"
     OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
     OTEL_SERVICE_NAME: "slackex"
     VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY}"
     VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY}"
     VAPID_SUBJECT: "${VAPID_SUBJECT:-mailto:admin@tenun.dev}"
-  volumes:
-    - bumblebee_models:/app/models
   expose:
     - "4000"
   networks:
@@ -185,7 +181,6 @@ services:
 volumes:
   pgdata:
   redisdata:
-  bumblebee_models:
   prometheus_data:
   grafana_data:
   tempo_data:
