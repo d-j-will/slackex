@@ -250,6 +250,7 @@ defmodule Slackex.Andon do
       {:ok, %{status: 201, body: body}} ->
         run_commands(Map.get(body, "commands", []), ctx)
         maybe_confirm_pull(event, body, ctx, thread_id)
+        maybe_ack_lifecycle(event, ctx, thread_id)
 
       {:ok, %{status: 200}} ->
         # Idempotent replay — commands already rendered on the original 201.
@@ -298,6 +299,26 @@ defmodule Slackex.Andon do
     "Logged#{bound} · held at its gate.\n" <>
       "On the clock — reply `resolved` when what you flagged is contained."
   end
+
+  # A lifecycle affordance (`ack`/`resolved`/`note:`) records in the log but the
+  # service returns no command, so without this the act is silent in the thread
+  # — you press the button gap 2 taught and nothing shows. Render a light
+  # acknowledgment on the 201 so each transition is visible ("reads like the
+  # pull"). The `resolved`/`ack`/`closure_note` 201s carry no subject, so the
+  # release line names none — the thread already has it.
+  defp maybe_ack_lifecycle(%{"event" => "ack"} = event, ctx, thread_id) do
+    post_in_thread(ctx, thread_id, "#{mention(event["actor"])} acknowledged · engaging now.")
+  end
+
+  defp maybe_ack_lifecycle(%{"event" => "witness_close"}, ctx, thread_id) do
+    post_in_thread(ctx, thread_id, "Released · the hold is cleared.")
+  end
+
+  defp maybe_ack_lifecycle(%{"event" => "closure_note"}, ctx, thread_id) do
+    post_in_thread(ctx, thread_id, "Closure note logged.")
+  end
+
+  defp maybe_ack_lifecycle(_event, _ctx, _thread_id), do: :ok
 
   # ---------------------------------------------------------------------------
   # Outbound push: service → relay (the inbound HTTP endpoint calls this)

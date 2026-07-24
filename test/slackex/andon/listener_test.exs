@@ -162,6 +162,13 @@ defmodule Slackex.Andon.ListenerTest do
       assert event["event"] == "ack"
       assert event["actor"] == %{"relay" => "slackex", "token" => to_string(user.id)}
       assert event["origin"]["thread"] == to_string(pull.id)
+
+      # The act must be visible in the thread, not just recorded (ENG-13).
+      eventually(fn ->
+        assert Enum.any?(Chat.list_thread(pull.id), fn r ->
+                 r.sender_id == Andon.bot_user().id and r.content =~ "acknowledged"
+               end)
+      end)
     end
 
     test "a bare issue key in a thread becomes subject_provided", %{channel: channel, user: user} do
@@ -189,6 +196,13 @@ defmodule Slackex.Andon.ListenerTest do
       assert event["event"] == "witness_close"
       assert event["actor"] == %{"relay" => "slackex", "token" => to_string(user.id)}
       refute Map.has_key?(event, "puller")
+
+      # The release is the biggest moment — it must show in the thread.
+      eventually(fn ->
+        assert Enum.any?(Chat.list_thread(pull.id), fn r ->
+                 r.sender_id == Andon.bot_user().id and r.content =~ "the hold is cleared"
+               end)
+      end)
     end
 
     test "`withdraw` in a thread becomes pull_withdrawn keyed on `puller` (not actor)", %{
@@ -220,6 +234,12 @@ defmodule Slackex.Andon.ListenerTest do
       assert event["event"] == "closure_note"
       assert event["actor"] == %{"relay" => "slackex", "token" => to_string(user.id)}
       assert event["note"] == "flaky fixture; quarantined with a burden card"
+
+      eventually(fn ->
+        assert Enum.any?(Chat.list_thread(pull.id), fn r ->
+                 r.sender_id == Andon.bot_user().id and r.content =~ "Closure note logged"
+               end)
+      end)
     end
 
     test "a bare issue key at top level is NOT an affordance", %{channel: channel, user: user} do
