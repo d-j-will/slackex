@@ -150,7 +150,6 @@ sequenceDiagram
   Host->>App: up -d --force-recreate --remove-orphans app2
   Host->>App: poll /health up to 30s
 
-  Host->>App: cache Bumblebee model in shared volume (best-effort)
   Host->>App: smoke test /health, cluster_size == 2, /metrics
   GH->>CF: purge /service-worker.js + /manifest.json
   GH->>Dev: Discord + Tenun notification
@@ -175,7 +174,9 @@ Migrations are **not** "run once." `Slackex.Release.migrate/0` is invoked in two
 
 The CI step exists to **fail the deploy safely**: after the boot check passes, migrations run in a disposable container; if they error, the deploy aborts (`set -e`) with the *old* `app1`/`app2` still serving traffic. Because Ecto takes a migration advisory lock and the rolling restart is sequential, the per-boot `migrate()` on the recreated containers re-runs as an idempotent no-op. So the explicit step is the gate; the per-boot step is belt-and-braces.
 
-`migrate/0` also runs `decode_html_entities/0` at the end — an idempotent cleanup of legacy HTML-entity encoding in `search_content`, filtered so already-clean rows are skipped. Note that `backfill_embeddings/1` is **not** part of `migrate/0` and is **not** invoked by the deploy; the deploy's Bumblebee step only `load_model`/`load_tokenizer`-caches the model into the shared volume (best-effort), distinct from generating embeddings.
+`migrate/0` also runs `decode_html_entities/0` at the end — an idempotent cleanup of legacy HTML-entity encoding in `search_content`, filtered so already-clean rows are skipped. Note that `backfill_embeddings/1` is **not** part of `migrate/0` and is **not** invoked by the deploy. When run manually, it now generates vectors directly against the configured `EmbeddingClient` (prod: DeepInfra via `OpenAIClient`; dev/test: `StubClient`) — there is no serving process to wait for, since local ML inference was removed (commit d20a715).
+
+> **Vestigial step (pending cleanup):** the CI workflow still contains a best-effort "Bumblebee model provisioning" block that tries to `Application.ensure_all_started(:exla)`/`(:bumblebee)` and `Bumblebee.load_model/load_tokenizer` into the shared volume. Those apps and deps no longer exist, so the step now fails harmlessly (it is guarded `|| echo "... (non-fatal)"` and never blocks a deploy). It is dead weight left behind by the code removal and should be stripped from `.github/workflows/ci-deploy.yml` in a follow-up; an operator will see it log a failure on every deploy until then.
 
 ### 4.4 Rolling restart
 
@@ -262,7 +263,7 @@ The Docker host is an **unprivileged LXC container on Proxmox** (~20GB on a ~20G
 
 - **`DOCKER_API_VERSION: "1.44"`** on the caddy-proxy container — Docker 27+ rejects the older API version the caddy-docker-proxy plugin defaults to.
 - **`CADDY_INGRESS_NETWORKS: "proxy"`** — LXC cgroups break a container's ability to find its own ID via `/proc/self/cgroup`, so caddy-docker-proxy can't auto-detect its network; this pins it explicitly.
-- **GPU is off-limits.** The mini-PC's GPU is flaky and EXLA GPU access has crashed the *physical* host. CPU-only EXLA still OOMs the LXC, which is why heavy ML defaults to external APIs (DeepInfra) and the in-process embedding supervisor is conditional and `restart: :temporary`. Note: `docker-compose.prod.yml` passes `EXLA_TARGET=host` as a *runtime* env var, but EXLA's target is fixed at **compile time** (before `mix deps.compile`) — a runtime value has no effect, and the `Dockerfile` does not set it at build time, so this var is a no-op. (Prod therefore runs no local Bumblebee/EXLA at all: `config/prod.exs` configures `Slackex.Embeddings.OpenAIClient` against DeepInfra — same `all-MiniLM-L6-v2` model, reached over HTTP. Older notes that say "StubClient in prod since v0.5.43" describe a since-superseded stopgap.)
+- **GPU is off-limits, and local ML inference has been removed entirely.** The mini-PC's GPU is flaky and EXLA GPU access has crashed the *physical* host; CPU-only EXLA still OOMs the LXC. That constraint is now settled architecture rather than a runtime guard: the EXLA + Bumblebee + Nx stack was deleted (commit d20a715), so prod runs **no** local inference. `config/prod.exs` configures `Slackex.Embeddings.OpenAIClient` against DeepInfra — the same `all-MiniLM-L6-v2` model, reached over HTTP. There is no longer any in-process embedding supervisor (conditional or otherwise). Two vestigial references to the old stack survive in the deploy layer and should be cleaned up: `docker-compose.prod.yml` still passes `EXLA_TARGET=host` and `BUMBLEBEE_CACHE_DIR=/app/models`, and the CI workflow still has a Bumblebee model-provisioning step (see §4.3) — all now dead, since nothing reads those vars and the `exla`/`bumblebee` apps are gone. (Older notes that say "StubClient in prod since v0.5.43" describe a since-superseded stopgap.)
 - **Disk pressure.** The deploy prunes images older than 168h and dead containers before pulling, because the LXC fills up across deploys.
 - **Tailscale DNS fragility.** Tailscale's resolver fails after host reboots, blocking `docker pull`. A `fix-dns.service` systemd unit (installed by the deploy if absent) disables Tailscale DNS and sets Google DNS; the deploy also re-checks DNS before pulling.
 
@@ -286,7 +287,7 @@ Deploy-time resilience properties:
 - **Idempotent recovery.** Migrations are safe to re-run (advisory lock + idempotent cleanups), so a recreated or auto-restarted container converges without manual intervention.
 - **Non-essential work degrades silently-but-loudly.** The `restart: :temporary` listeners are PubSub→Oban bridges with cron-based safety nets (e.g. embedding reconciliation); if they die, the app keeps serving and the cron pass backfills. The precedent for this design is the v0.5.36 outage, where a swallowed error in the embedding worker cascaded through the supervisor and took down the whole app. See [`deep-dive-embedding-resilience.md`](deep-dive-embedding-resilience.md).
 
-Best-effort, non-fatal steps (`cmd && echo ok || echo "failed (non-fatal)"`) are used for the pre-deploy DB backup, image pruning, and Bumblebee model caching — none of these should block a deploy.
+Best-effort, non-fatal steps (`cmd && echo ok || echo "failed (non-fatal)"`) are used for the pre-deploy DB backup and image pruning — neither should block a deploy. A now-vestigial Bumblebee model-caching step is still wired the same way; since the `exla`/`bumblebee` apps were removed it fails harmlessly on every deploy and is pending removal (see §4.3).
 
 ---
 
@@ -305,8 +306,6 @@ Production configuration is entirely environment-driven (`config/runtime.exs`), 
 | `PHX_HOST` | Public hostname (`chat.davewil.dev`); pairs with `force_ssl` |
 | `PHX_SERVER`, `PORT` | Enable the HTTP server on :4000 |
 | `RELEASE_NODE` | Per-container Erlang node name (`slackex@app1` / `slackex@app2`) |
-| `EXLA_TARGET=host` | Passed at runtime but **no-op** — EXLA's target is fixed at compile time, and the `Dockerfile` doesn't set it at build time. |
-| `BUMBLEBEE_CACHE_DIR=/app/models` | Shared model cache volume |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME` | Telemetry export to the OTEL collector |
 | `EMBEDDING_API_KEY` | External AI provider key (DeepInfra) — keys *both* the embedding API and the LLM completion API in `runtime.exs`. (`LLM_API_KEY` is also passed in `docker-compose.prod.yml` but is not read anywhere in `config/` or `lib/`.) |
 | `FLAGS_ADMIN_USER`, `FLAGS_ADMIN_PASSWORD` | FunWithFlags admin auth |

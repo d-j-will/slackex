@@ -2,7 +2,7 @@
 
 **Status:** Reference
 **Zoom level:** L1 (subsystem)
-**Scope:** `Slackex.Embeddings` context — embedding clients (Stub / Bumblebee / OpenAI-compatible), the persist → embed → store pipeline, the backfill task, pgvector storage at 384 dimensions, and OTP resilience.
+**Scope:** `Slackex.Embeddings` context — embedding clients (Stub / OpenAI-compatible), the persist → embed → store pipeline, the backfill task, pgvector storage at 384 dimensions, and OTP resilience.
 
 ---
 
@@ -17,17 +17,16 @@ non-essential**. If it fails — provider down, model crash, listener restart �
 chat keeps serving traffic and search degrades to full-text only. Nothing in the
 embedding path is allowed to cascade into the application supervisor.
 
-Three things follow from that decision and shape the whole design:
+Two things follow from that decision and shape the whole design:
 
 1. **A behaviour-based client abstraction** (`EmbeddingClient`) lets the actual
-   generator be swapped per-environment by config alone. Dev runs a local
-   Bumblebee model; production calls a remote API; tests use a deterministic stub.
+   generator be swapped per-environment by config alone. Production calls a remote
+   API (DeepInfra); dev and tests use a deterministic stub. No environment loads a
+   model in-process.
 2. **The generation work is asynchronous Oban jobs**, decoupled from the
    message send path via a PubSub bridge (`pipeline:events`). The send path never
-   waits on embeddings.
-3. **The local-model serving process is supervised with `restart: :temporary`**
-   and only started when actually configured, so a model crash on one node never
-   takes the node down.
+   waits on embeddings, and a failed generation never cascades into the
+   application supervisor.
 
 The hot runtime path is:
 
@@ -47,8 +46,8 @@ The hot runtime path is:
 
 The subsystem sits inside the Slackex application. Its only external dependency
 is the embedding provider — and *which* provider is environment-dependent. In
-production that is a remote OpenAI-compatible API (DeepInfra); in dev it is a
-local model with no external call.
+production that is a remote OpenAI-compatible API (DeepInfra); in dev and test it
+is a deterministic in-process stub with no external call.
 
 ```mermaid
 C4Context
@@ -56,10 +55,10 @@ C4Context
 
   System(slackex, "Slackex", "Phoenix application; owns the Embeddings context")
   System_Ext(postgres, "PostgreSQL + pgvector", "Stores message_embeddings vectors and serves HNSW cosine search")
-  System_Ext(provider, "Embedding Provider", "Generates vectors. PROD: remote OpenAI-compatible API (DeepInfra). DEV: in-process Bumblebee model (no external call). TEST: deterministic stub")
+  System_Ext(provider, "Embedding Provider", "Generates vectors. PROD: remote OpenAI-compatible API (DeepInfra). DEV/TEST: deterministic in-process stub, no external call")
 
   Rel(slackex, postgres, "Upserts vectors into and queries by cosine similarity")
-  Rel(slackex, provider, "Requests embeddings from", "HTTP (prod) / in-process (dev) / none (test)")
+  Rel(slackex, provider, "Requests embeddings from", "HTTP (prod) / in-process stub (dev, test)")
 ```
 
 ### 2.2 Container Diagram
@@ -75,11 +74,8 @@ C4Container
     Container(recon, "ReconciliationWorker", "Oban cron (every 15m)", "Safety net: finds messages missing embeddings in the last hour")
     Container(worker, "EmbeddingWorker", "Oban worker, queue :embeddings", "Batch embed + backfill; generates and upserts vectors")
     Container(client, "EmbeddingClient", "Behaviour facade", "Delegates to configured client implementation")
-    Container(stub, "StubClient", "Module", "Deterministic seeded vectors (test/default)")
-    Container(bumblebee, "BumblebeeClient", "Module", "Delegates to EmbeddingServing (dev)")
+    Container(stub, "StubClient", "Module", "Deterministic seeded vectors (dev/test/default)")
     Container(openai, "OpenAIClient", "Module", "Calls remote OpenAI-compatible API (prod)")
-    Container(serving, "EmbeddingServing", "Nx.Serving GenServer", "Loads all-MiniLM-L6-v2, runs batched inference (only when BumblebeeClient configured)")
-    Container(emb_sup, "Embeddings.Supervisor", "Supervisor (restart: :temporary, 5/300s)", "Isolates EmbeddingServing crashes")
   }
 
   ContainerDb(postgres, "PostgreSQL + pgvector", "message_embeddings, vector(384), HNSW index")
@@ -91,10 +87,7 @@ C4Container
   Rel(recon, worker, "Enqueues catch-up jobs via EmbeddingWorker.enqueue/1")
   Rel(worker, client, "Requests vectors through")
   Rel(client, stub, "Delegates to (when configured)")
-  Rel(client, bumblebee, "Delegates to (when configured)")
   Rel(client, openai, "Delegates to (when configured)")
-  Rel(bumblebee, serving, "Calls Nx.Serving.batched_run via")
-  Rel(emb_sup, serving, "Supervises")
   Rel(openai, provider, "POSTs batches to", "HTTP")
   Rel(worker, postgres, "Upserts vectors into")
 ```
@@ -107,7 +100,7 @@ C4Container
   changes per environment.
 - Use the **Container Diagram** to see the producer → consumer chain:
   `ChannelServer` → PubSub → `PersistenceListener` → `EmbeddingWorker` → Postgres.
-- Use the **Client Selection** section (§5) to understand why there are three
+- Use the **Client Selection** section (§5) to understand why there are two
   client implementations and which one runs where.
 - Use the **sequence diagrams** (§7) for runtime ordering, including the snooze /
   reconciliation behaviour that makes the pipeline self-healing.
@@ -119,8 +112,7 @@ C4Container
 | Term | Meaning |
 |---|---|
 | Embedding | A 384-element float vector representing a message's `search_content` |
-| Client | An `EmbeddingClient` behaviour implementation (Stub / Bumblebee / OpenAI) |
-| Serving | The `Nx.Serving` process that runs local Bumblebee inference |
+| Client | An `EmbeddingClient` behaviour implementation (Stub / OpenAI) |
 | Backfill | A bulk job that embeds all unembedded messages for a channel or DM |
 | Reconciliation | The cron sweep that catches messages the listener missed |
 | `content_hash` | SHA-256 of `search_content`; detects when a message needs re-embedding |
@@ -132,11 +124,8 @@ C4Container
 | Component | Responsibility |
 |---|---|
 | `Slackex.Embeddings.EmbeddingClient` | Behaviour + delegation facade; reads `:embedding_client` config and forwards `generate/1`, `generate_batch/1`, `dimensions/0` |
-| `Slackex.Embeddings.StubClient` | Deterministic seeded vectors (384-dim); no I/O. Default + test |
-| `Slackex.Embeddings.BumblebeeClient` | Wraps `EmbeddingServing`; returns 384-dim vectors from a local model. Dev |
+| `Slackex.Embeddings.StubClient` | Deterministic seeded vectors (384-dim); no I/O. Default + dev + test |
 | `Slackex.Embeddings.OpenAIClient` | Calls a remote OpenAI-compatible embeddings API via `Req`. Prod |
-| `Slackex.Embeddings.EmbeddingServing` | `Nx.Serving` GenServer; loads `all-MiniLM-L6-v2`, runs batched inference |
-| `Slackex.Embeddings.Supervisor` | Dedicated supervisor for `EmbeddingServing` (restart budget 5/300s) |
 | `Slackex.Embeddings.PersistenceListener` | Subscribes to `pipeline:events`, enqueues `EmbeddingWorker` jobs |
 | `Slackex.Embeddings.EmbeddingWorker` | Oban worker: batch embed + channel/DM backfill; upserts vectors |
 | `Slackex.Embeddings.ReconciliationWorker` | Oban cron (every 15m): finds and enqueues missed messages |
@@ -150,7 +139,7 @@ it there (slackex-n3c) broke a `Search <-> Embeddings` dependency cycle.
 
 ---
 
-## 5. Client Selection: Three Implementations, One Behaviour
+## 5. Client Selection: Two Implementations, One Behaviour
 
 `EmbeddingClient` defines a three-callback behaviour and delegates each call to
 `Application.get_env(:slackex, :embedding_client)`
@@ -160,45 +149,48 @@ concrete client.
 
 | Environment | Configured client | Where the work happens | Source |
 |---|---|---|---|
-| default (`config.exs`) | `StubClient` | in-process, deterministic | `config/config.exs:119` |
-| dev (`dev.exs`) | `BumblebeeClient` | local CPU EXLA inference | `config/dev.exs:117` |
-| test (`test.exs`) | `StubClient` | in-process, deterministic | `config/test.exs:80` |
+| default (`config.exs`) | `StubClient` | in-process, deterministic | `config/config.exs:116` |
+| dev (`dev.exs`) | `StubClient` | in-process, deterministic | `config/dev.exs:118` |
+| test (`test.exs`) | `StubClient` | in-process, deterministic | `config/test.exs:77` |
 | **prod (`prod.exs`)** | **`OpenAIClient`** | **remote API (DeepInfra)** | `config/prod.exs:26` |
 
-### 5.1 Why production uses a remote API, not the local model
+There is no environment that runs the model locally. Dev defaults to the stub so
+a checkout needs no API key and no ML toolchain to boot; a developer who wants
+*real* vectors in dev points `:embedding_client` at `OpenAIClient` with a
+DeepInfra key, exactly as prod does (`config/dev.exs`).
 
-This is the central, non-obvious decision. Production runs the *same model*
-(`sentence-transformers/all-MiniLM-L6-v2`, 384-dim) as dev — but reaches it over
-HTTP rather than loading it in-process. The reason is infrastructure, not
-quality:
+### 5.1 Why production uses a remote API, not a local model
+
+This is the central, non-obvious — and now settled — architectural decision.
+Production generates vectors from `sentence-transformers/all-MiniLM-L6-v2`
+(384-dim) by calling DeepInfra over HTTP; it never loads the model in-process.
+The reason is infrastructure, not quality:
 
 - **GPU is off-limits in production.** The prod Docker host is an unprivileged
   LXC on a mini-PC with a flaky GPU. EXLA GPU access has crashed the physical
-  Proxmox host. GPU workloads are never enabled in prod config (and
-  `EXLA_TARGET=host` is pinned at *compile time* in the Dockerfile, because the
-  NIF probes the GPU on BEAM module load regardless of whether Bumblebee is used).
+  Proxmox host.
 - **CPU EXLA OOMs the LXC.** Even CPU-only local inference of the model exhausts
   the ~20 GB LXC memory.
-- **Therefore prod offloads generation to a remote API.** `OpenAIClient` points
-  at DeepInfra and gets identical 384-dim vectors with no EXLA, no GPU, and no
-  local memory pressure (`config/prod.exs:23-26`).
+- **Therefore all local ML inference has been removed from the codebase.** The
+  EXLA + Bumblebee + Nx stack was deleted (commit d20a715); `OpenAIClient` points
+  at DeepInfra and returns 384-dim vectors with no EXLA, no GPU, and no local
+  memory pressure (`config/prod.exs`).
 
-> **Historical note:** an earlier prod attempt activated `BumblebeeClient`
-> in-process and triggered the v0.5.36–v0.5.43 cascade outage (see §10). After
-> that incident prod ran `StubClient` as a stopgap, then moved to the remote
-> `OpenAIClient` so production keeps *real* semantic search without local
-> inference. Older project notes that say "StubClient in prod" are stale.
+> **Historical note:** an earlier prod attempt activated an in-process
+> `BumblebeeClient` and triggered the v0.5.36–v0.5.43 cascade outage (see §10).
+> After that incident prod ran `StubClient` as a stopgap, then moved to the
+> remote `OpenAIClient` so production keeps *real* semantic search without local
+> inference. The local-inference stack (`BumblebeeClient`, `EmbeddingServing`,
+> `Embeddings.Supervisor`, and the `bumblebee`/`exla`/`nx` deps) has since been
+> removed entirely; only the two remote/stub clients remain. Older project notes
+> that describe in-process inference or "StubClient in prod" are stale.
 
 ### 5.2 Client behaviour details
 
 - **StubClient** seeds `:rand` with `:erlang.phash2(text)` and L2-normalizes the
   result, so the same input always yields the same unit vector. No network, no
-  process to crash (`lib/slackex/embeddings/stub_client.ex`).
-- **BumblebeeClient** delegates to `EmbeddingServing.run/1` inside a `safe_run/1`
-  wrapper that catches both exceptions and `:exit`, returning
-  `{:error, {:serving_error, msg}}` or `{:error, {:serving_not_running, reason}}`
-  rather than crashing the caller
-  (`lib/slackex/embeddings/bumblebee_client.ex`).
+  process to crash (`lib/slackex/embeddings/stub_client.ex`). It backs the
+  default, dev, and test environments.
 - **OpenAIClient** enforces a max batch of 100, sorts response vectors by the
   `index` field to preserve input order, and emits a
   `[:slackex, :ai, :embedding]` telemetry event with duration, token usage, and
@@ -207,8 +199,8 @@ quality:
 ### 5.3 Dimensionality (384) and a configuration sharp edge
 
 The `message_embeddings.embedding` column is `vector(384)`, so every client must
-produce 384-dim vectors. `StubClient` and `BumblebeeClient` hard-code
-`@dimensions 384`. `OpenAIClient` is the exception: its compiled-in defaults are
+produce 384-dim vectors. `StubClient` hard-codes `@dimensions 384`.
+`OpenAIClient` is the exception: its compiled-in defaults are
 `text-embedding-3-small` at **1536** dimensions. Production only gets 384 because
 `runtime.exs` sets `:embedding_api` (model `all-MiniLM-L6-v2`,
 `EMBEDDING_DIMENSIONS` defaulting to `"384"`) **when `EMBEDDING_API_KEY` is
@@ -279,7 +271,7 @@ sequenceDiagram
   participant PL as PersistenceListener
   participant W as EmbeddingWorker (Oban)
   participant C as EmbeddingClient
-  participant Prov as Provider (Stub/Serving/API)
+  participant Prov as Provider (Stub / DeepInfra API)
   participant DB as Postgres (message_embeddings)
 
   CS->>CS: batch persisted ({:batch_result, ref, :ok})
@@ -288,7 +280,6 @@ sequenceDiagram
   PL->>W: EmbeddingWorker.enqueue(ids)  (chunks of 50)
 
   Note over W: per Oban job (queue :embeddings, max_attempts 3)
-  W->>W: ensure_serving_available()
   W->>DB: fetch embeddable (not deleted, hash mismatch)
   W->>C: generate_batch(search_contents)
   C->>Prov: produce vectors
@@ -300,11 +291,11 @@ sequenceDiagram
 Notes:
 
 - `enqueue/1` chunks message IDs into batches of 50 and inserts one Oban job per
-  batch at priority 3 (`embedding_worker.ex:44-55`).
-- `ensure_serving_available/0` only matters when `BumblebeeClient` is configured.
-  If the `EmbeddingServing` process is not running, the job returns `{:snooze, 30}`
-  — it reschedules in 30s without consuming an attempt, so a slow-loading or
-  crashed model never burns the retry budget (`embedding_worker.ex:116-131`).
+  batch at priority 3 (`embedding_worker.ex`).
+- The worker calls the configured client (`StubClient` or `OpenAIClient`)
+  directly — there is no in-process serving process to pre-flight, so the
+  serving-availability snooze branch that once guarded the local model is gone
+  (removed with the local-inference stack in commit d20a715).
 - Generation failure returns `{:error, reason}` (logged), which propagates to
   Oban so the job retries with backoff. The return value is **never** discarded —
   this is the rule that the v0.5.36 outage was caused by violating.
@@ -352,11 +343,13 @@ continues rather than aborting the whole backfill
   facade; the concrete client is chosen by `:embedding_client` config per env.
 - **Non-essential by construction.** Generation is async Oban work behind a
   PubSub bridge; the chat send path never blocks on it.
-- **Same model, different transport.** Dev (local Bumblebee) and prod (remote
-  API) use `all-MiniLM-L6-v2` at 384-dim — search quality is consistent across
-  environments without running the model on prod hardware.
-- **Self-healing.** Snooze-on-missing-serving plus the 15-minute reconciliation
-  sweep mean transient failures recover without manual intervention.
+- **No local inference anywhere.** Prod calls DeepInfra
+  (`all-MiniLM-L6-v2`, 384-dim) over HTTP; dev and test use the deterministic
+  stub. No environment loads an ML model into the BEAM, so prod hardware never
+  runs EXLA/Bumblebee.
+- **Self-healing.** The 15-minute reconciliation sweep re-enqueues anything the
+  fire-and-forget listener missed, so transient failures recover without manual
+  intervention.
 - **Idempotent, content-addressed writes.** `content_hash` skips unchanged
   messages and re-embeds edited ones; the upsert replaces by `message_id`.
 - **Loud failures.** Generation errors are logged and propagated to Oban for
@@ -367,14 +360,14 @@ continues rather than aborting the whole backfill
 ## 9. Failure Modes & Resilience
 
 The governing rule (project CLAUDE.md, "Production Resilience"): a crash in
-embeddings must not propagate to unrelated subsystems. The spine of that
-guarantee is `restart: :temporary` on the non-essential processes, plus the
-reconciliation safety net.
+embeddings must not propagate to unrelated subsystems. With local inference
+removed, the remaining embedding process is the `PersistenceListener` bridge; the
+spine of the guarantee is `restart: :temporary` on that non-essential listener,
+plus the reconciliation safety net. There is no longer any in-process model or
+serving supervisor to crash.
 
 | Failure | Detection | Response | Blast radius |
 |---|---|---|---|
-| `EmbeddingServing` crash (Bumblebee/dev) | `Embeddings.Supervisor` restarts it (`one_for_one`, 5/300s); `BumblebeeClient.safe_run/1` catches `:exit` | If budget exhausted the supervisor dies, but it is started `restart: :temporary` from the app supervisor — **not** restarted | App keeps serving; embeddings stop until next deploy/restart |
-| `EmbeddingServing` not yet ready | `ensure_serving_available/0` sees `Process.whereis == nil` | Job returns `{:snooze, 30}` — reschedules without burning an attempt | None; jobs wait, no hammering |
 | Remote API error / timeout (prod) | `OpenAIClient` returns `{:api_error, ...}` / `{:network_error, ...}` | Worker logs + returns `{:error, ...}`; Oban retries with backoff (max 3 attempts) | That batch's messages stay unembedded until retry/reconciliation |
 | `PersistenceListener` down during broadcast | No subscriber receives the fire-and-forget event | `ReconciliationWorker` (every 15m, 1h lookback) re-enqueues missed messages | Up to ~15-minute delay for affected messages |
 | `PersistenceListener` repeatedly crashing | Supervisor would normally restart it | Started `restart: :temporary` so repeated crashes can't exhaust the **root** supervisor budget and take down the app | App unaffected; ReconciliationWorker covers gaps |
@@ -383,16 +376,18 @@ reconciliation safety net.
 
 Two structural facts make this hold:
 
-1. **`maybe_embedding_serving/1`** only adds `Embeddings.Supervisor` to the tree
-   when `BumblebeeClient` is the configured client (`lib/slackex/application.ex:74-83`).
-   In prod (OpenAIClient) and test (StubClient) the serving process — and its
-   model memory — is never started.
-2. **Both PubSub→Oban bridges are `restart: :temporary`** in the application
-   children list (`application.ex:49-50`): `PersistenceListener` and
-   `LinkPreviewListener`. The comment there is explicit — `:permanent` restart
-   on a repeatedly-crashing listener would exhaust the root supervisor budget and
-   take down the app; the listeners are non-essential and `ReconciliationWorker`
-   is the durability safety net.
+1. **No serving process is ever started.** With `BumblebeeClient`,
+   `EmbeddingServing`, and `Embeddings.Supervisor` deleted, `application.ex` no
+   longer has a `maybe_embedding_serving/1` clause — no environment loads an ML
+   model into the BEAM, so there is no model memory and no serving crash to
+   contain.
+2. **The PubSub→Oban bridges are `restart: :temporary`** in the application
+   children list (`application.ex`): `PersistenceListener` and
+   `LinkPreviewListener` (plus `Factory.ChannelNotifier` and `Andon.Listener`).
+   The comment there is explicit — `:permanent` restart on a repeatedly-crashing
+   listener would exhaust the root supervisor budget and take down the app; the
+   listeners are non-essential and `ReconciliationWorker` is the durability
+   safety net.
 
 ---
 
@@ -409,12 +404,19 @@ The v0.5.36–v0.5.43 production outage is the reason for nearly every control i
 - EXLA probed the GPU on NIF load and crashed the physical Proxmox host; CPU-only
   EXLA then OOMed the 20 GB LXC.
 
-The fixes — error propagation to Oban, `{:snooze, 30}` pre-flight check,
-`restart: :temporary` + 5/300s budget, conditional serving start, compile-time
-`EXLA_TARGET=host`, and ultimately moving prod to a remote API — are all visible
-in the current code described above. A deeper treatment of the supervision
-reasoning, restart-budget maths, and recovery sequencing lives in the companion
-deep-dive (see Related Documents).
+The immediate fixes at the time were error propagation to Oban, a `{:snooze, 30}`
+pre-flight serving check, a `restart: :temporary` + 5/300s serving budget,
+conditional serving start, and compile-time `EXLA_TARGET=host`. The durable
+resolution was to stop running the model in-process at all: prod moved to the
+remote DeepInfra API, and the local-inference stack (`BumblebeeClient`,
+`EmbeddingServing`, `Embeddings.Supervisor`, the serving pre-flight/snooze
+branch, and the `bumblebee`/`exla`/`nx` deps) was later deleted outright (commit
+d20a715). What remains in the current code is the part still relevant without a
+local model — error propagation to Oban and the reconciliation safety net; the
+serving-specific controls are gone because the process they guarded no longer
+exists. A deeper treatment of the supervision reasoning, restart-budget maths,
+and recovery sequencing at the time of the incident lives in the companion
+deep-dive (see Related Documents), which remains a historical record.
 
 ---
 
@@ -446,16 +448,13 @@ belong to the search documentation, not here.
 |---|---|
 | `lib/slackex/embeddings/embeddings.ex` | Context module + `Boundary` definition and exports |
 | `lib/slackex/embeddings/embedding_client.ex` | Behaviour + config-driven delegation facade |
-| `lib/slackex/embeddings/stub_client.ex` | Deterministic seeded 384-dim client (default/test) |
-| `lib/slackex/embeddings/bumblebee_client.ex` | Local-model client; safe-wraps `EmbeddingServing` (dev) |
+| `lib/slackex/embeddings/stub_client.ex` | Deterministic seeded 384-dim client (default/dev/test) |
 | `lib/slackex/embeddings/openai_client.ex` | Remote OpenAI-compatible API client + telemetry (prod) |
-| `lib/slackex/embeddings/embedding_serving.ex` | `Nx.Serving` GenServer; loads `all-MiniLM-L6-v2` |
-| `lib/slackex/embeddings/supervisor.ex` | Dedicated supervisor for serving (5/300s budget) |
 | `lib/slackex/embeddings/persistence_listener.ex` | `pipeline:events` → `EmbeddingWorker` bridge |
 | `lib/slackex/embeddings/embedding_worker.ex` | Oban worker: batch embed + backfill + upsert |
 | `lib/slackex/embeddings/reconciliation_worker.ex` | Oban cron safety net for missed messages |
 | `lib/slackex/embeddings/message_embedding.ex` | Ecto schema for `message_embeddings` |
-| `lib/slackex/application.ex` | `maybe_embedding_serving/1`; listener supervision specs |
+| `lib/slackex/application.ex` | `restart: :temporary` listener supervision specs |
 | `config/{config,dev,test,prod,runtime}.exs` | Per-env `:embedding_client` and `:embedding_api` |
 | `priv/repo/migrations/20260303185600_create_message_embeddings.exs` | Initial table + HNSW index (1536-dim) |
 | `priv/repo/migrations/20260304000000_resize_embeddings_to_384.exs` | Resize column + index to 384-dim |
