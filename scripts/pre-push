@@ -1,10 +1,54 @@
 #!/bin/bash
-# Git pre-push hook: headless Claude Code check for common issues.
+# Git pre-push hook: fast, deterministic, non-blocking pre-push checks.
 #
-# SECURITY: --allowedTools is Read,Grep only — NO Bash. A pre-push hook runs
-# unattended with your host environment (secrets, SSH keys, .env) in scope, so
-# granting an autonomous `claude -p` a shell here is an arbitrary-code-execution
-# risk (agent permission bypass). The check only reads files and reports; run
-# any command it suggests yourself. Do not add Bash back.
+# This replaces a former `claude -p` review. An LLM-in-a-hook is the wrong tool
+# here: it blocks every push on a slow model call, and running an autonomous
+# agent unattended (host env, secrets, SSH keys in scope) is exactly the
+# shift-left-too-far gate we'd pull the cord on. The three checks it did are
+# re-homed where they actually belong:
+#
+#   1. Uncommitted/untracked source  -> kept here (cheap, deterministic).
+#   2. Feature-flag gating of new UI  -> advisory nudge here; the real judgement
+#      is a code-review concern, not an unattended gate.
+#   3. Stdlib/version compatibility   -> CI owns it: it compiles with the pinned
+#      Elixir from .tool-versions, so a function missing in that version is a
+#      compile error CI will catch. No local heuristic can beat that.
+#
+# Nothing here blocks a push (exit 0). The commit boundary (pre-commit) and CI
+# are the real gates; this is fast feedback only.
 
-claude -p "Read-only pre-push review. Inspect the working tree and report pass/fail (do NOT run commands): 1) Any unstaged or untracked files that look like they should be committed? 2) Are all new user-facing features gated behind a feature flag (grep for FunWithFlags usage in changed areas)? 3) Any stdlib functions used that may not exist in the CI Elixir version in .tool-versions? Report findings; suggest commands for the human to run rather than running them." --allowedTools "Read,Grep"
+set -u
+
+# 1) Uncommitted / untracked Elixir source — CI only sees what you push.
+DIRTY=$(git status --porcelain -- '*.ex' '*.exs' 2>/dev/null)
+if [ -n "$DIRTY" ]; then
+  echo "pre-push: NOTE — uncommitted/untracked Elixir files (CI won't see these):"
+  echo "$DIRTY" | sed 's/^/  /'
+fi
+
+# 2) Advisory: web-facing changes in the commits being pushed with no nearby
+#    FunWithFlags reference. Dark-ship user-facing features behind a flag.
+#    Reads the standard pre-push stdin (<local ref> <local oid> <remote ref>
+#    <remote oid>); heuristic, never fatal.
+ZERO="0000000000000000000000000000000000000000"
+while read -r _local_ref local_oid _remote_ref remote_oid; do
+  [ -z "${local_oid:-}" ] && continue
+  [ "$local_oid" = "$ZERO" ] && continue
+  if [ "$remote_oid" = "$ZERO" ] || [ -z "${remote_oid:-}" ]; then
+    range="$local_oid"
+  else
+    range="$remote_oid..$local_oid"
+  fi
+
+  web=$(git diff --name-only "$range" 2>/dev/null \
+        | grep -E '(router\.ex|_controller\.ex|_live\.ex|/live/.*\.ex)$' || true)
+  [ -z "$web" ] && continue
+
+  if ! git diff "$range" -- $web 2>/dev/null | grep -q "FunWithFlags"; then
+    echo "pre-push: NOTE — web-facing changes without a FunWithFlags reference:"
+    echo "$web" | sed 's/^/  /'
+    echo "  Dark-ship user-facing features behind a flag; ignore if intentional."
+  fi
+done
+
+exit 0
