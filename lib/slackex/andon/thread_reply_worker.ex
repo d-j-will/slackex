@@ -15,7 +15,8 @@ defmodule Slackex.Andon.ThreadReplyWorker do
   by >700ms. This worker replaces it: enqueue the reply, and retry until the
   parent row exists — durable across restarts, off the listener's path, with
   free backoff and observability. One path serves `notify_dri` and every
-  affordance reply (ack / resolved / note / withdraw / correction / error note).
+  reply to a typed phrase (ack / resolved / note / withdraw / correction /
+  error note).
 
   Retry shape:
 

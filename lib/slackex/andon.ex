@@ -2,7 +2,7 @@ defmodule Slackex.Andon do
   @moduledoc """
   Andon relay: slackex's implementation of the andon service's relay contract
   (relay #1, ADR-0002). slackex owns its platform's half of C1 — parsing the
-  `pull:` grammar and the in-thread affordances, rendering presentation
+  `pull:` grammar and the in-thread phrases, rendering presentation
   commands, thread mechanics, the edited-in-place status mirror — and speaks
   domain events to the service with platform details (person, channel, thread,
   message) as opaque tokens the service never interprets.
@@ -28,23 +28,24 @@ defmodule Slackex.Andon do
       already rendered on the original `201`; skipping them is the relay's
       dedup. (Caveat: a crash between receiving `201` and rendering means a
       later `200` won't re-render — acceptable for the skeleton.)
-    * **Affordances are recognised only in a thread** (a reply). A bare `ack`
+    * **Phrases are recognised only in a thread** (a reply). A bare `ack`
       or issue key at channel top-level is ordinary traffic, not an act on a
       pull. The `pull:` grammar is recognised at top-level *and* in a thread (a
       recurrence is a new pull citing the closure).
-    * **`closed_without_puller` has no affordance in v1** (deferred). `resolved`
+    * **`closed_without_puller` cannot be invoked in v1** (deferred) — no
+      phrase, no button. `resolved`
       always sends a plain `witness_close`; a non-witness close is refused by
       the service (403) and surfaced as an in-thread note.
   """
 
   use Boundary,
     deps: [Slackex.Accounts, Slackex.Chat, Slackex.Messaging],
-    exports: [Channel, Grammar, Affordances, Listener, ServiceClient]
+    exports: [Channel, Grammar, Phrases, Listener, ServiceClient]
 
   import Ecto.Query
 
   alias Slackex.Accounts
-  alias Slackex.Andon.{Affordances, Channel, Grammar, Mirror, ServiceClient, ThreadReplyWorker}
+  alias Slackex.Andon.{Channel, Grammar, Mirror, Phrases, ServiceClient, ThreadReplyWorker}
   alias Slackex.Chat
   alias Slackex.Chat.Channels
   alias Slackex.Chat.Messages
@@ -94,7 +95,7 @@ defmodule Slackex.Andon do
 
   Authorization is the service's: the card only offers what the snapshot says
   the viewer may do, and the service refuses anything else exactly as it would
-  a typed affordance.
+  a typed phrase.
   """
   @spec act_on_hold(map(), String.t(), integer(), integer(), integer()) :: :ok
   def act_on_hold(hold, action, channel_id, status_message_id, user_id)
@@ -235,8 +236,8 @@ defmodule Slackex.Andon do
         post_in_thread(ctx, thread_id, correction_text())
 
       :not_a_pull when reply? ->
-        dispatch_affordance(
-          Affordances.parse(content),
+        dispatch_intent(
+          Phrases.parse(content),
           message_id,
           sender_id,
           origin,
@@ -249,12 +250,12 @@ defmodule Slackex.Andon do
     end
   end
 
-  defp dispatch_affordance(:none, _mid, _sid, _origin, _ctx, _thread), do: :ok
+  defp dispatch_intent(:none, _mid, _sid, _origin, _ctx, _thread), do: :ok
 
   # A note with no cause-guess is not logged as half a note. The cause is the
   # part that cannot be reconstructed weeks later, so the bot asks for it in
   # the thread while the person still has the answer in their head.
-  defp dispatch_affordance(
+  defp dispatch_intent(
          {:closure_note_needs_cause, _note},
          _mid,
          _sid,
@@ -264,9 +265,9 @@ defmodule Slackex.Andon do
        ),
        do: post_in_thread(ctx, thread_id, cause_prompt_text())
 
-  defp dispatch_affordance(intent, message_id, sender_id, origin, ctx, thread_id) do
+  defp dispatch_intent(intent, message_id, sender_id, origin, ctx, thread_id) do
     intent
-    |> affordance_event(message_id, sender_id, origin)
+    |> intent_event(message_id, sender_id, origin)
     |> post_and_render(ctx, thread_id)
   end
 
@@ -281,21 +282,21 @@ defmodule Slackex.Andon do
     })
   end
 
-  defp affordance_event(:ack, mid, sid, origin),
+  defp intent_event(:ack, mid, sid, origin),
     do: base("ack", mid, origin) |> Map.put("actor", token(sid))
 
-  defp affordance_event(:witness_close, mid, sid, origin),
+  defp intent_event(:witness_close, mid, sid, origin),
     do: base("witness_close", mid, origin) |> Map.put("actor", token(sid))
 
-  defp affordance_event(:withdraw, mid, sid, origin),
+  defp intent_event(:withdraw, mid, sid, origin),
     do: base("pull_withdrawn", mid, origin) |> Map.put("puller", token(sid))
 
-  defp affordance_event({:closure_note, note, cause}, mid, sid, origin),
+  defp intent_event({:closure_note, note, cause}, mid, sid, origin),
     do:
       base("closure_note", mid, origin)
       |> Map.merge(%{"actor" => token(sid), "note" => note, "cause_guess" => cause})
 
-  defp affordance_event({:subject, key}, mid, sid, origin),
+  defp intent_event({:subject, key}, mid, sid, origin),
     do:
       base("subject_provided", mid, origin)
       |> Map.merge(%{"provider" => token(sid), "key" => key})
@@ -352,7 +353,7 @@ defmodule Slackex.Andon do
   # has — a bound `pull_created` (explicit key) or a `subject_provided` that
   # binds a previously-unbound pull. An unbound pull gets `request_subject`
   # instead; its confirmation follows when the subject is provided. Only the
-  # puller's affordance (`resolved`) is taught here — the DRI's (`ack`/`note:`)
+  # puller's phrase (`resolved`) is taught here — the DRI's (`ack`/`note:`)
   # rides the separate notify_dri ping (response-protocol role split). Only on
   # the 201 (a 200 is an idempotent replay already rendered).
   defp maybe_confirm_pull(%{"event" => event}, body, ctx, thread_id)
@@ -377,7 +378,7 @@ defmodule Slackex.Andon do
       "On the clock — reply `resolved` when what you flagged is contained."
   end
 
-  # A lifecycle affordance (`ack`/`resolved`/`note:`) records in the log but the
+  # A lifecycle phrase (`ack`/`resolved`/`note:`) records in the log but the
   # service returns no command, so without this the act is silent in the thread
   # — you press the button gap 2 taught and nothing shows. Render a light
   # acknowledgment on the 201 so each transition is visible ("reads like the
@@ -418,7 +419,7 @@ defmodule Slackex.Andon do
           ctx,
           thread,
           "Backup #{mention(backup)} — the acknowledge window lapsed; you now carry this pull.\n" <>
-            dri_affordances()
+            dri_phrases()
         )
 
       :error ->
@@ -559,16 +560,17 @@ defmodule Slackex.Andon do
   # as a time rather than a countdown — a countdown in a chat message is stale
   # the moment it is written, and the absolute time is the fact.
   defp run_command(%{"command" => "notify_dri", "dri" => dri, "thread" => thread} = cmd, ctx) do
-    post_in_thread(ctx, thread, receipt_text(dri, cmd) <> "\n" <> dri_affordances())
+    post_in_thread(ctx, thread, receipt_text(dri, cmd) <> "\n" <> dri_phrases())
   end
 
   defp run_command(_unknown, _ctx), do: :ok
 
-  # The DRI's in-thread affordances (ENG-13 gap 2), taught wherever someone
+  # The phrases the DRI can type (ENG-13 gap 2), taught wherever someone
   # becomes the DRI — the initial notify and a backup inheriting the pull. The
-  # puller's affordances (`resolved` to release, `withdraw`) are the puller's,
+  # puller's phrases (`resolved` to release, `withdraw`) are the puller's,
   # taught in the puller confirmation, not here (response-protocol role split).
-  # `ack` is bare; `note:` carries the note text after the colon (Affordances).
+  # Teaching them is what makes them usable: a word you have to already know
+  # offers nothing on its own (Phrases).
   defp receipt_text(dri, cmd) do
     [
       "#{mention(dri)} — you're holding this pull.",
@@ -603,7 +605,7 @@ defmodule Slackex.Andon do
 
   defp receipt_due(_), do: "No clock on this one."
 
-  defp dri_affordances do
+  defp dri_phrases do
     "Reply `heard` (or `ack`) to acknowledge · `note: <what> / cause: <why>` once it's addressed."
   end
 

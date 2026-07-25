@@ -1,11 +1,18 @@
-defmodule Slackex.Andon.Affordances do
+defmodule Slackex.Andon.Phrases do
   @moduledoc """
-  Thread-lifecycle affordances (v1): the small vocabulary a person types
-  inside a pull's thread to act on it. Pure text → intent mapping; the caller
-  turns an intent into the matching domain event.
+  The small vocabulary a person types inside a pull's thread to act on it
+  (v1). Pure text → intent mapping; the caller turns an intent into the
+  matching domain event.
 
-  Recognised only as the exact affordance (not embedded in prose), mirroring
-  the anchored issue-key grammar:
+  These are phrases, not affordances. An affordance is something a surface
+  *offers* — a button on the hold card, an editable status message, the
+  label+comment a tracker gives you. A word you have to already know to type
+  offers nothing by itself; what makes it usable is the bot teaching it in
+  the thread. Keeping the two apart is why the card's buttons are affordances
+  and this module is a vocabulary.
+
+  Recognised only as the exact phrase (not embedded in prose), mirroring the
+  anchored issue-key grammar:
 
     * `ack` | `heard` | `seen` | `on it` | `engage` → `:ack`
     * `resolved`  → `:witness_close`     (the witness's message is the release)
@@ -29,15 +36,15 @@ defmodule Slackex.Andon.Affordances do
   decision, not a contract one: the service only ever receives `ack`, and
   another relay is free to teach different words (ADR-0002).
 
-  A bare affordance must be the whole (trimmed) message, ignoring case and a
+  A bare phrase must be the whole (trimmed) message, ignoring case and a
   trailing `.` or `!` — `heard!` acts, "I heard the build was red" is
   ordinary thread chatter. That whole-message rule is the only guard, and it
   is doing more work now that the phrases are common words. `note:` is a prefix followed
   by non-empty text. The subject key matches Linear's `ENG-123` form
   (ADR-0003), anchored end to end.
 
-  `closed_without_puller` (the DRI closing in the puller's absence) has NO
-  affordance in v1 — deferred. A `resolved` typed by someone the service does
+  `closed_without_puller` (the DRI closing in the puller's absence) has no
+  way to invoke it in v1 — no phrase and no button, deferred. A `resolved` typed by someone the service does
   not treat as the witness is refused (403) and surfaced as an in-thread note,
   rather than the relay guessing the closed-without-puller case.
 

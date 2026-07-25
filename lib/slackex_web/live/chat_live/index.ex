@@ -892,7 +892,7 @@ defmodule SlackexWeb.ChatLive.Index do
 
   # A hold-card button. The service owns authorization — the card only offers
   # what the snapshot said this viewer may do, and anything else is refused
-  # there exactly as a typed affordance would be.
+  # there exactly as a typed phrase would be.
   @impl true
   def handle_event("andon_hold_action", %{"pull_id" => pull_id, "action" => action}, socket) do
     with %{} = channel <- socket.assigns.active_channel,

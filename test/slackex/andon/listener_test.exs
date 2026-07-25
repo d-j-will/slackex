@@ -151,7 +151,7 @@ defmodule Slackex.Andon.ListenerTest do
     end
   end
 
-  describe "in-thread affordances (replies only)" do
+  describe "in-thread phrases (replies only)" do
     test "`ack` in a thread becomes an ack event with the actor", %{channel: channel, user: user} do
       pull = post_message(channel, user, "pull: defect ENG-9 is red")
       assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
@@ -268,7 +268,7 @@ defmodule Slackex.Andon.ListenerTest do
       end)
     end
 
-    test "a bare issue key at top level is NOT an affordance", %{channel: channel, user: user} do
+    test "a bare issue key at top level is NOT a phrase", %{channel: channel, user: user} do
       post_message(channel, user, "ENG-321")
       refute_receive {:andon_event_posted, _}, 300
     end
@@ -310,7 +310,7 @@ defmodule Slackex.Andon.ListenerTest do
          %{status: 403, body: %{"errors" => %{"puller" => ["only the puller may withdraw"]}}}}
       )
 
-      # A withdraw affordance in a thread the "wrong" person sends.
+      # A withdraw phrase in a thread the "wrong" person sends.
       pull = post_message(channel, user, "pull: defect ENG-9 is red")
       # first event (pull_created) uses the fun? no — it's a literal response now,
       # so pull_created also gets 403; that's fine, we only assert the note lands.
@@ -345,7 +345,7 @@ defmodule Slackex.Andon.ListenerTest do
   end
 
   describe "puller confirmation on a bound pull (ENG-13 gap 3)" do
-    test "a bound pull_created posts a confirmation teaching the puller's release affordance", %{
+    test "a bound pull_created posts a confirmation teaching the puller's release phrase", %{
       channel: channel,
       user: user
     } do
@@ -373,7 +373,7 @@ defmodule Slackex.Andon.ListenerTest do
       eventually(fn ->
         assert [reply] = Chat.list_thread(message.id)
         assert reply.content =~ "bound to ENG-11"
-        # Teaches the puller's release affordance; not the DRI's (that's the notify).
+        # Teaches the puller's release phrase; not the DRI's (that's the notify).
         assert reply.content =~ "`resolved`"
         refute reply.content =~ "`ack`"
         assert reply.sender_id == Andon.bot_user().id

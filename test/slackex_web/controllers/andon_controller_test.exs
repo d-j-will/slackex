@@ -185,7 +185,7 @@ defmodule SlackexWeb.AndonControllerTest do
       assert [reply] = Chat.list_thread(root.id)
       assert reply.content =~ "@backup-dri"
       assert reply.content =~ "acknowledge window"
-      # The backup is now the DRI, so their notice teaches the DRI affordances.
+      # The backup is now the DRI, so their notice teaches the DRI phrases.
       assert reply.content =~ "`ack`"
       assert reply.content =~ "`note:"
     end
@@ -269,7 +269,7 @@ defmodule SlackexWeb.AndonControllerTest do
       assert reply.content =~ "build"
       assert reply.content =~ "15:20"
 
-      # Teaches the DRI's affordances in-thread (ENG-13 gap 2).
+      # Teaches the DRI's phrases in-thread (ENG-13 gap 2).
       # resolved/withdraw are the puller's — taught in the puller confirmation.
       assert reply.content =~ "`heard`"
       assert reply.content =~ "`ack`"
