@@ -9,14 +9,15 @@ defmodule Slackex.Andon.HoldCardActionTest do
   use Slackex.DataCase, async: false
 
   alias Slackex.Andon
+  alias Slackex.Chat.Channels
 
   setup do
     user = insert(:user, username: "card-anna")
     channel = insert(:channel, creator: user, is_private: false)
     bot = Andon.bot_user()
 
-    {:ok, _} = Slackex.Chat.Channels.join_channel(user.id, channel.id)
-    {:ok, _} = Slackex.Chat.Channels.join_channel(bot.id, channel.id)
+    {:ok, _} = Channels.join_channel(user.id, channel.id)
+    {:ok, _} = Channels.join_channel(bot.id, channel.id)
     {:ok, _} = Andon.enable_channel(channel.id)
 
     FunWithFlags.enable(:andon_relay)
