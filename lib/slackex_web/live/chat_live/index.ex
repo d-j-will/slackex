@@ -168,6 +168,7 @@ defmodule SlackexWeb.ChatLive.Index do
           |> Helpers.maybe_push_scroll_event(target_message_id)
           |> assign(:show_decide, false)
           |> load_sous_cards(channel)
+          |> load_andon_holds(channel)
 
         {:noreply, socket}
 
@@ -240,6 +241,7 @@ defmodule SlackexWeb.ChatLive.Index do
      |> assign(:oldest_message_id, nil)
      |> assign(:has_more_messages, false)
      |> assign(:card_messages, %{})
+     |> assign(:andon_holds, %{})
      |> stream(:messages, [], reset: true)}
   end
 
@@ -888,6 +890,36 @@ defmodule SlackexWeb.ChatLive.Index do
   # PubSub / Info handlers
   # ---------------------------------------------------------------------------
 
+  # A hold-card button. The service owns authorization — the card only offers
+  # what the snapshot said this viewer may do, and anything else is refused
+  # there exactly as a typed affordance would be.
+  @impl true
+  def handle_event("andon_hold_action", %{"pull_id" => pull_id, "action" => action}, socket) do
+    with %{} = channel <- socket.assigns.active_channel,
+         {status_message_id, hold} <- andon_hold(socket.assigns.andon_holds, pull_id) do
+      _ =
+        Slackex.Andon.act_on_hold(
+          hold,
+          action,
+          channel.id,
+          status_message_id,
+          socket.assigns.current_user.id
+        )
+
+      {:noreply, socket}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("andon_open_thread", %{"thread" => thread}, socket) do
+    case socket.assigns.active_channel do
+      %{slug: slug} -> {:noreply, push_navigate(socket, to: ~p"/chat/#{slug}/thread/#{thread}")}
+      _ -> {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_info({:envelope, %{event: "message.new", payload: message} = envelope}, socket) do
     if Helpers.message_for_active_conversation?(envelope, socket) do
@@ -1353,6 +1385,12 @@ defmodule SlackexWeb.ChatLive.Index do
     end
   end
 
+  # A fresh snapshot for the channel being viewed: swap it in, so the hold card
+  # follows the board without a reload.
+  def handle_info({:andon_mirror, status_message_id, mirror}, socket) do
+    {:noreply, assign(socket, :andon_holds, %{status_message_id => mirror})}
+  end
+
   # A plain message just posted to this channel was linked to a Sous work item
   # (ADR-002 two-step upgrade) — map its id to the work item so it renders as a
   # decision card without a reload.
@@ -1402,6 +1440,29 @@ defmodule SlackexWeb.ChatLive.Index do
   # to the Sous cards topic so a just-posted plain message upgrades to a card
   # live (ADR-002). Re-subscribing on channel re-entry is harmless — PubSub
   # dedups identical subscriptions per process.
+  # The hold card renders from the channel's latest mirror snapshot. Subscribing
+  # covers updates that land while you are looking; the row read covers the
+  # much commoner case of arriving between them.
+  defp load_andon_holds(socket, channel) do
+    _ =
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(Slackex.PubSub, Slackex.Andon.mirror_topic(channel.id))
+      end
+
+    assign(socket, :andon_holds, Slackex.Andon.mirror_for_channel(channel.id))
+  end
+
+  # The snapshot is keyed by the status message it renders under; a click only
+  # carries the pull, so find the row inside it.
+  defp andon_hold(andon_holds, pull_id) do
+    Enum.find_value(andon_holds, fn {status_message_id, mirror} ->
+      case Enum.find(Map.get(mirror, "active_holds", []), &(&1["pull_id"] == pull_id)) do
+        nil -> nil
+        hold -> {status_message_id, hold}
+      end
+    end)
+  end
+
   defp load_sous_cards(socket, channel) do
     if FunWithFlags.enabled?(:sous, for: socket.assigns.current_user) do
       _ =

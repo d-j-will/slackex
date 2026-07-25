@@ -247,7 +247,11 @@ defmodule SlackexWeb.AndonControllerTest do
         "command" => "notify_dri",
         "dri" => %{"relay" => "slackex", "token" => to_string(dri_user.id)},
         "channel" => to_string(channel.id),
-        "thread" => to_string(root.id)
+        "thread" => to_string(root.id),
+        "subject" => %{"adapter" => "linear", "external_id" => "ENG-42"},
+        "class" => "defect",
+        "stage" => "build",
+        "ack_due_at" => "2026-07-25T15:20:00Z"
       }
 
       assert %{"ok" => true} =
@@ -255,14 +259,51 @@ defmodule SlackexWeb.AndonControllerTest do
 
       assert [reply] = Chat.list_thread(root.id)
       assert reply.content =~ "@stage-dri"
-      assert reply.content =~ "on the clock"
-      # Teaches the DRI's affordances in-thread (ENG-13 gap 2): ack + note:.
+
+      # The receipt states everything needed to decide whether to move: what
+      # it is about, where it sits, and when it is owed. The deadline is a
+      # time, not a countdown — a countdown in a chat message is stale the
+      # moment it is written.
+      assert reply.content =~ "ENG-42"
+      assert reply.content =~ "defect"
+      assert reply.content =~ "build"
+      assert reply.content =~ "15:20"
+
+      # Teaches the DRI's affordances in-thread (ENG-13 gap 2).
       # resolved/withdraw are the puller's — taught in the puller confirmation.
+      assert reply.content =~ "`heard`"
       assert reply.content =~ "`ack`"
       assert reply.content =~ "`note:"
+      assert reply.content =~ "cause:"
       refute reply.content =~ "resolved"
       refute reply.content =~ "withdraw"
       assert reply.channel_id == channel.id
+    end
+
+    test "a class with no clock says so rather than implying a timer", %{
+      conn: conn,
+      channel: channel,
+      user: puller
+    } do
+      dri_user = insert(:user, username: "stage-dri-2")
+      root = insert(:message, channel: channel, sender: puller)
+
+      command = %{
+        "command" => "notify_dri",
+        "dri" => %{"relay" => "slackex", "token" => to_string(dri_user.id)},
+        "channel" => to_string(channel.id),
+        "thread" => to_string(root.id),
+        "subject" => %{"adapter" => "linear", "external_id" => "ENG-43"},
+        "class" => "confusion",
+        "stage" => "build",
+        "ack_due_at" => nil
+      }
+
+      assert %{"ok" => true} =
+               json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+
+      assert [reply] = Chat.list_thread(root.id)
+      assert reply.content =~ "No clock on this one"
     end
 
     test "an unresolvable channel logs a warning instead of dropping silently", %{conn: conn} do

@@ -80,6 +80,47 @@ defmodule Slackex.Andon do
   @spec enabled?(integer()) :: boolean()
   def enabled?(channel_id), do: not is_nil(get_channel(channel_id))
 
+  @doc """
+  A hold-card button: the viewer acts on a hold without opening its thread.
+  `action` is `"release"` (the witness's release) or `"ack"`.
+
+  The event id is derived rather than taken from a message, because a click
+  has no message of its own: `slackex-act-<pull_id>-<event>-<epoch>-<token>`.
+  It is deterministic, so a double-click is an idempotent replay rather than a
+  second attempt — the service pins this exact shape in its own suite
+  (`thread_lifecycle_test.exs`, "button-derived event ids"). The epoch is the
+  acknowledge round the snapshot was rendered from, so an ack answers the
+  round the viewer was actually looking at.
+
+  Authorization is the service's: the card only offers what the snapshot says
+  the viewer may do, and the service refuses anything else exactly as it would
+  a typed affordance.
+  """
+  @spec act_on_hold(map(), String.t(), integer(), integer(), integer()) :: :ok
+  def act_on_hold(hold, action, channel_id, status_message_id, user_id)
+      when action in ["release", "ack"] do
+    event = if action == "release", do: "witness_close", else: "ack"
+    actor = token(user_id)
+    thread = to_string(hold["thread"])
+
+    %{
+      "event" => event,
+      "event_id" =>
+        "#{@relay}-act-#{hold["pull_id"]}-#{event}-#{hold["epoch"] || 0}-#{actor["token"]}",
+      "occurred_at" => DateTime.to_iso8601(DateTime.utc_now()),
+      "actor" => actor,
+      "origin" => origin(channel_id, thread, status_message_id)
+    }
+    |> post_and_render(%{channel_id: channel_id, bot_id: bot_user().id}, thread_id(thread))
+  end
+
+  defp thread_id(thread) do
+    case Integer.parse(thread) do
+      {id, ""} -> id
+      _ -> nil
+    end
+  end
+
   @doc "PubSub topic carrying this channel's mirror snapshots."
   @spec mirror_topic(integer()) :: String.t()
   def mirror_topic(channel_id), do: "andon:mirror:channel:#{channel_id}"
@@ -513,13 +554,12 @@ defmodule Slackex.Andon do
     )
   end
 
-  defp run_command(%{"command" => "notify_dri", "dri" => dri, "thread" => thread}, ctx) do
-    post_in_thread(
-      ctx,
-      thread,
-      "#{mention(dri)} — you're the DRI for this pull. It's on the clock.\n" <>
-        dri_affordances()
-    )
+  # The receipt. Everything a person needs to decide whether to move: who is
+  # holding it, what it is about, and when it is owed. The deadline is stated
+  # as a time rather than a countdown — a countdown in a chat message is stale
+  # the moment it is written, and the absolute time is the fact.
+  defp run_command(%{"command" => "notify_dri", "dri" => dri, "thread" => thread} = cmd, ctx) do
+    post_in_thread(ctx, thread, receipt_text(dri, cmd) <> "\n" <> dri_affordances())
   end
 
   defp run_command(_unknown, _ctx), do: :ok
@@ -529,8 +569,42 @@ defmodule Slackex.Andon do
   # puller's affordances (`resolved` to release, `withdraw`) are the puller's,
   # taught in the puller confirmation, not here (response-protocol role split).
   # `ack` is bare; `note:` carries the note text after the colon (Affordances).
+  defp receipt_text(dri, cmd) do
+    [
+      "#{mention(dri)} — you're holding this pull.",
+      receipt_subject(cmd),
+      receipt_stage(cmd),
+      receipt_due(cmd)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
+
+  defp receipt_subject(cmd) do
+    case {get_in(cmd, ["subject", "external_id"]), cmd["class"]} do
+      {nil, nil} -> nil
+      {nil, class} -> "#{class}."
+      {subject, nil} -> "#{subject}."
+      {subject, class} -> "#{subject} · #{class}."
+    end
+  end
+
+  defp receipt_stage(%{"stage" => stage}) when is_binary(stage), do: "Stage: #{stage}."
+  defp receipt_stage(_), do: nil
+
+  # No clock for this class and stage is a fact worth stating: the alternative
+  # is a reader assuming a timer is running when none is.
+  defp receipt_due(%{"ack_due_at" => due}) when is_binary(due) do
+    case DateTime.from_iso8601(due) do
+      {:ok, dt, _} -> "Acknowledge by #{Calendar.strftime(dt, "%H:%M")} UTC."
+      _ -> nil
+    end
+  end
+
+  defp receipt_due(_), do: "No clock on this one."
+
   defp dri_affordances do
-    "Reply `ack` to acknowledge · `note: <text>` once it's addressed."
+    "Reply `heard` (or `ack`) to acknowledge · `note: <what> / cause: <why>` once it's addressed."
   end
 
   # Posts as the bot into the Slack thread rooted at `thread` (a message id) by

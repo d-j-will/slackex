@@ -14,6 +14,11 @@ defmodule SlackexWeb.ChatComponents do
     router: SlackexWeb.Router,
     statics: SlackexWeb.static_paths()
 
+  # A pinned block has to stay bounded, so the hold card shows this many rows
+  # and counts the rest. The count still tells you the board is deeper than
+  # what you can see.
+  @andon_row_cap 8
+
   # ─────────────────────────────── Avatar ──────────────────────────────────
 
   @doc "Renders a circular avatar with initials and optional online indicator."
@@ -167,6 +172,9 @@ defmodule SlackexWeb.ChatComponents do
   # Map of message_id => Sous work item. When the current message's id is a key,
   # a decision card is rendered below the message body (Slice A, ADR-002).
   attr :card_messages, :map, default: %{}
+  # Map of status_message_id => andon mirror snapshot. When the current
+  # message's id is a key, the hold card is rendered below it (ENG-22).
+  attr :andon_holds, :map, default: %{}
   # Optional prefix for all DOM element IDs rendered by this component. Pass a
   # unique prefix (e.g. "thread-") when the same message is rendered in two
   # places simultaneously (e.g. both the message stream and the thread panel
@@ -275,6 +283,12 @@ defmodule SlackexWeb.ChatComponents do
             <div :if={@link_previews != []} class="mt-1 space-y-2">
               <.link_preview_card :for={preview <- @link_previews} preview={preview} />
             </div>
+            <% andon_mirror = Map.get(@andon_holds, @message.id) %>
+            <.andon_hold_card
+              :if={andon_mirror}
+              mirror={andon_mirror}
+              current_user_id={@current_user_id}
+            />
             <% decision_wi = Map.get(@card_messages, @message.id) %>
             <div
               :if={decision_wi}
@@ -557,6 +571,7 @@ defmodule SlackexWeb.ChatComponents do
   attr :reactions, :map, default: %{}
   attr :link_previews, :map, default: %{}
   attr :card_messages, :map, default: %{}
+  attr :andon_holds, :map, default: %{}
 
   def message_stream(assigns) do
     ~H"""
@@ -581,11 +596,122 @@ defmodule SlackexWeb.ChatComponents do
           reactions={Map.get(@reactions, message.id, [])}
           link_previews={Map.get(@link_previews, message.id, [])}
           card_messages={@card_messages}
+          andon_holds={@andon_holds}
         />
       </div>
     </div>
     """
   end
+
+  @doc """
+  The hold card: one row per pull the channel is holding, under the status
+  message. Rows render in payload order — the service decides what is on the
+  board and the relay does not reorder by how overdue something is, because a
+  card that rearranges itself is one you cannot scan twice the same way.
+
+  Buttons appear only for the viewer the service authorized. Age and countdown
+  tick client-side from the absolute times; the server sends facts, not
+  formatted durations.
+  """
+  attr :mirror, :map, required: true
+  attr :current_user_id, :integer, required: true
+
+  def andon_hold_card(assigns) do
+    holds = Map.get(assigns.mirror, "active_holds", [])
+
+    assigns =
+      assigns
+      |> assign(:rows, Enum.take(holds, @andon_row_cap))
+      |> assign(:overflow, max(length(holds) - @andon_row_cap, 0))
+
+    ~H"""
+    <div :if={@rows != []} class="loom mt-2 rounded-lg border border-base-300" data-andon-holds>
+      <div :for={hold <- @rows} class="border-b border-base-200 last:border-b-0 px-3 py-2">
+        <div class="flex items-baseline justify-between gap-2 flex-wrap">
+          <span class="text-sm font-medium">
+            {andon_subject(hold)}
+            <span class="text-xs text-base-content/60 ml-1">{hold["class"]}</span>
+          </span>
+          <span
+            :if={hold["held_since"]}
+            id={"andon-age-#{hold["pull_id"]}"}
+            phx-hook="AndonClock"
+            data-since={hold["held_since"]}
+            data-due={hold["ack_due_at"]}
+            data-acked={hold["acked_at"]}
+            class="text-xs text-base-content/60 tabular-nums"
+          >
+            held —
+          </span>
+        </div>
+        <p class="text-xs text-base-content/70 mt-0.5">
+          {andon_holder(hold)}
+        </p>
+        <div :if={andon_actions(hold, @current_user_id) != []} class="mt-1.5 flex gap-2">
+          <button
+            :for={action <- andon_actions(hold, @current_user_id)}
+            type="button"
+            phx-click="andon_hold_action"
+            phx-value-pull_id={hold["pull_id"]}
+            phx-value-action={action}
+            class="btn btn-xs"
+          >
+            {andon_action_label(action)}
+          </button>
+          <button
+            :if={hold["thread"]}
+            type="button"
+            phx-click="andon_open_thread"
+            phx-value-thread={hold["thread"]}
+            class="btn btn-xs btn-ghost"
+          >
+            open thread
+          </button>
+        </div>
+      </div>
+      <p :if={@overflow > 0} class="px-3 py-1.5 text-xs text-base-content/60">
+        + {@overflow} more held
+      </p>
+    </div>
+    """
+  end
+
+  defp andon_subject(hold) do
+    get_in(hold, ["subject", "external_id"]) || "unbound subject"
+  end
+
+  # Naming the holder is the point of the row — "who has this" is a lookup,
+  # never a question you have to ask the channel. After an escalation it is the
+  # chain link, and saying so matters: naming the original DRI would name the
+  # wrong person.
+  defp andon_holder(hold) do
+    who =
+      case hold["holder"] do
+        %{"token" => token} -> "held by #{andon_mention(token)}"
+        _ -> "unassigned"
+      end
+
+    escalated = if hold["holder_source"] == "escalated_to", do: " (escalated)", else: ""
+    who <> escalated
+  end
+
+  defp andon_mention(token) do
+    case Integer.parse(to_string(token)) do
+      {id, ""} -> "@#{id}"
+      _ -> to_string(token)
+    end
+  end
+
+  defp andon_actions(hold, current_user_id) do
+    for %{"action" => action, "authorized" => %{"token" => token}} <-
+          Map.get(hold, "actions", []),
+        to_string(token) == to_string(current_user_id),
+        do: action
+  end
+
+  defp andon_action_label("release"), do: "resolved"
+  defp andon_action_label("ack"), do: "heard"
+  defp andon_action_label(other), do: other
 
   # ────────────────────────── Link Preview Card ─────────────────────────
 
