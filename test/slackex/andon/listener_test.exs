@@ -221,23 +221,49 @@ defmodule Slackex.Andon.ListenerTest do
       refute Map.has_key?(event, "actor")
     end
 
-    test "`note: <text>` in a thread becomes closure_note with actor and note", %{
+    test "`note:` + `cause:` in a thread becomes closure_note with both halves", %{
       channel: channel,
       user: user
     } do
       pull = post_message(channel, user, "pull: defect ENG-9 is red")
       assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
 
-      post_reply(channel, user, pull.id, "note: flaky fixture; quarantined with a burden card")
+      post_reply(
+        channel,
+        user,
+        pull.id,
+        "note: flaky fixture; quarantined with a burden card\ncause: shared test DB not reset"
+      )
 
       assert_receive {:andon_event_posted, event}, 1_000
       assert event["event"] == "closure_note"
       assert event["actor"] == %{"relay" => "slackex", "token" => to_string(user.id)}
       assert event["note"] == "flaky fixture; quarantined with a burden card"
+      assert event["cause_guess"] == "shared test DB not reset"
 
       eventually(fn ->
         assert Enum.any?(Chat.list_thread(pull.id), fn r ->
                  r.sender_id == Andon.bot_user().id and r.content =~ "Closure note logged"
+               end)
+      end)
+    end
+
+    test "a note with no cause is not logged — the bot asks for the cause instead", %{
+      channel: channel,
+      user: user
+    } do
+      pull = post_message(channel, user, "pull: defect ENG-9 is red")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      post_reply(channel, user, pull.id, "note: flaky fixture; quarantined")
+
+      # Nothing reaches the service: half a closure note is worse than a
+      # prompt, because the cause is gone once the person moves on.
+      refute_receive {:andon_event_posted, %{"event" => "closure_note"}}, 300
+
+      eventually(fn ->
+        assert Enum.any?(Chat.list_thread(pull.id), fn r ->
+                 r.sender_id == Andon.bot_user().id and r.content =~ "what do you think caused it"
                end)
       end)
     end

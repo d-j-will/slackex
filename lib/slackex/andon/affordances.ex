@@ -10,8 +10,16 @@ defmodule Slackex.Andon.Affordances do
     * `ack`       → `:ack`               (the DRI answers the first timer)
     * `resolved`  → `:witness_close`     (the witness's message is the release)
     * `withdraw`  → `:withdraw`          (the puller drops an unbound pull)
-    * `note: <t>` → `{:closure_note, t}` (the DRI's note, after release)
+    * `note: <t>` + `cause: <c>` → `{:closure_note, t, c}` (after release)
     * `<KEY>`     → `{:subject, KEY}`    (the puller answers the subject ask)
+
+  A closure note carries two things: what was seen, and the writer's best
+  guess at the cause. The guess is what nobody can reconstruct weeks later,
+  and keeping it apart is what lets the retro notice the same cause twice, so
+  the service refuses a note without one. Put `cause:` on its own line
+  (Shift-Enter) or at the end of the line; a note typed without it comes back
+  as `{:closure_note_needs_cause, note}` and the bot asks for the cause in
+  the thread rather than logging half a note.
 
   A bare word must be the whole (trimmed) message — `resolved` acts, but
   "resolved, finally" is ordinary thread chatter. `note:` is a prefix followed
@@ -29,12 +37,17 @@ defmodule Slackex.Andon.Affordances do
   # ADR-0003 subject key grammar (Linear first): a registered team key.
   @issue_key ~r/^[A-Z][A-Z0-9]*-\d+$/
 
+  # The cause-guess marker, preferred on its own line (see split_cause/1).
+  @cause_line ~r/^[ \t]*cause:/im
+  @cause_inline ~r/cause:/i
+
   @typedoc "The intent parsed from an in-thread message."
   @type intent ::
           :ack
           | :witness_close
           | :withdraw
-          | {:closure_note, String.t()}
+          | {:closure_note, String.t(), String.t()}
+          | {:closure_note_needs_cause, String.t()}
           | {:subject, String.t()}
           | :none
 
@@ -60,9 +73,40 @@ defmodule Slackex.Andon.Affordances do
   # Strip the (case-insensitive) 5-byte "note:" prefix, keeping the note text
   # verbatim — only called when the trimmed message starts with the prefix.
   defp closure_note(<<_prefix::binary-size(5), rest::binary>>) do
-    case String.trim(rest) do
-      "" -> :none
-      note -> {:closure_note, note}
+    {note, cause} = split_cause(rest)
+
+    case {String.trim(note), cause} do
+      {"", _} -> :none
+      {note, nil} -> {:closure_note_needs_cause, note}
+      {note, cause} -> {:closure_note, note, cause}
+    end
+  end
+
+  # `cause:` on its own line is the shape the bot teaches, and it cannot be
+  # tripped by "root cause:" in the middle of a sentence. A one-liner still
+  # works: with no line-anchored marker the LAST inline one wins, so
+  # "fixed the root cause: db not reset" still lands the cause — at the price
+  # of a word off the end of the note, which beats losing the cause.
+  defp split_cause(rest) do
+    case Regex.scan(@cause_line, rest, return: :index) do
+      [[span | _] | _] -> cut(rest, span)
+      [] -> split_inline(rest)
+    end
+  end
+
+  defp split_inline(rest) do
+    case Regex.scan(@cause_inline, rest, return: :index) do
+      [] -> {rest, nil}
+      matches -> matches |> List.last() |> hd() |> then(&cut(rest, &1))
+    end
+  end
+
+  defp cut(text, {start, length}) do
+    tail = binary_part(text, start + length, byte_size(text) - start - length)
+
+    case String.trim(tail) do
+      "" -> {binary_part(text, 0, start), nil}
+      cause -> {binary_part(text, 0, start), cause}
     end
   end
 end

@@ -189,6 +189,19 @@ defmodule Slackex.Andon do
 
   defp dispatch_affordance(:none, _mid, _sid, _origin, _ctx, _thread), do: :ok
 
+  # A note with no cause-guess is not logged as half a note. The cause is the
+  # part that cannot be reconstructed weeks later, so the bot asks for it in
+  # the thread while the person still has the answer in their head.
+  defp dispatch_affordance(
+         {:closure_note_needs_cause, _note},
+         _mid,
+         _sid,
+         _origin,
+         ctx,
+         thread_id
+       ),
+       do: post_in_thread(ctx, thread_id, cause_prompt_text())
+
   defp dispatch_affordance(intent, message_id, sender_id, origin, ctx, thread_id) do
     intent
     |> affordance_event(message_id, sender_id, origin)
@@ -215,8 +228,10 @@ defmodule Slackex.Andon do
   defp affordance_event(:withdraw, mid, sid, origin),
     do: base("pull_withdrawn", mid, origin) |> Map.put("puller", token(sid))
 
-  defp affordance_event({:closure_note, note}, mid, sid, origin),
-    do: base("closure_note", mid, origin) |> Map.merge(%{"actor" => token(sid), "note" => note})
+  defp affordance_event({:closure_note, note, cause}, mid, sid, origin),
+    do:
+      base("closure_note", mid, origin)
+      |> Map.merge(%{"actor" => token(sid), "note" => note, "cause_guess" => cause})
 
   defp affordance_event({:subject, key}, mid, sid, origin),
     do:
@@ -497,6 +512,12 @@ defmodule Slackex.Andon do
 
         :ok
     end
+  end
+
+  defp cause_prompt_text do
+    "Got the note — what do you think caused it? Add a line starting with " <>
+      "`cause:` and I'll log both. It's what lets the retro spot the same " <>
+      "cause turning up twice."
   end
 
   defp correction_text do

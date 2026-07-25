@@ -28,10 +28,32 @@ defmodule Slackex.Andon.AffordancesTest do
     end
   end
 
-  describe "note: (prefix + text)" do
-    test "captures the note text verbatim after the prefix" do
+  describe "note: (prefix + text + cause)" do
+    test "a note with its cause on the next line carries both, verbatim" do
+      assert Affordances.parse(
+               "note: flaky fixture; quarantined\ncause: shared test DB not reset"
+             ) ==
+               {:closure_note, "flaky fixture; quarantined", "shared test DB not reset"}
+    end
+
+    test "the cause marker is case-insensitive and tolerates leading space" do
+      assert Affordances.parse("note: quarantined\n  Cause: DB state leaks") ==
+               {:closure_note, "quarantined", "DB state leaks"}
+    end
+
+    test "one line works too — the cause runs to the end of the message" do
+      assert Affordances.parse("note: quarantined cause: DB not reset") ==
+               {:closure_note, "quarantined", "DB not reset"}
+    end
+
+    test "a note with no cause asks for one rather than logging half of it" do
       assert Affordances.parse("note: flaky fixture; quarantined") ==
-               {:closure_note, "flaky fixture; quarantined"}
+               {:closure_note_needs_cause, "flaky fixture; quarantined"}
+    end
+
+    test "a cause marker with nothing after it is not a cause" do
+      assert Affordances.parse("note: quarantined\ncause:") ==
+               {:closure_note_needs_cause, "quarantined"}
     end
 
     test "an empty note is not an affordance" do
@@ -49,8 +71,10 @@ defmodule Slackex.Andon.AffordancesTest do
     end
 
     test "the note: prefix is case-insensitive but the note text stays verbatim" do
-      assert Affordances.parse("Note: Flaky Fixture") == {:closure_note, "Flaky Fixture"}
-      assert Affordances.parse("NOTE: quarantined") == {:closure_note, "quarantined"}
+      assert Affordances.parse("Note: Flaky Fixture\ncause: Bad Data") ==
+               {:closure_note, "Flaky Fixture", "Bad Data"}
+
+      assert Affordances.parse("NOTE: quarantined") == {:closure_note_needs_cause, "quarantined"}
     end
 
     test "case-insensitivity does not extend to issue keys (still uppercase-only)" do
