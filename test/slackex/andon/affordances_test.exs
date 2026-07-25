@@ -28,6 +28,27 @@ defmodule Slackex.Andon.AffordancesTest do
     end
   end
 
+  describe "acknowledge phrases (what a person actually types)" do
+    test "the cheap one-word answers all mean the same thing" do
+      for phrase <- ["ack", "heard", "seen", "on it", "engage"] do
+        assert Affordances.parse(phrase) == :ack, "expected #{phrase} to acknowledge"
+      end
+    end
+
+    test "case and trailing punctuation do not stop an acknowledgement" do
+      assert Affordances.parse("Heard!") == :ack
+      assert Affordances.parse("ON IT.") == :ack
+      assert Affordances.parse("Seen") == :ack
+      assert Affordances.parse("Resolved.") == :witness_close
+    end
+
+    test "an acknowledgement is still the whole message, not a word inside one" do
+      assert Affordances.parse("seen that before, looking now") == :none
+      assert Affordances.parse("I heard the build was red") == :none
+      assert Affordances.parse("on it depends who you ask") == :none
+    end
+  end
+
   describe "note: (prefix + text + cause)" do
     test "a note with its cause on the next line carries both, verbatim" do
       assert Affordances.parse(

@@ -7,7 +7,7 @@ defmodule Slackex.Andon.Affordances do
   Recognised only as the exact affordance (not embedded in prose), mirroring
   the anchored issue-key grammar:
 
-    * `ack`       → `:ack`               (the DRI answers the first timer)
+    * `ack` | `heard` | `seen` | `on it` | `engage` → `:ack`
     * `resolved`  → `:witness_close`     (the witness's message is the release)
     * `withdraw`  → `:withdraw`          (the puller drops an unbound pull)
     * `note: <t>` + `cause: <c>` → `{:closure_note, t, c}` (after release)
@@ -21,8 +21,18 @@ defmodule Slackex.Andon.Affordances do
   as `{:closure_note_needs_cause, note}` and the bot asks for the cause in
   the thread rather than logging half a note.
 
-  A bare word must be the whole (trimmed) message — `resolved` acts, but
-  "resolved, finally" is ordinary thread chatter. `note:` is a prefix followed
+  Acknowledgement takes any of five phrases because the friction bar for
+  answering a pull is "no harder than typing a grumble in a channel", and
+  `ack` is not a word anyone types unprompted — the kitchen-brigade "heard"
+  is. The cheap one-word answer is what makes silence audible, so the relay
+  accepts the ones people actually type. Which words those are is a slackex
+  decision, not a contract one: the service only ever receives `ack`, and
+  another relay is free to teach different words (ADR-0002).
+
+  A bare affordance must be the whole (trimmed) message, ignoring case and a
+  trailing `.` or `!` — `heard!` acts, "I heard the build was red" is
+  ordinary thread chatter. That whole-message rule is the only guard, and it
+  is doing more work now that the phrases are common words. `note:` is a prefix followed
   by non-empty text. The subject key matches Linear's `ENG-123` form
   (ADR-0003), anchored end to end.
 
@@ -36,6 +46,10 @@ defmodule Slackex.Andon.Affordances do
 
   # ADR-0003 subject key grammar (Linear first): a registered team key.
   @issue_key ~r/^[A-Z][A-Z0-9]*-\d+$/
+
+  # What a person types to say "heard, I'm on it". See the moduledoc for why
+  # there are five of them and why the list is slackex's to choose.
+  @ack_phrases ["ack", "heard", "seen", "on it", "engage"]
 
   # The cause-guess marker, preferred on its own line (see split_cause/1).
   @cause_line ~r/^[ \t]*cause:/im
@@ -58,10 +72,10 @@ defmodule Slackex.Andon.Affordances do
     # Bare words and the `note:` prefix are case-insensitive (2026-07-24 field
     # finding — `Resolved`/`ACK` should act). Issue keys stay case-sensitive:
     # their grammar is uppercase (`ENG-123`), so they match on `trimmed`.
-    lower = String.downcase(trimmed)
+    lower = trimmed |> String.downcase() |> String.trim_trailing(".") |> String.trim_trailing("!")
 
     cond do
-      lower == "ack" -> :ack
+      lower in @ack_phrases -> :ack
       lower == "resolved" -> :witness_close
       lower == "withdraw" -> :withdraw
       String.starts_with?(lower, "note:") -> closure_note(trimmed)

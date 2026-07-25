@@ -80,6 +80,27 @@ defmodule Slackex.Andon do
   @spec enabled?(integer()) :: boolean()
   def enabled?(channel_id), do: not is_nil(get_channel(channel_id))
 
+  @doc "PubSub topic carrying this channel's mirror snapshots."
+  @spec mirror_topic(integer()) :: String.t()
+  def mirror_topic(channel_id), do: "andon:mirror:channel:#{channel_id}"
+
+  @doc """
+  The channel's latest mirror snapshot as `%{status_message_id => mirror}`,
+  or an empty map when the relay is off or nothing has been mirrored yet.
+  Shaped like the assign the card renders from, so a viewer arriving between
+  updates sees the same holds as one who was watching.
+  """
+  @spec mirror_for_channel(integer()) :: %{optional(integer()) => map()}
+  def mirror_for_channel(channel_id) do
+    case get_channel(channel_id) do
+      %Channel{status_message_id: id, mirror: %{} = mirror} when not is_nil(id) ->
+        %{id => mirror}
+
+      _ ->
+        %{}
+    end
+  end
+
   @doc """
   Enables the relay on a channel: inserts the `andon_channels` row, ensures the
   bot user exists, and announces the channel on the control topic so every
@@ -422,7 +443,14 @@ defmodule Slackex.Andon do
           # row exists for the edit-in-place that every later update performs.
           case Messages.send_message(channel_id, bot.id, text) do
             {:ok, message} ->
-              update_mirror_row(row, %{status_message_id: message.id, last_watermark: watermark})
+              _ =
+                update_mirror_row(row, %{
+                  status_message_id: message.id,
+                  last_watermark: watermark,
+                  mirror: mirror
+                })
+
+              broadcast_mirror(channel_id, message.id, mirror)
 
             {:error, reason} ->
               Logger.warning("andon relay: mirror create failed: #{inspect(reason)}")
@@ -431,7 +459,8 @@ defmodule Slackex.Andon do
         status_message_id ->
           case Messaging.edit_message(status_message_id, bot.id, text) do
             {:ok, _} ->
-              update_mirror_row(row, %{last_watermark: watermark})
+              _ = update_mirror_row(row, %{last_watermark: watermark, mirror: mirror})
+              broadcast_mirror(channel_id, status_message_id, mirror)
 
             {:error, reason} ->
               Logger.warning("andon relay: mirror edit failed: #{inspect(reason)}")
@@ -439,6 +468,17 @@ defmodule Slackex.Andon do
       end
 
     :ok
+  end
+
+  # The text message is the fallback and the notification body; the card reads
+  # the snapshot. Anyone already looking at the channel gets it live, and
+  # `mirror_for_channel/1` covers whoever arrives between updates.
+  defp broadcast_mirror(channel_id, status_message_id, mirror) do
+    Phoenix.PubSub.broadcast(
+      Slackex.PubSub,
+      mirror_topic(channel_id),
+      {:andon_mirror, status_message_id, mirror}
+    )
   end
 
   defp update_mirror_row(row, attrs) do
