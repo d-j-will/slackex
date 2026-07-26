@@ -2,6 +2,10 @@
 
 A production-grade Phoenix/LiveView messaging application — realtime messaging, channels, DMs, threads, reactions, push notifications, hybrid (full-text + semantic) search, and agent-facing MCP integrations. Deployed to a self-hosted homelab behind a fully automated CI/CD pipeline.
 
+## Andon relay #1
+
+This app is also **relay #1** for the andon service (`../andon-proto-claude`): it owns Slack/tenun parse, render, threads, and the status mirror. Design map: `~/dev/andon`. **On seam changes, ship slackex before the andon service.** Multi-repo ownership, change packets, and tracker links: **[andon `docs/multi-repo.md`](../../andon/docs/multi-repo.md)**.
+
 ## Context
 
 This repository is a **code sample**. I keep it to the same standard as professional work — it is evidence of *how* I build, not just *what* I build:

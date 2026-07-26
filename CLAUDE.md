@@ -1,5 +1,9 @@
 # Slackex
 
+## Andon multi-repo
+
+When working the **andon relay** surface: this repo is relay #1; service is `../andon-proto-claude`; design map is `~/dev/andon`. **Ship order on seam changes: slackex first, then the andon service.** Full workflow: `../../andon/docs/multi-repo.md`.
+
 ## Project Overview
 
 Elixir/Phoenix LiveView messaging application (Slack/Discord-style). PostgreSQL database with Docker for development. Snowflake IDs for message ordering. PubSub for real-time updates.
