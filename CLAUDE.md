@@ -144,6 +144,7 @@ Read the relevant doc **before** working in these areas:
 - **Infrastructure, deployment, CI/CD, Docker, migrations**: `docs/engineering-principles.md` — expand/contract migrations, feature flag lifecycle, test isolation, deploy-safety rules, SSH heredoc gotchas
 - **Deployment runbook**: `docs/runbooks/deployment.md`
 - **UI/UX decisions**: `docs/design/` — component system, design system, information architecture
+- **Reviewing or refactoring Elixir**: `docs/ELIXIR_CODE_SMELLS.md` — Vegi & Valente's smell/refactoring catalog condensed into review heuristics, each smell paired with the refactorings that address it
 - **Incident history**: `docs/rca/` — root cause analyses for past production incidents
 
 ## Req Streaming (into: :self)
