@@ -54,6 +54,19 @@ defmodule SlackexWeb.ChatLive.ThreadTest do
       assert html =~ "Thread"
       assert html =~ "hello threads"
     end
+
+    test "a thread URL loaded directly serves the page", %{
+      conn: conn,
+      channel: channel,
+      message: message
+    } do
+      # The route every hold card's "open thread" reaches, and the one a refresh,
+      # a bookmark or a pasted link reaches. It arrives without the channel view
+      # having run, so anything the template reads must already be established.
+      conn = get(conn, ~p"/chat/#{channel.slug}/thread/#{message.id}")
+
+      assert html_response(conn, 200) =~ "hello threads"
+    end
   end
 
   describe "channel thread: closing the panel" do

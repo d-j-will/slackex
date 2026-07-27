@@ -42,6 +42,14 @@ defmodule SlackexWeb.ChatLive.Index do
     connected = connected?(socket)
     mode = ChatShell.mount_mode(connected, connect_params(socket))
 
+    # Every render reads `@andon_holds`, but only the channel view loads it.
+    # A thread URL opened directly — which is what every hold card's "open
+    # thread" does, since it navigates rather than patches — arrives without
+    # the channel clause having run, and the template raised. Establish the
+    # empty default here, the one place every path passes through;
+    # `load_andon_holds/2` overwrites it where there is a channel to read.
+    socket = assign(socket, :andon_holds, %{})
+
     case build_mount_shell(user, connected, mode) do
       {:ok, shell} ->
         {:ok,
