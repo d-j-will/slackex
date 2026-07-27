@@ -9,8 +9,14 @@ service").
 - **Source repo:** github.com/davewil/andon (local: `~/dev/elixir/andon-proto-claude`)
 - **Source path:** `priv/relay_conformance/v1/grammar.json`
 - **Contract:** `relay-conformance`, version `1`
-- **Copied at source commit:** `7244a5ae039ddca04badf096b944eec20f95395a`
-- **sha256:** `d8dd264e1a39ca01beadf3edc9848507573f1f47a1bbe46a7f4c347ac3c67d49`
+- **Copied at source commit:** `a3924090e4fa2463c6f6f2a508b746408a031a51`
+- **sha256:** `2d0866e509e350a7bd9cf474f18a0bde12a3ede23f661f3f83f38cc76ec7f5ba`
+
+Re-vendored 2026-07-27 for ADR-0014 (the cord does not care about case, and an
+attempt is never ignored). The keyword and class are now matched
+case-insensitively, and a message that opens with the keyword but does not
+complete a pull earns a correction rather than silence. Message-start-only is
+unchanged. Previous pin: `7244a5ae` / `d8dd264e…`.
 
 Do not edit `grammar.json` locally. If the contract changes, re-copy the file
 from the source repo and update the commit + sha above. A local divergence

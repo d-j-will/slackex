@@ -131,6 +131,32 @@ defmodule Slackex.Andon.ListenerTest do
     end
   end
 
+  describe "a pull typed on a phone" do
+    test "a capitalised keyword still posts the pull (ADR-0014)", %{channel: channel, user: user} do
+      post_message(channel, user, "Pull: defect the build is red on main")
+
+      assert_receive {:andon_event_posted, event}, 1_000
+      assert event["event"] == "pull_created"
+      assert event["class"] == "defect"
+      assert event["sentence"] == "the build is red on main"
+    end
+
+    test "an attempt that does not complete is answered, never ignored", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull:")
+
+      refute_receive {:andon_event_posted, _}, 300
+
+      eventually(fn ->
+        assert [reply] = Chat.list_thread(message.id)
+        assert reply.sender_id == Andon.bot_user().id
+        assert reply.content =~ "pull:"
+      end)
+    end
+  end
+
   describe "asking what you can type" do
     test "answers with the vocabulary and sends NO event", %{channel: channel, user: user} do
       message = post_message(channel, user, "andon help")

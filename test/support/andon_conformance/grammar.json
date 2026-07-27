@@ -1,7 +1,7 @@
 {
   "contract": "relay-conformance",
   "version": 1,
-  "notes": "C1 grammar as executable expectations. A relay's parser must map each input to the expected outcome. 'correction' means an immediate in-thread correction (never a modal) and NO domain event to the service. 'not_a_pull' means the message is ordinary channel traffic. The keyword is the exact token 'pull:' at message start (v1 reads the spec literally; kaizen-open).",
+  "notes": "C1 grammar as executable expectations. A relay's parser must map each input to the expected outcome. 'correction' means an immediate in-thread correction (never a modal) and NO domain event to the service. 'not_a_pull' means the message is ordinary channel traffic. The keyword is 'pull:' at message start, matched case-insensitively; the class word likewise, while the sentence is stored verbatim. Message-start-only is the one recognition rule the spec states (C1) and it stands. A message that opens with the keyword is an attempt: if it cannot be parsed it earns a correction, never silence. See ADR-0014 for why the earlier exact-token reading was dropped — the spec is silent on case, and a phone keyboard capitalises the first word of a message.",
   "grammar_cases": [
     {
       "name": "defect pull parses with sentence verbatim",
@@ -29,9 +29,19 @@
       "expect": { "outcome": "not_a_pull" }
     },
     {
-      "name": "keyword uppercase is not the keyword (exact token, v1)",
+      "name": "a capitalised keyword is the keyword (phone keyboards capitalise it; ADR-0014)",
       "input": { "kind": "message", "text": "Pull: defect the build is red on main" },
-      "expect": { "outcome": "not_a_pull" }
+      "expect": { "outcome": "pull_created", "class": "defect", "sentence": "the build is red on main" }
+    },
+    {
+      "name": "a shouted keyword is still the keyword",
+      "input": { "kind": "message", "text": "PULL: DEFECT the build is red on main" },
+      "expect": { "outcome": "pull_created", "class": "defect", "sentence": "the build is red on main" }
+    },
+    {
+      "name": "the sentence keeps its own case verbatim",
+      "input": { "kind": "message", "text": "Pull: Defect The Build Is Red On Main" },
+      "expect": { "outcome": "pull_created", "class": "defect", "sentence": "The Build Is Red On Main" }
     },
     {
       "name": "invalid class gets an in-thread correction, never a modal, no event",
@@ -41,6 +51,16 @@
     {
       "name": "missing sentence gets a correction, no event",
       "input": { "kind": "message", "text": "pull: defect" },
+      "expect": { "outcome": "correction" }
+    },
+    {
+      "name": "the keyword alone is an attempt, and an attempt is never ignored (ADR-0014)",
+      "input": { "kind": "message", "text": "pull:" },
+      "expect": { "outcome": "correction" }
+    },
+    {
+      "name": "a missing space after the colon is an attempt, not ordinary traffic (ADR-0014)",
+      "input": { "kind": "message", "text": "pull:defect the build is red on main" },
       "expect": { "outcome": "correction" }
     }
   ],

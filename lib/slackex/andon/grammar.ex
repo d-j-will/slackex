@@ -12,12 +12,26 @@ defmodule Slackex.Andon.Grammar do
 
     * `{:pull, class, sentence}` — a well-formed pull; the relay POSTs a
       `pull_created` domain event with this class and verbatim sentence.
-    * `:correction` — the message opens a pull but the class is unknown or the
-      sentence is missing; the relay posts an in-thread correction (never a
-      modal) and sends NO event.
-    * `:not_a_pull` — ordinary channel traffic; `pull:` was not the exact
-      token at message start (v1 reads the spec literally — `Pull:` and a
-      mid-message keyword are both ordinary traffic).
+    * `:correction` — the message **opens** a pull but does not complete one:
+      unknown class, missing sentence, the keyword alone, or no space after
+      the colon. The relay posts an in-thread correction (never a modal) and
+      sends NO event.
+    * `:not_a_pull` — ordinary channel traffic; the keyword was not at message
+      start. Talk *about* pulling ("we could pull: defect this later") stays
+      ordinary traffic, which is what keeps a channel discussing the andon out
+      of the log.
+
+  The keyword and the class are matched **case-insensitively**; the sentence is
+  stored verbatim, case and all. A phone capitalises the first word of a
+  message, so an exact-token reading meant the canonical grammar failed by
+  default on the device C1 chose it to survive — and failed silently, which was
+  the worse half. ADR-0014 has the reasoning; the spec constrains only that the
+  keyword is recognised at message start, and is silent on case.
+
+  Opening a pull and completing one are therefore different things, and the
+  gap between them is always answered. Every malformed attempt earns the same
+  correction rather than the better-formed ones getting help and the worse ones
+  getting nothing.
 
   The optional `/pull` slash-command adapter (fixture `identical_event_rule`)
   is deferred in v1; only the text grammar ships, so there is no second input
@@ -25,6 +39,8 @@ defmodule Slackex.Andon.Grammar do
   """
 
   @classes ~w(defect delay burden confusion)
+
+  @keyword_size byte_size("pull:")
 
   @doc "Returns the recognised pull classes."
   @spec classes() :: [String.t()]
@@ -38,23 +54,51 @@ defmodule Slackex.Andon.Grammar do
   outcome contract.
   """
   @spec parse(String.t()) :: outcome()
-  def parse("pull: " <> rest), do: classify(rest)
-  def parse(_text), do: :not_a_pull
+  def parse(text) when is_binary(text) do
+    if opens_pull?(text) do
+      text
+      |> binary_part(@keyword_size, byte_size(text) - @keyword_size)
+      |> classify()
+    else
+      :not_a_pull
+    end
+  end
 
-  defp classify(rest) do
+  # The keyword's five bytes, compared without case. Done bytewise rather than
+  # by downcasing the message: `String.downcase/1` can change a string's byte
+  # length, and the offset the rest is cut at has to stay true to the original.
+  defp opens_pull?(<<p, u, l1, l2, ?:, _rest::binary>>) do
+    lower(p) == ?p and lower(u) == ?u and lower(l1) == ?l and lower(l2) == ?l
+  end
+
+  defp opens_pull?(_text), do: false
+
+  defp lower(char) when char in ?A..?Z, do: char + 32
+  defp lower(char), do: char
+
+  # One space separates the keyword from the class. Anything else — `pull:` on
+  # its own, or `pull:defect ...` — opened a pull without completing one, and
+  # is corrected rather than ignored. Case is the keyboard's doing and we
+  # absorb it; a missing space is the person's, and telling them is the help.
+  defp classify(" " <> rest) do
     case String.split(rest, " ", parts: 2) do
-      [class, sentence] when class in @classes ->
+      [class, sentence] ->
         # A blank sentence (empty or whitespace-only, e.g. "pull: defect   ")
         # is a missing sentence, not a pull with an empty description. Only the
-        # emptiness check trims — the stored sentence stays verbatim.
-        if blank?(sentence), do: :correction, else: {:pull, class, sentence}
+        # emptiness check trims — the stored sentence stays verbatim, and so
+        # does its case.
+        if known_class?(class) and not blank?(sentence),
+          do: {:pull, String.downcase(class), sentence},
+          else: :correction
 
       _ ->
-        # Opens a pull (`pull: ` prefix) but the class is unknown or the
-        # sentence is missing — a correction, never an event.
         :correction
     end
   end
+
+  defp classify(_rest), do: :correction
+
+  defp known_class?(class), do: String.downcase(class) in @classes
 
   defp blank?(sentence), do: String.trim(sentence) == ""
 end
