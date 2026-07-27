@@ -10,6 +10,7 @@ defmodule Slackex.Andon.ListenerTest do
   use Slackex.DataCase, async: false
 
   alias Slackex.Andon
+  alias Slackex.Andon.Grammar
   alias Slackex.Chat
   alias Slackex.Messaging
 
@@ -126,6 +127,38 @@ defmodule Slackex.Andon.ListenerTest do
         assert [reply] = Chat.list_thread(message.id)
         assert reply.content =~ "pull:"
         assert reply.sender_id == Andon.bot_user().id
+      end)
+    end
+  end
+
+  describe "asking what you can type" do
+    test "answers with the vocabulary and sends NO event", %{channel: channel, user: user} do
+      message = post_message(channel, user, "andon help")
+
+      refute_receive {:andon_event_posted, _}, 300
+
+      eventually(fn ->
+        assert [reply] = Chat.list_thread(message.id)
+        assert reply.sender_id == Andon.bot_user().id
+
+        # The whole vocabulary, because this was asked for rather than pushed:
+        # how to pull, what the puller says to close, what a responder says.
+        assert reply.content =~ "pull:"
+        assert reply.content =~ "resolved"
+        assert reply.content =~ "heard"
+        assert reply.content =~ "note:"
+      end)
+    end
+
+    test "names every class the grammar accepts", %{channel: channel, user: user} do
+      message = post_message(channel, user, "andon help")
+
+      eventually(fn ->
+        assert [reply] = Chat.list_thread(message.id)
+
+        for class <- Grammar.classes() do
+          assert reply.content =~ class
+        end
       end)
     end
   end

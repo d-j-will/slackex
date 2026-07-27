@@ -40,12 +40,12 @@ defmodule Slackex.Andon do
 
   use Boundary,
     deps: [Slackex.Accounts, Slackex.Chat, Slackex.Messaging],
-    exports: [Channel, Grammar, Phrases, Listener, ServiceClient]
+    exports: [Channel, Grammar, Help, Phrases, Listener, ServiceClient]
 
   import Ecto.Query
 
   alias Slackex.Accounts
-  alias Slackex.Andon.{Channel, Grammar, Mirror, Phrases, ServiceClient, ThreadReplyWorker}
+  alias Slackex.Andon.{Channel, Grammar, Help, Mirror, Phrases, ServiceClient, ThreadReplyWorker}
   alias Slackex.Chat
   alias Slackex.Chat.Channels
   alias Slackex.Chat.Messages
@@ -227,6 +227,18 @@ defmodule Slackex.Andon do
     origin = origin(ctx.channel_id, thread_id, message_id)
     reply? = not is_nil(parent_id)
 
+    # Asked before parsed: someone asking what they can type has, by
+    # definition, not typed it yet, so this cannot wait behind the grammar.
+    # It answers in a thread on the asking message, the same way a correction
+    # does — the reply lands where the question was.
+    if Help.asked?(content) do
+      post_in_thread(ctx, thread_id, help_text())
+    else
+      dispatch_parsed(content, message_id, sender_id, origin, ctx, thread_id, reply?)
+    end
+  end
+
+  defp dispatch_parsed(content, message_id, sender_id, origin, ctx, thread_id, reply?) do
     case Grammar.parse(content) do
       {:pull, class, sentence} ->
         pull_created(class, sentence, message_id, sender_id, origin)
@@ -639,6 +651,37 @@ defmodule Slackex.Andon do
   defp correction_text do
     "That doesn't look like a pull. Use `pull: <class> <one sentence>` where " <>
       "class is one of: #{Enum.join(Grammar.classes(), ", ")}."
+  end
+
+  # What each class sounds like in the words people use for it, rather than a
+  # definition of the term. A class with no gloss still lists — the classes
+  # come from Grammar so the two cannot drift.
+  @class_glosses %{
+    "defect" => "something is broken",
+    "delay" => "it is waiting on someone",
+    "burden" => "it is grinding you down",
+    "confusion" => "you cannot see the shape of it"
+  }
+
+  defp help_text do
+    """
+    Pull the cord when something is in your way — `pull:` at the start of a message, then a class and one sentence:
+    #{class_lines()}
+
+    Name the item in the sentence (`ENG-123`) and it binds to that work; leave it out and I will ask which.
+
+    If you pulled it: `resolved` when what you flagged is contained · `withdraw` drops one that never bound.
+    If it came to you: `heard` to acknowledge · `note: <what it was> / cause: <your best guess>` once it is addressed.
+    """
+  end
+
+  defp class_lines do
+    Enum.map_join(Grammar.classes(), "\n", fn class ->
+      case Map.get(@class_glosses, class) do
+        nil -> "  `pull: #{class} <one sentence>`"
+        gloss -> "  `pull: #{class} <one sentence>` — #{gloss}"
+      end
+    end)
   end
 
   defp error_note(%{"errors" => errors}) when is_map(errors) do
