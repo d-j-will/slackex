@@ -1,6 +1,0 @@
-davewil.dev {
-	tls {
-		dns cloudflare {env.CF_API_TOKEN}
-	}
-	respond "Hello from tono!"
-}

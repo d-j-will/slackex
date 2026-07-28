@@ -183,7 +183,6 @@ jobs:
           EMBEDDING_API_KEY: ${{ secrets.EMBEDDING_API_KEY }}
           ANDON_SERVICE_URL: ${{ secrets.ANDON_SERVICE_URL }}
           ANDON_RELAY_TOKEN: ${{ secrets.ANDON_RELAY_TOKEN }}
-          CADDY_CF_TOKEN: ${{ secrets.CADDY_CF_TOKEN }}
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: |
@@ -203,21 +202,15 @@ jobs:
           scp infra/grafana/provisioning/dashboards/dashboard.yaml root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/provisioning/dashboards/dashboard.yaml
           scp infra/grafana/dashboards/slackex-overview.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/slackex-overview.json
           scp infra/grafana/dashboards/grocery-planner-receipts.json root@${{ secrets.DEPLOY_HOST }}:/root/slackex/infra/grafana/dashboards/grocery-planner-receipts.json
-          # Copy caddy-docker-proxy infra files to server (Dockerfile, compose, fallback Caddyfile)
-          ssh root@${{ secrets.DEPLOY_HOST }} "mkdir -p /root/caddy"
-          scp infra/caddy/Dockerfile root@${{ secrets.DEPLOY_HOST }}:/root/caddy/Dockerfile
-          scp infra/caddy/docker-compose.yml root@${{ secrets.DEPLOY_HOST }}:/root/caddy/docker-compose.yml
-          scp infra/caddy/Caddyfile root@${{ secrets.DEPLOY_HOST }}:/root/caddy/Caddyfile
-          # Ensure CF_API_TOKEN is in caddy .env (used by caddy-docker-proxy for DNS challenge)
-          ssh root@${{ secrets.DEPLOY_HOST }} "
-            mkdir -p /root/caddy
-            grep -q '^CF_API_TOKEN=' /root/caddy/.env 2>/dev/null && \
-              sed -i 's|^CF_API_TOKEN=.*|CF_API_TOKEN=${CADDY_CF_TOKEN}|' /root/caddy/.env || \
-              echo 'CF_API_TOKEN=${CADDY_CF_TOKEN}' >> /root/caddy/.env
-            chmod 600 /root/caddy/.env
-          "
-          # Recreate caddy-proxy if compose config changed (certs cached in volume, instant restart)
-          ssh root@${{ secrets.DEPLOY_HOST }} "cd /root/caddy && docker compose up -d --force-recreate --no-build 2>&1 || echo 'caddy-proxy recreate failed (non-fatal)'"
+          # NOTE: caddy is deliberately NOT deployed from here any more.
+          # Ingress is owned by d-j-will/homelab-infra (services/caddy/ plus
+          # .github/workflows/deploy-caddy.yml), path-filtered so only a caddy
+          # change redeploys it. This pipeline used to scp its own copy over
+          # /root/caddy and force-recreate the shared proxy on every slackex
+          # release — which took out ingress for all 17 hosts as a side effect
+          # of shipping chat features, and silently reverted the ENG-14 HTTP/3
+          # fix from a copy last touched 2026-03-10. Linear ENG-58.
+          # Do not reintroduce a caddy step here.
 
           # Ensure FLAGS_ADMIN credentials and EMBEDDING_API_KEY are in the server .env
           ssh root@${{ secrets.DEPLOY_HOST }} "
