@@ -15,6 +15,28 @@ processors:
     check_interval: 1s
     limit_mib: 256
 
+  # Drop spans for the two endpoints that are pure infrastructure chatter:
+  # caddy active health checks hit /health every 5s against each of two
+  # upstreams, and Prometheus scrapes /metrics every 15s. Nothing traces these
+  # for a reason — they were the bulk of ~1.5GB/day and the 11GB backlog that
+  # OOM-looped Tempo (Linear ENG-57).
+  #
+  # Conditions are matched across semantic-convention generations on purpose:
+  # semconv 1.27 emits url.path, older instrumentation emits http.target, and
+  # http.route is set for Phoenix-routed requests. The exact key emitted by
+  # opentelemetry_bandit could not be verified while Tempo was down, so all
+  # three are matched. error_mode: ignore makes absent attributes a no-op.
+  filter/drop_probe_noise:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["url.path"] == "/health"'
+        - 'attributes["url.path"] == "/metrics"'
+        - 'attributes["http.route"] == "/health"'
+        - 'attributes["http.route"] == "/metrics"'
+        - 'attributes["http.target"] == "/health"'
+        - 'attributes["http.target"] == "/metrics"'
+
 exporters:
   otlphttp/tempo:
     endpoint: http://tempo:4318
@@ -27,7 +49,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, filter/drop_probe_noise, batch]
       exporters: [otlphttp/tempo]
     metrics:
       receivers: [otlp]

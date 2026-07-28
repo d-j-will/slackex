@@ -146,7 +146,12 @@ services:
   tempo:
     image: grafana/tempo:2.7.2
     restart: unless-stopped
-    mem_limit: 256m
+    # 256m was too small to survive a blocklist poll once the backlog grew:
+    # Tempo loads every block meta at startup, OOM'd at ~8s, and so never lived
+    # long enough to run a compaction cycle that would shrink the backlog. It
+    # cannot compact its way out of that. Incident 2026-07-28 (Linear ENG-57),
+    # 3287 restarts. Do not lower without also capping trace volume.
+    mem_limit: 1g
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./infra/tempo.yaml:/etc/tempo.yaml

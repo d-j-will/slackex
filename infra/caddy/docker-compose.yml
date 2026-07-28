@@ -6,6 +6,14 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # UDP 443 is REQUIRED, not optional. Caddy advertises HTTP/3 (`alt-svc: h3`)
+      # by default; browsers cache that and route persistent connections
+      # (e.g. Phoenix LiveView websockets) over QUIC. Without a UDP listener the
+      # QUIC packets hit a closed port — Chrome/Firefox hang on "Connecting..."
+      # with ERR_QUIC_PROTOCOL_ERROR while the page HTML still loads over TCP.
+      # Incident 2026-07-23 (Linear ENG-14), regressed 2026-07-27 because this
+      # file — not homelab-infra's copy — is what deploys. Do not remove.
+      - "443:443/udp"
     environment:
       CF_API_TOKEN: "${CF_API_TOKEN}"
       CADDY_DOCKER_CADDYFILE_PATH: "/etc/caddy/Caddyfile"
