@@ -45,7 +45,18 @@ defmodule Slackex.Andon do
   import Ecto.Query
 
   alias Slackex.Accounts
-  alias Slackex.Andon.{Channel, Grammar, Help, Mirror, Phrases, ServiceClient, ThreadReplyWorker}
+
+  alias Slackex.Andon.{
+    Channel,
+    Grammar,
+    Help,
+    Mirror,
+    NotePrompt,
+    Phrases,
+    ServiceClient,
+    ThreadReplyWorker
+  }
+
   alias Slackex.Chat
   alias Slackex.Chat.Channels
   alias Slackex.Chat.Messages
@@ -67,6 +78,10 @@ defmodule Slackex.Andon do
   @bot_username "andon"
   @relay "slackex"
   @control_topic "andon:control"
+
+  # The two acts that answer the question at release. Both name their pull
+  # when the thread has been asked one (andon ADR-0017).
+  @closure_acts ["closure_note", "closure_note_declined"]
 
   # ---------------------------------------------------------------------------
   # Channel + bot lifecycle
@@ -258,21 +273,52 @@ defmodule Slackex.Andon do
         post_in_thread(ctx, thread_id, correction_text())
 
       :not_a_pull when reply? ->
-        dispatch_intent(
-          Phrases.parse(content),
-          message_id,
-          sender_id,
-          origin,
-          ctx,
-          thread_id
-        )
+        case Phrases.parse(content) do
+          # Ordinary thread traffic — unless the bot asked this person a
+          # question and is still waiting (ENG-60). The guard that keeps
+          # chatter out of the log is suspended for exactly one message.
+          :none ->
+            maybe_capture_answer(content, message_id, sender_id, origin, ctx, thread_id)
+
+          intent ->
+            dispatch_intent(intent, message_id, sender_id, origin, ctx, thread_id)
+        end
 
       :not_a_pull ->
         :ok
     end
   end
 
-  defp dispatch_intent(:none, _mid, _sid, _origin, _ctx, _thread), do: :ok
+  # The answer to the question at release, in plain words. Only the person
+  # the question was addressed to can spend the arming, and it is spent on
+  # first use whether or not it produced a note — nothing re-arms and nothing
+  # re-asks, because the friction budget is one question.
+  #
+  # A prompted answer still needs its `cause:` marker: the bot asked for both
+  # halves in one message and taught the marker in the asking. Without it the
+  # note is not logged as half a note — the existing cause prompt asks, and
+  # the arming is already gone, so that ask is the last word.
+  defp maybe_capture_answer(content, message_id, sender_id, origin, ctx, thread_id) do
+    with true <- is_integer(thread_id),
+         {:ok, prompt} <- NotePrompt.take(ctx.channel_id, thread_id, to_string(sender_id)) do
+      case Phrases.answer(content) do
+        {:closure_note, note, cause} ->
+          base("closure_note", message_id, origin)
+          |> Map.merge(%{
+            "actor" => token(sender_id),
+            "note" => note,
+            "cause_guess" => cause,
+            "pull_id" => prompt.pull_id
+          })
+          |> post_and_render(ctx, thread_id)
+
+        _no_cause_or_empty ->
+          post_in_thread(ctx, thread_id, cause_prompt_text())
+      end
+    else
+      _not_being_asked -> :ok
+    end
+  end
 
   # A note with no cause-guess is not logged as half a note. The cause is the
   # part that cannot be reconstructed weeks later, so the bot asks for it in
@@ -290,8 +336,26 @@ defmodule Slackex.Andon do
   defp dispatch_intent(intent, message_id, sender_id, origin, ctx, thread_id) do
     intent
     |> intent_event(message_id, sender_id, origin)
+    |> with_pull_id(ctx, thread_id)
     |> post_and_render(ctx, thread_id)
   end
+
+  # A closure act names the pull the thread's last question was about (andon
+  # ADR-0017). Without it the service resolves by thread state, which is
+  # ambiguous once a thread holds two closed pulls — and ENG-52's thread
+  # inheritance puts recurrences in exactly that thread. Where no question was
+  # ever asked here, the event carries no id and the service falls back
+  # exactly as it did before.
+  defp with_pull_id(%{"event" => name} = event, ctx, thread_id) when name in @closure_acts do
+    with true <- is_integer(thread_id),
+         %NotePrompt{pull_id: pull_id} <- NotePrompt.latest(ctx.channel_id, thread_id) do
+      Map.put(event, "pull_id", pull_id)
+    else
+      _never_asked_here -> event
+    end
+  end
+
+  defp with_pull_id(event, _ctx, _thread_id), do: event
 
   # -- Event builders ---------------------------------------------------------
 
@@ -324,6 +388,10 @@ defmodule Slackex.Andon do
     do:
       base("closure_note", mid, origin)
       |> Map.merge(%{"actor" => token(sid), "note" => note, "cause_guess" => cause})
+
+  # "No note" is an answer and a recorded outcome, not a silence (ENG-60).
+  defp intent_event(:closure_note_declined, mid, sid, origin),
+    do: base("closure_note_declined", mid, origin) |> Map.put("actor", token(sid))
 
   defp intent_event({:subject, key}, mid, sid, origin),
     do:
@@ -363,7 +431,7 @@ defmodule Slackex.Andon do
         run_commands(Map.get(body, "commands", []), ctx)
         maybe_confirm_pull(event, body, ctx, thread_id)
         maybe_ask_class(event, ctx, thread_id)
-        maybe_ack_lifecycle(event, ctx, thread_id)
+        maybe_ack_lifecycle(event, body, ctx, thread_id)
 
       {:ok, %{status: 200}} ->
         # Idempotent replay — commands already rendered on the original 201.
@@ -448,23 +516,72 @@ defmodule Slackex.Andon do
   # acknowledgment on the 201 so each transition is visible ("reads like the
   # pull"). The `resolved`/`ack`/`closure_note` 201s carry no subject, so the
   # release line names none — the thread already has it.
-  defp maybe_ack_lifecycle(%{"event" => "ack"} = event, ctx, thread_id) do
+  defp maybe_ack_lifecycle(%{"event" => "ack"} = event, _body, ctx, thread_id) do
     post_in_thread(ctx, thread_id, "#{mention(event["actor"])} acknowledged · engaging now.")
   end
 
-  defp maybe_ack_lifecycle(%{"event" => "witness_close"}, ctx, thread_id) do
-    post_in_thread(ctx, thread_id, "Released · the hold is cleared.")
+  # The release line and the question at release are ONE message (ENG-60,
+  # andon ADR-0017). Two posts would be two ThreadReplyWorker jobs with no
+  # ordering between them, and "Released" arriving after the question reads
+  # as a non-sequitur. It is also one ping rather than two, which is the
+  # whole friction budget spent where it was meant to go.
+  defp maybe_ack_lifecycle(%{"event" => "witness_close"}, body, ctx, thread_id) do
+    released = "Released · the hold is cleared."
+
+    case closure_question(body, ctx, thread_id) do
+      nil -> post_in_thread(ctx, thread_id, released)
+      question -> post_in_thread(ctx, thread_id, released <> "\n" <> question)
+    end
   end
 
-  defp maybe_ack_lifecycle(%{"event" => "closure_note"}, ctx, thread_id) do
+  defp maybe_ack_lifecycle(%{"event" => "closure_note"}, _body, ctx, thread_id) do
     post_in_thread(ctx, thread_id, "Closure note logged.")
   end
 
-  defp maybe_ack_lifecycle(%{"event" => "class_provided"} = event, ctx, thread_id) do
+  # Declining is answering. The wording says so — no "but", no second ask,
+  # nothing that reads as disappointment (ENG-49: the tool must not become
+  # the burden it exists to surface).
+  defp maybe_ack_lifecycle(%{"event" => "closure_note_declined"}, _body, ctx, thread_id) do
+    post_in_thread(ctx, thread_id, "Logged as no note — that's an answer. Thanks.")
+  end
+
+  defp maybe_ack_lifecycle(%{"event" => "class_provided"} = event, _body, ctx, thread_id) do
     post_in_thread(ctx, thread_id, "Noted — `#{event["class"]}`.")
   end
 
-  defp maybe_ack_lifecycle(_event, _ctx, _thread_id), do: :ok
+  defp maybe_ack_lifecycle(_event, _body, _ctx, _thread_id), do: :ok
+
+  # Arms the thread for a plain-words reply and returns the question, or nil
+  # where the service asked for none (a replayed release carries no command:
+  # one question, asked once).
+  defp closure_question(body, ctx, thread_id) do
+    with %{"command" => "request_closure_note"} = command <- request_closure_note(body),
+         true <- is_integer(thread_id),
+         holder when is_binary(holder) <- get_in(command, ["holder", "token"]),
+         pull_id when is_binary(pull_id) <- command["pull_id"] do
+      NotePrompt.arm(ctx.channel_id, thread_id, pull_id, holder)
+      closure_question_text(command["holder"])
+    else
+      _no_question -> nil
+    end
+  end
+
+  defp request_closure_note(body) do
+    body
+    |> Map.get("commands", [])
+    |> Enum.find(&(is_map(&1) and &1["command"] == "request_closure_note"))
+  end
+
+  # The one question. It asks for both halves at once and teaches the only
+  # token it needs — `cause:`, the half nobody can reconstruct weeks later
+  # and the one repeat detection groups on. Declining is offered in the same
+  # breath so "no" costs no more than "yes".
+  defp closure_question_text(holder) do
+    "#{mention(holder)} — while it's fresh: what was it? A line is plenty. " <>
+      "Add `cause: <your best guess why>` and I'll keep the two apart, which is " <>
+      "what lets the retro spot the same cause turning up twice. " <>
+      "`no note` is a perfectly good answer."
+  end
 
   # ---------------------------------------------------------------------------
   # Outbound push: service → relay (the inbound HTTP endpoint calls this)
@@ -631,6 +748,12 @@ defmodule Slackex.Andon do
     post_in_thread(ctx, thread, receipt_text(dri, cmd) <> "\n" <> dri_phrases())
   end
 
+  # Rendered with the release line rather than on its own (see
+  # maybe_ack_lifecycle/4), so there is nothing to do here — but the clause is
+  # explicit: a command this relay understands must never look like one it
+  # merely failed to recognise.
+  defp run_command(%{"command" => "request_closure_note"}, _ctx), do: :ok
+
   defp run_command(_unknown, _ctx), do: :ok
 
   # The phrases the DRI can type (ENG-13 gap 2), taught wherever someone
@@ -722,6 +845,8 @@ defmodule Slackex.Andon do
 
     If you pulled it: `resolved` when what you flagged is contained · `withdraw` drops one that never bound.
     If it came to you: `heard` to acknowledge · `note: <what it was> / cause: <your best guess>` once it is addressed.
+
+    When a hold is released I ask whoever carried it what it was — once, and only once. Answer in plain words, or `no note`.
     """
   end
 

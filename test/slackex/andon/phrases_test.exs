@@ -133,4 +133,45 @@ defmodule Slackex.Andon.PhrasesTest do
       assert Phrases.parse("eng-123") == :none
     end
   end
+
+  describe "declining the question at release (ENG-60)" do
+    test "the taught words are an answer, not a silence" do
+      assert Phrases.parse("no note") == :closure_note_declined
+      assert Phrases.parse("nothing to note") == :closure_note_declined
+      assert Phrases.parse("skip") == :closure_note_declined
+    end
+
+    test "case and trailing punctuation do not change the answer" do
+      assert Phrases.parse("No Note.") == :closure_note_declined
+      assert Phrases.parse("SKIP!") == :closure_note_declined
+    end
+
+    test "the whole-message rule still guards it — these are common words" do
+      assert Phrases.parse("no note needed, it was obvious") == :none
+      assert Phrases.parse("I'll skip the standup") == :none
+    end
+  end
+
+  describe "answer/1 (prose the bot asked for, no prefix)" do
+    test "prose plus a cause line splits into the two halves, each trimmed" do
+      assert Phrases.answer("the migration had not run\ncause: seed skips it") ==
+               {:closure_note, "the migration had not run", "seed skips it"}
+    end
+
+    test "prose with no cause is not logged as half a note" do
+      assert Phrases.answer("it was the migration again") ==
+               {:closure_note_needs_cause, "it was the migration again"}
+    end
+
+    test "an empty answer is nothing at all" do
+      assert Phrases.answer("   ") == :none
+    end
+
+    test "it splits exactly as the typed note: path does, so the two cannot drift" do
+      typed = Phrases.parse("note: flaky fixture / cause: shared DB")
+      asked = Phrases.answer("flaky fixture / cause: shared DB")
+
+      assert typed == asked
+    end
+  end
 end

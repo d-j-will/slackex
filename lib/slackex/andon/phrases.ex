@@ -18,6 +18,8 @@ defmodule Slackex.Andon.Phrases do
     * `resolved`  → `:witness_close`     (the witness's message is the release)
     * `withdraw`  → `:withdraw`          (the puller drops an unbound pull)
     * `note: <t>` + `cause: <c>` → `{:closure_note, t, c}` (after release)
+    * `no note` | `nothing to note` | `skip` → `:closure_note_declined`
+      (the holder answers the question at release with "no" — ENG-60)
     * `<KEY>`     → `{:subject, KEY}`    (the puller answers the subject ask)
     * `defect` | `delay` | `burden` | `confusion` → `{:class, word}`
       (anyone answers the class question a bare pull was asked — ENG-45)
@@ -65,6 +67,11 @@ defmodule Slackex.Andon.Phrases do
   # teaches them in the same message — nobody is expected to know them cold.
   @class_words ["defect", "delay", "burden", "confusion"]
 
+  # "No note" is an answer, not a silence (ENG-60). Taught in the question
+  # itself, like the class words, and kept few — the whole-message rule is
+  # the only guard, and "skip" is common enough in prose to want no help.
+  @decline_phrases ["no note", "nothing to note", "skip"]
+
   # The cause-guess marker, preferred on its own line (see split_cause/1).
   @cause_line ~r/^[ \t]*cause:/im
   @cause_inline ~r/cause:/i
@@ -76,6 +83,7 @@ defmodule Slackex.Andon.Phrases do
           | :withdraw
           | {:closure_note, String.t(), String.t()}
           | {:closure_note_needs_cause, String.t()}
+          | :closure_note_declined
           | {:subject, String.t()}
           | {:class, String.t()}
           | :none
@@ -94,16 +102,26 @@ defmodule Slackex.Andon.Phrases do
       lower == "resolved" -> :witness_close
       lower == "withdraw" -> :withdraw
       lower in @class_words -> {:class, lower}
+      lower in @decline_phrases -> :closure_note_declined
       String.starts_with?(lower, "note:") -> closure_note(trimmed)
       Regex.match?(@issue_key, trimmed) -> {:subject, trimmed}
       true -> :none
     end
   end
 
-  # Strip the (case-insensitive) 5-byte "note:" prefix, keeping the note text
-  # verbatim — only called when the trimmed message starts with the prefix.
-  defp closure_note(<<_prefix::binary-size(5), rest::binary>>) do
-    {note, cause} = split_cause(rest)
+  @doc """
+  Splits a plain-prose answer to the question asked at release (ENG-60) the
+  same way a `note:` message is split.
+
+  The prose needs no prefix — the bot asked, so the whole message is the
+  answer — but the cause still needs its `cause:` marker. Guessing which half
+  of someone's sentence is the cause would put a fabricated shape in the one
+  field repeat detection groups on, which is the same refusal that keeps the
+  service from defaulting a pull's class.
+  """
+  @spec answer(String.t()) :: intent()
+  def answer(text) when is_binary(text) do
+    {note, cause} = split_cause(text)
 
     case {String.trim(note), cause} do
       {"", _} -> :none
@@ -111,6 +129,12 @@ defmodule Slackex.Andon.Phrases do
       {note, cause} -> {:closure_note, note, cause}
     end
   end
+
+  # Strip the (case-insensitive) 5-byte "note:" prefix, keeping the note text
+  # verbatim — only called when the trimmed message starts with the prefix.
+  # What follows is split exactly as a prompted answer is: one rule, so the
+  # typed path and the asked-for path cannot drift.
+  defp closure_note(<<_prefix::binary-size(5), rest::binary>>), do: answer(rest)
 
   # `cause:` on its own line is the shape the bot teaches, and it cannot be
   # tripped by "root cause:" in the middle of a sentence. A one-liner still
