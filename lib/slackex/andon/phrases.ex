@@ -19,6 +19,8 @@ defmodule Slackex.Andon.Phrases do
     * `withdraw`  → `:withdraw`          (the puller drops an unbound pull)
     * `note: <t>` + `cause: <c>` → `{:closure_note, t, c}` (after release)
     * `<KEY>`     → `{:subject, KEY}`    (the puller answers the subject ask)
+    * `defect` | `delay` | `burden` | `confusion` → `{:class, word}`
+      (anyone answers the class question a bare pull was asked — ENG-45)
 
   A closure note carries two things: what was seen, and the writer's best
   guess at the cause. The guess is what nobody can reconstruct weeks later,
@@ -58,6 +60,11 @@ defmodule Slackex.Andon.Phrases do
   # there are five of them and why the list is slackex's to choose.
   @ack_phrases ["ack", "heard", "seen", "on it", "engage"]
 
+  # The class question's answer key (ENG-45). These are the taxonomy's own
+  # words rather than slackex-chosen synonyms because the bot's question
+  # teaches them in the same message — nobody is expected to know them cold.
+  @class_words ["defect", "delay", "burden", "confusion"]
+
   # The cause-guess marker, preferred on its own line (see split_cause/1).
   @cause_line ~r/^[ \t]*cause:/im
   @cause_inline ~r/cause:/i
@@ -70,6 +77,7 @@ defmodule Slackex.Andon.Phrases do
           | {:closure_note, String.t(), String.t()}
           | {:closure_note_needs_cause, String.t()}
           | {:subject, String.t()}
+          | {:class, String.t()}
           | :none
 
   @doc "Parses an in-thread message into a lifecycle intent. See the moduledoc."
@@ -85,6 +93,7 @@ defmodule Slackex.Andon.Phrases do
       lower in @ack_phrases -> :ack
       lower == "resolved" -> :witness_close
       lower == "withdraw" -> :withdraw
+      lower in @class_words -> {:class, lower}
       String.starts_with?(lower, "note:") -> closure_note(trimmed)
       Regex.match?(@issue_key, trimmed) -> {:subject, trimmed}
       true -> :none

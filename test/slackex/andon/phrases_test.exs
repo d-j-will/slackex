@@ -26,6 +26,23 @@ defmodule Slackex.Andon.PhrasesTest do
       assert Phrases.parse("please ack this") == :none
       assert Phrases.parse("ack the thing") == :none
     end
+
+    test "a bare class word answers the class question (ENG-45)" do
+      assert Phrases.parse("defect") == {:class, "defect"}
+      assert Phrases.parse("delay") == {:class, "delay"}
+      assert Phrases.parse("burden") == {:class, "burden"}
+      assert Phrases.parse("confusion") == {:class, "confusion"}
+    end
+
+    test "a class word survives a phone keyboard (case + trailing punctuation)" do
+      assert Phrases.parse("Defect.") == {:class, "defect"}
+      assert Phrases.parse("BURDEN!") == {:class, "burden"}
+    end
+
+    test "a class word inside prose is chatter, not an answer" do
+      assert Phrases.parse("the defect is in the parser") == :none
+      assert Phrases.parse("what a burden") == :none
+    end
   end
 
   describe "acknowledge phrases (what a person actually types)" do

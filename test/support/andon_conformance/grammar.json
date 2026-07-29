@@ -1,7 +1,7 @@
 {
   "contract": "relay-conformance",
   "version": 1,
-  "notes": "C1 grammar as executable expectations. A relay's parser must map each input to the expected outcome. 'correction' means an immediate in-thread correction (never a modal) and NO domain event to the service. 'not_a_pull' means the message is ordinary channel traffic. The keyword is 'pull:' at message start, matched case-insensitively; the class word likewise, while the sentence is stored verbatim. Message-start-only is the one recognition rule the spec states (C1) and it stands. A message that opens with the keyword is an attempt: if it cannot be parsed it earns a correction, never silence. See ADR-0014 for why the earlier exact-token reading was dropped — the spec is silent on case, and a phone keyboard capitalises the first word of a message.",
+  "notes": "C1 grammar as executable expectations. A relay's parser must map each input to the expected outcome. 'correction' means an immediate in-thread correction (never a modal) and NO domain event to the service. 'not_a_pull' means the message is ordinary channel traffic. The keyword is 'pull:' at message start, matched case-insensitively; the class word likewise, while the sentence is stored verbatim. Message-start-only is the one recognition rule the spec states (C1) and it stands. A message that opens with the keyword is an attempt: if it cannot be parsed it earns a correction, never silence. See ADR-0014 for why the earlier exact-token reading was dropped — the spec is silent on case, and a phone keyboard capitalises the first word of a message. The bare cord (ENG-45, ADR-0016): a first word that is not a class word is SENTENCE, not error — the pull is created classless ('class': null) and the class is settled afterwards in-thread. A correction therefore remains only where there is no sentence to take: the keyword alone, a class word with nothing after it, or a missing space after the colon.",
   "grammar_cases": [
     {
       "name": "defect pull parses with sentence verbatim",
@@ -44,9 +44,19 @@
       "expect": { "outcome": "pull_created", "class": "defect", "sentence": "The Build Is Red On Main" }
     },
     {
-      "name": "invalid class gets an in-thread correction, never a modal, no event",
+      "name": "an unknown first word is sentence, not a gate: the pull is created classless (ENG-45)",
       "input": { "kind": "message", "text": "pull: severity-1 the build is red on main" },
-      "expect": { "outcome": "correction" }
+      "expect": { "outcome": "pull_created", "class": null, "sentence": "severity-1 the build is red on main" }
+    },
+    {
+      "name": "the bare cord: 'I need help' with no class is the purest pull and it parses",
+      "input": { "kind": "message", "text": "pull: I'm a bit stuck here, someone help" },
+      "expect": { "outcome": "pull_created", "class": null, "sentence": "I'm a bit stuck here, someone help" }
+    },
+    {
+      "name": "one unknown word after the keyword is still a sentence (contrast: 'help' without the keyword never triggers the cord)",
+      "input": { "kind": "message", "text": "pull: help" },
+      "expect": { "outcome": "pull_created", "class": null, "sentence": "help" }
     },
     {
       "name": "missing sentence gets a correction, no event",

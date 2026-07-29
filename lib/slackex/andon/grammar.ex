@@ -12,10 +12,15 @@ defmodule Slackex.Andon.Grammar do
 
     * `{:pull, class, sentence}` — a well-formed pull; the relay POSTs a
       `pull_created` domain event with this class and verbatim sentence.
+      `class` is nil for the bare cord (ENG-45, ADR-0016): a first word that
+      is not a class word is SENTENCE, not error — "pull: I'm a bit stuck"
+      is the purest pull there is, created classless with the whole text
+      after the keyword kept verbatim, would-be class word included. The
+      class is settled afterwards in-thread; the grammar never gatekeeps.
     * `:correction` — the message **opens** a pull but does not complete one:
-      unknown class, missing sentence, the keyword alone, or no space after
-      the colon. The relay posts an in-thread correction (never a modal) and
-      sends NO event.
+      no sentence to take — the keyword alone, a class word with nothing
+      after it, or no space after the colon. The relay posts an in-thread
+      correction (never a modal) and sends NO event.
     * `:not_a_pull` — ordinary channel traffic; the keyword was not at message
       start. Talk *about* pulling ("we could pull: defect this later") stays
       ordinary traffic, which is what keeps a channel discussing the andon out
@@ -47,7 +52,7 @@ defmodule Slackex.Andon.Grammar do
   def classes, do: @classes
 
   @typedoc "The outcome of parsing a message against the pull grammar."
-  @type outcome :: {:pull, String.t(), String.t()} | :correction | :not_a_pull
+  @type outcome :: {:pull, String.t() | nil, String.t()} | :correction | :not_a_pull
 
   @doc """
   Parses message text against the pull grammar. See the moduledoc for the
@@ -82,21 +87,35 @@ defmodule Slackex.Andon.Grammar do
   # absorb it; a missing space is the person's, and telling them is the help.
   defp classify(" " <> rest) do
     case String.split(rest, " ", parts: 2) do
-      [class, sentence] ->
-        # A blank sentence (empty or whitespace-only, e.g. "pull: defect   ")
-        # is a missing sentence, not a pull with an empty description. Only the
-        # emptiness check trims — the stored sentence stays verbatim, and so
-        # does its case.
-        if known_class?(class) and not blank?(sentence),
-          do: {:pull, String.downcase(class), sentence},
-          else: :correction
-
-      _ ->
-        :correction
+      [class, sentence] -> classify_pair(class, sentence, rest)
+      [word] -> classify_word(word)
     end
   end
 
   defp classify(_rest), do: :correction
+
+  # A blank sentence (empty or whitespace-only, e.g. "pull: defect   ") is a
+  # missing sentence, not a pull with an empty description. Only the emptiness
+  # check trims — the stored sentence stays verbatim, and so does its case.
+  # An unknown first word is not a mistake to correct: it is the sentence's
+  # first word, and the whole of `rest` posts as a classless pull (ENG-45).
+  defp classify_pair(class, sentence, rest) do
+    cond do
+      known_class?(class) and not blank?(sentence) -> {:pull, String.downcase(class), sentence}
+      known_class?(class) -> :correction
+      not blank?(rest) -> {:pull, nil, rest}
+      true -> :correction
+    end
+  end
+
+  # One word after the keyword. A class word alone has no sentence to take;
+  # any other single word IS the sentence — "pull: help" is a bare cord, not
+  # a mistake.
+  defp classify_word(word) do
+    if known_class?(word) or blank?(word),
+      do: :correction,
+      else: {:pull, nil, word}
+  end
 
   defp known_class?(class), do: String.downcase(class) in @classes
 

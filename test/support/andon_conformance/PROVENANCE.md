@@ -9,8 +9,15 @@ service").
 - **Source repo:** github.com/davewil/andon (local: `~/dev/elixir/andon-proto-claude`)
 - **Source path:** `priv/relay_conformance/v1/grammar.json`
 - **Contract:** `relay-conformance`, version `1`
-- **Copied at source commit:** `a3924090e4fa2463c6f6f2a508b746408a031a51`
-- **sha256:** `2d0866e509e350a7bd9cf474f18a0bde12a3ede23f661f3f83f38cc76ec7f5ba`
+- **Copied at source commit:** `d52f8b0` (ENG-45, ADR-0016)
+- **sha256:** `742e328eccf2e378a451af68e8aa8e7d1cdd0defdb169b97f62886c10c148227`
+
+Re-vendored 2026-07-29 for ADR-0016 (the bare cord — an unclassed pull is a
+valid pull). An unknown first word after the keyword is now SENTENCE, not an
+error: the pull is created classless (`"class": null`) and the class is
+settled afterwards in-thread. One prior expectation flipped (unknown class
+word: correction → classless pull); corrections remain only where there is no
+sentence to take. Previous pin: `a3924090` / `2d0866e5…`.
 
 Re-vendored 2026-07-27 for ADR-0014 (the cord does not care about case, and an
 attempt is never ignored). The keyword and class are now matched

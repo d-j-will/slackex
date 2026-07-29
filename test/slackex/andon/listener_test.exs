@@ -118,8 +118,11 @@ defmodule Slackex.Andon.ListenerTest do
   end
 
   describe "an invalid pull" do
-    test "posts an in-thread correction and sends NO event", %{channel: channel, user: user} do
-      message = post_message(channel, user, "pull: severity-1 the build is red on main")
+    test "a class word with no sentence posts an in-thread correction and sends NO event", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: defect")
 
       refute_receive {:andon_event_posted, _}, 300
 
@@ -128,6 +131,114 @@ defmodule Slackex.Andon.ListenerTest do
         assert reply.content =~ "pull:"
         assert reply.sender_id == Andon.bot_user().id
       end)
+    end
+  end
+
+  describe "the bare cord (ENG-45)" do
+    test "a pull with no class word is a valid pull, classless, sentence verbatim", %{
+      channel: channel,
+      user: user
+    } do
+      post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+
+      assert_receive {:andon_event_posted, event}, 1_000
+
+      assert event["event"] == "pull_created"
+      refute Map.has_key?(event, "class")
+      assert event["sentence"] == "I'm a bit stuck here, someone help"
+    end
+
+    test "a typo'd class word is sentence, not a rejection", %{channel: channel, user: user} do
+      post_message(channel, user, "pull: defct the build is broken")
+
+      assert_receive {:andon_event_posted, event}, 1_000
+      refute Map.has_key?(event, "class")
+      assert event["sentence"] == "defct the build is broken"
+    end
+
+    test "the bot asks the class question once, in human words, in the thread", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+
+      assert_receive {:andon_event_posted, _event}, 1_000
+
+      eventually(fn ->
+        replies = Chat.list_thread(message.id)
+        question = Enum.find(replies, &(&1.content =~ "defect"))
+
+        assert question, "expected an in-thread class question naming the classes"
+        assert question.sender_id == Andon.bot_user().id
+
+        # All four classes, each in human words — an answer key, not a syntax
+        # demand. And exactly one question: asked once, never repeated.
+        for class <- Grammar.classes(), do: assert(question.content =~ class)
+        assert Enum.count(replies, &(&1.content =~ "defect")) == 1
+      end)
+    end
+
+    test "a classed pull gets no class question", %{channel: channel, user: user} do
+      message = post_message(channel, user, "pull: defect the build is red on main")
+
+      assert_receive {:andon_event_posted, _event}, 1_000
+
+      eventually(fn ->
+        replies = Chat.list_thread(message.id)
+        refute Enum.any?(replies, &(&1.content =~ "confusion"))
+      end)
+    end
+
+    test "a one-word class reply in the thread becomes class_provided", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      reply = post_reply(channel, user, message.id, "defect")
+
+      assert_receive {:andon_event_posted, event}, 1_000
+
+      assert event["event"] == "class_provided"
+      assert event["event_id"] == "slackex-#{reply.id}"
+      assert event["class"] == "defect"
+      assert event["provider"] == %{"relay" => "slackex", "token" => to_string(user.id)}
+      assert event["origin"]["thread"] == to_string(message.id)
+
+      # The act is visible in the thread, like every lifecycle transition.
+      eventually(fn ->
+        replies = Chat.list_thread(message.id)
+
+        assert Enum.any?(
+                 replies,
+                 &(&1.content =~ "defect" and &1.sender_id == Andon.bot_user().id and
+                     &1.id != reply.id)
+               )
+      end)
+    end
+
+    test "a phone-capitalised class reply still answers (ADR-0014's rule holds here too)", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      post_reply(channel, user, message.id, "Confusion.")
+
+      assert_receive {:andon_event_posted, event}, 1_000
+      assert event["event"] == "class_provided"
+      assert event["class"] == "confusion"
+    end
+
+    test "a bare class word at channel top level is ordinary traffic, not an answer", %{
+      channel: channel,
+      user: user
+    } do
+      post_message(channel, user, "defect")
+
+      refute_receive {:andon_event_posted, _}, 300
     end
   end
 

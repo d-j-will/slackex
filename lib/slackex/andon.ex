@@ -54,6 +54,16 @@ defmodule Slackex.Andon do
 
   require Logger
 
+  # What each class sounds like in the words people use for it, rather than a
+  # definition of the term. A class with no gloss still lists — the classes
+  # come from Grammar so the two cannot drift.
+  @class_glosses %{
+    "defect" => "something is broken",
+    "delay" => "it is waiting on someone",
+    "burden" => "it is grinding you down",
+    "confusion" => "you cannot see the shape of it"
+  }
+
   @bot_username "andon"
   @relay "slackex"
   @control_topic "andon:control"
@@ -285,6 +295,13 @@ defmodule Slackex.Andon do
 
   # -- Event builders ---------------------------------------------------------
 
+  # The bare cord (ENG-45) omits the class field rather than sending null:
+  # the seam carries facts, and "no class yet" is the absence of one.
+  defp pull_created(nil, sentence, message_id, sender_id, origin) do
+    base("pull_created", message_id, origin)
+    |> Map.merge(%{"puller" => token(sender_id), "sentence" => sentence})
+  end
+
   defp pull_created(class, sentence, message_id, sender_id, origin) do
     base("pull_created", message_id, origin)
     |> Map.merge(%{
@@ -313,6 +330,11 @@ defmodule Slackex.Andon do
       base("subject_provided", mid, origin)
       |> Map.merge(%{"provider" => token(sid), "key" => key})
 
+  defp intent_event({:class, class}, mid, sid, origin),
+    do:
+      base("class_provided", mid, origin)
+      |> Map.merge(%{"provider" => token(sid), "class" => class})
+
   defp base(event, message_id, origin) do
     %{
       "event" => event,
@@ -340,6 +362,7 @@ defmodule Slackex.Andon do
       {:ok, %{status: 201, body: body}} ->
         run_commands(Map.get(body, "commands", []), ctx)
         maybe_confirm_pull(event, body, ctx, thread_id)
+        maybe_ask_class(event, ctx, thread_id)
         maybe_ack_lifecycle(event, ctx, thread_id)
 
       {:ok, %{status: 200}} ->
@@ -390,6 +413,35 @@ defmodule Slackex.Andon do
       "On the clock — reply `resolved` when what you flagged is contained."
   end
 
+  # The class question (ENG-45): a bare pull is asked once, right after
+  # whatever else the creation rendered (the confirmation, or the subject
+  # ask), so the first thing the puller reads is that help is coming and the
+  # question reads as optional detail, never a gate. Once and only once —
+  # this renders on the 201 alone, so a replay never re-asks, and nothing
+  # ever reminds. Silence leaves the pull unclassed, which is a visible
+  # state, not a failure. Only the relay knows the pull went classless (it
+  # parsed the message), which is why this is not a service command.
+  defp maybe_ask_class(%{"event" => "pull_created"} = event, ctx, thread_id)
+       when not is_map_key(event, "class") do
+    post_in_thread(ctx, thread_id, class_question_text())
+  end
+
+  defp maybe_ask_class(_event, _ctx, _thread_id), do: :ok
+
+  defp class_question_text do
+    "If you can say what kind of trouble this is, reply with one word — " <>
+      "#{class_words_with_glosses()}. If not, no matter: it's logged either way."
+  end
+
+  defp class_words_with_glosses do
+    Enum.map_join(Grammar.classes(), " · ", fn class ->
+      case Map.get(@class_glosses, class) do
+        nil -> "`#{class}`"
+        gloss -> "`#{class}` (#{gloss})"
+      end
+    end)
+  end
+
   # A lifecycle phrase (`ack`/`resolved`/`note:`) records in the log but the
   # service returns no command, so without this the act is silent in the thread
   # — you press the button gap 2 taught and nothing shows. Render a light
@@ -406,6 +458,10 @@ defmodule Slackex.Andon do
 
   defp maybe_ack_lifecycle(%{"event" => "closure_note"}, ctx, thread_id) do
     post_in_thread(ctx, thread_id, "Closure note logged.")
+  end
+
+  defp maybe_ack_lifecycle(%{"event" => "class_provided"} = event, ctx, thread_id) do
+    post_in_thread(ctx, thread_id, "Noted — `#{event["class"]}`.")
   end
 
   defp maybe_ack_lifecycle(_event, _ctx, _thread_id), do: :ok
@@ -648,24 +704,18 @@ defmodule Slackex.Andon do
       "cause turning up twice."
   end
 
+  # Reached only when there was no sentence to take (ENG-45 narrowed the
+  # corrections; an unknown first word is now a valid bare pull). The register
+  # matters: this answers someone reaching for help, so it asks for the one
+  # missing thing and demands nothing else — the class can wait.
   defp correction_text do
-    "That doesn't look like a pull. Use `pull: <class> <one sentence>` where " <>
-      "class is one of: #{Enum.join(Grammar.classes(), ", ")}."
+    "Nearly — tell me what's in your way in one sentence: `pull: <one sentence>`. " <>
+      "A class word first (#{Enum.join(Grammar.classes(), ", ")}) helps, but it can wait."
   end
-
-  # What each class sounds like in the words people use for it, rather than a
-  # definition of the term. A class with no gloss still lists — the classes
-  # come from Grammar so the two cannot drift.
-  @class_glosses %{
-    "defect" => "something is broken",
-    "delay" => "it is waiting on someone",
-    "burden" => "it is grinding you down",
-    "confusion" => "you cannot see the shape of it"
-  }
 
   defp help_text do
     """
-    Pull the cord when something is in your way — `pull:` at the start of a message, then a class and one sentence:
+    Pull the cord when something is in your way — `pull:` at the start of a message, then one sentence. `pull: I'm stuck` is enough; naming a class sharpens it:
     #{class_lines()}
 
     Name the item in the sentence (`ENG-123`) and it binds to that work; leave it out and I will ask which.

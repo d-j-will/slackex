@@ -71,9 +71,13 @@ defmodule Slackex.Andon.GrammarTest do
   end
 
   test "every class the fixture claims is a recognised class" do
+    # A null class is the bare cord (ENG-45) — a valid expectation, asserted
+    # by its own cases above; what may never appear is a class *word* the
+    # grammar would not recognise.
     claimed =
       for c <- @fixture["grammar_cases"],
           c["expect"]["outcome"] == "pull_created",
+          is_binary(c["expect"]["class"]),
           uniq: true,
           do: c["expect"]["class"]
 
