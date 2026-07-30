@@ -600,10 +600,18 @@ defmodule Slackex.Andon do
       {:ok, channel_id} ->
         ctx = %{channel_id: channel_id, bot_id: bot_user().id}
 
+        # The backup inherits the two-timer contract, so they inherit a
+        # deadline — and a window nobody states is one that lapses invisibly
+        # (ENG-56). Rendered by the same function as the DRI receipt: the
+        # obligation is identical, so the sentence should be too.
         post_in_thread(
           ctx,
           thread,
           "Backup #{mention(backup)} — the acknowledge window lapsed; you now carry this pull.\n" <>
+            case receipt_due(command) do
+              nil -> ""
+              due -> due <> "\n"
+            end <>
             dri_phrases()
         )
 
@@ -787,6 +795,30 @@ defmodule Slackex.Andon do
 
   # No clock for this class and stage is a fact worth stating: the alternative
   # is a reader assuming a timer is running when none is.
+  #
+  # The zone is the service's to supply (ENG-56). The deadline is computed
+  # inside the holder's declared hours, so UTC is the one zone it is certainly
+  # not owed in — and this relay carries no timezone database, so it cannot
+  # convert an instant itself. The service sends the same moment already
+  # expressed in the holder's zone; the offset carried in that string is all
+  # that is needed to recover the wall clock, and the label is for the reader.
+  defp receipt_due(%{"ack_due_local" => local, "ack_due_zone" => zone})
+       when is_binary(local) and is_binary(zone) do
+    case DateTime.from_iso8601(local) do
+      # from_iso8601/1 normalises to UTC and hands back the offset separately,
+      # so the wall clock the holder would read is the instant plus its offset.
+      {:ok, dt, offset} ->
+        wall = DateTime.add(dt, offset, :second)
+        "Acknowledge by #{Calendar.strftime(wall, "%H:%M")} #{zone}."
+
+      _ ->
+        nil
+    end
+  end
+
+  # An older service sends the instant alone. Rendering it in UTC is wrong for
+  # the reader but not a lie about the moment, and it is what shipped before —
+  # so the relay keeps working against a service that has not caught up yet.
   defp receipt_due(%{"ack_due_at" => due}) when is_binary(due) do
     case DateTime.from_iso8601(due) do
       {:ok, dt, _} -> "Acknowledge by #{Calendar.strftime(dt, "%H:%M")} UTC."

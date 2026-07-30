@@ -190,6 +190,36 @@ defmodule SlackexWeb.AndonControllerTest do
       assert reply.content =~ "`note:"
     end
 
+    # ENG-56. The backup inherits the two-timer contract, so they inherit a
+    # deadline — and until now the command carried none, so the notice told
+    # them they were carrying a pull and never when they were due. A window
+    # nobody is told about lapses invisibly, which is the failure the whole
+    # response system exists to make impossible.
+    test "tells the backup when they are due, in their own zone", %{
+      conn: conn,
+      channel: channel,
+      user: puller
+    } do
+      backup_user = insert(:user, username: "backup-clocked")
+      root = insert(:message, channel: channel, sender: puller)
+
+      command = %{
+        "command" => "notify_backup",
+        "backup" => %{"relay" => "slackex", "token" => to_string(backup_user.id)},
+        "thread" => to_string(root.id),
+        "ack_due_at" => "2026-07-30T14:52:43Z",
+        "ack_due_local" => "2026-07-30T15:52:43+01:00",
+        "ack_due_zone" => "BST"
+      }
+
+      assert %{"ok" => true} =
+               json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+
+      assert [reply] = Chat.list_thread(root.id)
+      assert reply.content =~ "@backup-clocked"
+      assert reply.content =~ "Acknowledge by 15:52 BST"
+    end
+
     test "uses the command's explicit channel and lands the reply there", %{
       conn: conn,
       channel: channel,
@@ -278,6 +308,65 @@ defmodule SlackexWeb.AndonControllerTest do
       refute reply.content =~ "resolved"
       refute reply.content =~ "withdraw"
       assert reply.channel_id == channel.id
+    end
+
+    # ENG-56. The deadline is computed inside the holder's declared hours, so
+    # stating it in UTC hands them a number their own clock disagrees with —
+    # in summer, an hour before the time they are actually due. The relay has
+    # no timezone database, so the service sends the same instant already
+    # expressed in the holder's zone; the offset in the string is all the
+    # relay needs to render the wall clock.
+    test "states the deadline in the holder's zone when the service supplies one", %{
+      conn: conn,
+      channel: channel,
+      user: puller
+    } do
+      dri_user = insert(:user, username: "stage-dri-zone")
+      root = insert(:message, channel: channel, sender: puller)
+
+      command = %{
+        "command" => "notify_dri",
+        "dri" => %{"relay" => "slackex", "token" => to_string(dri_user.id)},
+        "channel" => to_string(channel.id),
+        "thread" => to_string(root.id),
+        "subject" => %{"adapter" => "linear", "external_id" => "ENG-60"},
+        "class" => "burden",
+        "stage" => "build",
+        "ack_due_at" => "2026-07-30T14:32:43Z",
+        "ack_due_local" => "2026-07-30T15:32:43+01:00",
+        "ack_due_zone" => "BST"
+      }
+
+      assert %{"ok" => true} =
+               json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+
+      assert [reply] = Chat.list_thread(root.id)
+      assert reply.content =~ "Acknowledge by 15:32 BST"
+      refute reply.content =~ "14:32"
+      refute reply.content =~ "UTC"
+    end
+
+    test "falls back to UTC when the service sends no zone, so an older service still renders",
+         %{conn: conn, channel: channel, user: puller} do
+      dri_user = insert(:user, username: "stage-dri-noscope")
+      root = insert(:message, channel: channel, sender: puller)
+
+      command = %{
+        "command" => "notify_dri",
+        "dri" => %{"relay" => "slackex", "token" => to_string(dri_user.id)},
+        "channel" => to_string(channel.id),
+        "thread" => to_string(root.id),
+        "subject" => %{"adapter" => "linear", "external_id" => "ENG-61"},
+        "class" => "burden",
+        "stage" => "build",
+        "ack_due_at" => "2026-07-30T14:32:43Z"
+      }
+
+      assert %{"ok" => true} =
+               json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+
+      assert [reply] = Chat.list_thread(root.id)
+      assert reply.content =~ "Acknowledge by 14:32 UTC"
     end
 
     test "a class with no clock says so rather than implying a timer", %{
