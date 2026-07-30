@@ -9,12 +9,19 @@ defmodule Slackex.Andon.NotePrompt do
   escalation. What lives here is the relay's half: which thread is listening,
   for whom, and for how long.
 
-  **Armed once.** While a row is unspent, the holder's next message in that
-  thread is taken as the answer even though it is ordinary prose — the guard
-  that keeps channel chatter out of the log (`Phrases.parse/1` returning
-  `:none`) is suspended for exactly one message. It is spent on first use
-  whether or not it produced a note, and nothing ever re-arms or re-asks:
-  the budget is one question.
+  **Armed until answered.** While a row is unspent, the holder's messages in
+  that thread are read as the answer even though they are ordinary prose —
+  the guard that keeps channel chatter out of the log (`Phrases.parse/1`
+  returning `:none`) is suspended. The arming is spent by a closure act
+  landing (a note, or a decline), never by an attempt that recorded nothing:
+  ADR-0017 spent it on first use either way, and the field showed that
+  handing someone a corrective prompt they no longer had an arming to use
+  was a dead end (andon ENG-74, ADR-0019).
+
+  **Asked once, corrected once.** Nothing re-asks — the friction budget is
+  one question, and `prompted_at` bounds the correction to one reply so an
+  open arming is not a standing nag. After that the relay is silent and
+  still listening.
 
   The row outlives its arming on purpose. A `note:` typed in the thread days
   later still needs the pull id to address the right closed pull, and a
@@ -36,6 +43,7 @@ defmodule Slackex.Andon.NotePrompt do
     field :pull_id, :string
     field :holder_token, :string
     field :spent_at, :utc_datetime_usec
+    field :prompted_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -79,27 +87,62 @@ defmodule Slackex.Andon.NotePrompt do
   end
 
   @doc """
-  Takes the arming if this sender is the one being asked and it has not been
-  used. Returns `{:ok, prompt}` having spent it, or `:none`.
-
-  The spend is conditional in SQL, so two replies arriving together cannot
-  both be treated as the answer.
+  The live arming for this sender, if the question was addressed to them and
+  no answer has landed yet. Reads only — spending is what a *record* does.
   """
-  @spec take(integer(), integer(), String.t()) :: {:ok, t()} | :none
-  def take(channel_id, thread_id, sender_token) do
+  @spec pending(integer(), integer(), String.t()) :: {:ok, t()} | :none
+  def pending(channel_id, thread_id, sender_token) do
     case latest(channel_id, thread_id) do
-      %__MODULE__{spent_at: nil, holder_token: ^sender_token} = prompt -> spend(prompt)
+      %__MODULE__{spent_at: nil, holder_token: ^sender_token} = prompt -> {:ok, prompt}
       _otherwise -> :none
     end
   end
 
-  defp spend(%__MODULE__{id: id}) do
+  @doc """
+  Spends the arming. Returns `{:ok, prompt}` to whoever won, `:none` to
+  anyone who did not.
+
+  Conditional in SQL because that is the only thing standing between two
+  replies arriving together and two closure notes for one pull — and both
+  relay replicas process every channel message, so "together" is not
+  hypothetical.
+  """
+  @spec spend(t()) :: {:ok, t()} | :none
+  def spend(%__MODULE__{id: id}), do: stamp(id, :spent_at)
+
+  @doc """
+  Spends whatever arming this thread has left, because a closure act landed.
+
+  Called on the 201, so the log records the note before the relay stops
+  listening. Covers the typed `note:` and `no note` paths, which never went
+  near the arming — reaching a closure act by a route that did not need it
+  still answers the question.
+  """
+  @spec close(integer(), integer()) :: :ok
+  def close(channel_id, thread_id) do
+    case latest(channel_id, thread_id) do
+      %__MODULE__{spent_at: nil} = prompt -> spend(prompt)
+      _nothing_open -> :none
+    end
+
+    :ok
+  end
+
+  @doc """
+  Claims the one correction this arming gets. `{:ok, prompt}` the first time,
+  `:none` after — an arming that outlives a mistake must not turn into a bot
+  asking for a cause on every message the holder sends.
+  """
+  @spec mark_prompted(t()) :: {:ok, t()} | :none
+  def mark_prompted(%__MODULE__{id: id}), do: stamp(id, :prompted_at)
+
+  defp stamp(id, field) do
     query =
       from p in __MODULE__,
-        where: p.id == ^id and is_nil(p.spent_at),
+        where: p.id == ^id and is_nil(field(p, ^field)),
         select: p
 
-    case Repo.update_all(query, set: [spent_at: DateTime.utc_now()]) do
+    case Repo.update_all(query, set: [{field, DateTime.utc_now()}]) do
       {1, [prompt]} -> {:ok, prompt}
       _lost_the_race -> :none
     end

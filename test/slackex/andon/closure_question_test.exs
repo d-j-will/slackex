@@ -108,6 +108,14 @@ defmodule Slackex.Andon.ClosureQuestionTest do
       end
   end
 
+  defp prompts_asking_for_cause(pull) do
+    bot_id = Andon.bot_user().id
+
+    pull.id
+    |> Chat.list_thread()
+    |> Enum.count(&(&1.sender_id == bot_id and &1.content =~ "I need the cause"))
+  end
+
   # A pull, released by its puller, with the question asked.
   defp released_pull(channel, puller, holder) do
     stub_asking_at_release(holder)
@@ -219,6 +227,98 @@ defmodule Slackex.Andon.ClosureQuestionTest do
       end)
     end
 
+    # The sequence that actually happened in production on 2026-07-30 (ENG-74).
+    # Two of the holder's four messages produced nothing at all, because the
+    # first attempt spent the arming and the corrective prompt then taught a
+    # shape to someone who no longer had an arming to use it with.
+    test "a half-answer does not spend the question — the next attempt still lands", %{
+      channel: channel,
+      puller: puller,
+      holder: holder
+    } do
+      pull = released_pull(channel, puller, holder)
+
+      post_reply(channel, holder, pull.id, "cause: dogfooding")
+      refute_receive {:andon_event_posted, %{"event" => "closure_note"}}, 300
+
+      # The attempt produced no record, so it cannot have cost the one chance.
+      assert %NotePrompt{spent_at: nil} = NotePrompt.latest(channel.id, pull.id)
+
+      # And the second attempt — plain prose, the shape the question asked
+      # for — lands, without the exact string having to be dictated.
+      post_reply(channel, holder, pull.id, "dogfooding test / cause: dogfooding")
+
+      assert_receive {:andon_event_posted, %{"event" => "closure_note"} = event}, 1_000
+      assert event["note"] == "dogfooding test"
+      assert event["cause_guess"] == "dogfooding"
+      assert event["pull_id"] == @pull_id
+
+      # Now it is spent: a note landed.
+      eventually(fn ->
+        assert %NotePrompt{spent_at: %DateTime{}} = NotePrompt.latest(channel.id, pull.id)
+      end)
+    end
+
+    test "the correction is offered once — an open arming is not a standing nag", %{
+      channel: channel,
+      puller: puller,
+      holder: holder
+    } do
+      pull = released_pull(channel, puller, holder)
+
+      post_reply(channel, holder, pull.id, "it was the migration again")
+      eventually(fn -> assert prompts_asking_for_cause(pull) == 1 end)
+
+      post_reply(channel, holder, pull.id, "anyway, off to lunch")
+      post_reply(channel, holder, pull.id, "back now")
+
+      # Still listening, still silent: the question was asked once and the
+      # correction once. Nothing re-asks.
+      Process.sleep(200)
+      assert prompts_asking_for_cause(pull) == 1
+      assert %NotePrompt{spent_at: nil} = NotePrompt.latest(channel.id, pull.id)
+    end
+
+    test "declining spends the arming, so later chatter is chatter again", %{
+      channel: channel,
+      puller: puller,
+      holder: holder
+    } do
+      pull = released_pull(channel, puller, holder)
+
+      post_reply(channel, holder, pull.id, "no note")
+      assert_receive {:andon_event_posted, %{"event" => "closure_note_declined"}}, 1_000
+
+      eventually(fn ->
+        assert %NotePrompt{spent_at: %DateTime{}} = NotePrompt.latest(channel.id, pull.id)
+      end)
+
+      post_reply(channel, holder, pull.id, "though it was the migration again")
+
+      Process.sleep(200)
+      assert prompts_asking_for_cause(pull) == 0
+    end
+
+    test "a typed note spends the arming too", %{
+      channel: channel,
+      puller: puller,
+      holder: holder
+    } do
+      pull = released_pull(channel, puller, holder)
+
+      post_reply(channel, holder, pull.id, "note: flaky fixture / cause: shared test DB")
+      assert_receive {:andon_event_posted, %{"event" => "closure_note"}}, 1_000
+
+      eventually(fn ->
+        assert %NotePrompt{spent_at: %DateTime{}} = NotePrompt.latest(channel.id, pull.id)
+      end)
+
+      post_reply(channel, holder, pull.id, "anyway, off to lunch")
+
+      Process.sleep(200)
+      assert prompts_asking_for_cause(pull) == 0
+    end
+
     test "the cause prompt tells the truth: answering it lands a note", %{
       channel: channel,
       puller: puller,
@@ -231,8 +331,9 @@ defmodule Slackex.Andon.ClosureQuestionTest do
       refute_receive {:andon_event_posted, %{"event" => "closure_note"}}, 300
 
       # Whatever the bot asks for next must be something that actually lands.
-      # The arming is already spent, so a bare `cause:` line would vanish —
-      # the copy must not promise otherwise.
+      # The arming survives a failed attempt (ENG-74), but the prose does not:
+      # nothing is held between messages, so a bare `cause:` line would answer
+      # with no note to attach it to. The copy must not promise otherwise.
       eventually(fn ->
         bot_id = Andon.bot_user().id
 
@@ -270,7 +371,7 @@ defmodule Slackex.Andon.ClosureQuestionTest do
       assert %NotePrompt{spent_at: nil} = NotePrompt.latest(channel.id, pull.id)
     end
 
-    test "armed once: the holder's second message is chatter again", %{
+    test "armed once: once a note lands, the holder's next message is chatter again", %{
       channel: channel,
       puller: puller,
       holder: holder

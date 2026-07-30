@@ -290,33 +290,66 @@ defmodule Slackex.Andon do
   end
 
   # The answer to the question at release, in plain words. Only the person
-  # the question was addressed to can spend the arming, and it is spent on
-  # first use whether or not it produced a note — nothing re-arms and nothing
-  # re-asks, because the friction budget is one question.
+  # the question was addressed to can answer it.
   #
   # A prompted answer still needs its `cause:` marker: the bot asked for both
   # halves in one message and taught the marker in the asking. Without it the
-  # note is not logged as half a note — the existing cause prompt asks, and
-  # the arming is already gone, so that ask is the last word.
+  # note is not logged as half a note — the cause prompt asks for the pair.
+  #
+  # **An attempt that recorded nothing does not cost the one chance** (ENG-74,
+  # andon ADR-0019). ADR-0017 spent the arming on the holder's first message
+  # either way, so the corrective prompt taught the right shape to someone who
+  # could no longer use it — in the field two of four messages produced
+  # nothing at all, and the note that did land only did because the exact
+  # string was dictated. The spend now follows the record, not the attempt.
+  # The prose is still not carried between messages, which is why the prompt
+  # asks for both halves rather than the missing one.
   defp maybe_capture_answer(content, message_id, sender_id, origin, ctx, thread_id) do
     with true <- is_integer(thread_id),
-         {:ok, prompt} <- NotePrompt.take(ctx.channel_id, thread_id, to_string(sender_id)) do
+         {:ok, prompt} <- NotePrompt.pending(ctx.channel_id, thread_id, to_string(sender_id)) do
       case Phrases.answer(content) do
         {:closure_note, note, cause} ->
-          base("closure_note", message_id, origin)
-          |> Map.merge(%{
-            "actor" => token(sender_id),
-            "note" => note,
-            "cause_guess" => cause,
-            "pull_id" => prompt.pull_id
-          })
-          |> post_and_render(ctx, thread_id)
+          capture_note(prompt, note, cause, message_id, sender_id, origin, ctx, thread_id)
 
         _no_cause_or_empty ->
-          post_in_thread(ctx, thread_id, cause_prompt_text())
+          maybe_prompt_for_cause(prompt, ctx, thread_id)
       end
     else
       _not_being_asked -> :ok
+    end
+  end
+
+  # Spent before the post, not after: it is the conditional SQL spend that
+  # keeps two replies arriving together — or the same reply on both relay
+  # replicas — from becoming two closure notes for one pull. The cost, stated
+  # rather than discovered: a well-formed answer the service then refuses
+  # (409) has spent the arming, and the person gets the refusal in-thread.
+  defp capture_note(prompt, note, cause, message_id, sender_id, origin, ctx, thread_id) do
+    case NotePrompt.spend(prompt) do
+      {:ok, prompt} ->
+        base("closure_note", message_id, origin)
+        |> Map.merge(%{
+          "actor" => token(sender_id),
+          "note" => note,
+          "cause_guess" => cause,
+          "pull_id" => prompt.pull_id
+        })
+        |> post_and_render(ctx, thread_id)
+
+      :none ->
+        :ok
+    end
+  end
+
+  # One correction, then silence. An arming that survives a mistake must not
+  # become a bot asking for a cause on every message the holder sends — the
+  # friction budget bought one question, and the reply to a failed attempt is
+  # the last thing it pays for. Silence here is not a refusal: the arming is
+  # still live, and a well-formed answer any time later still lands.
+  defp maybe_prompt_for_cause(prompt, ctx, thread_id) do
+    case NotePrompt.mark_prompted(prompt) do
+      {:ok, _prompt} -> post_in_thread(ctx, thread_id, cause_prompt_text())
+      :none -> :ok
     end
   end
 
@@ -534,7 +567,14 @@ defmodule Slackex.Andon do
     end
   end
 
+  # A closure act landed, so the question is answered and the relay stops
+  # listening (ENG-74). On the 201 alone: the record comes first. The typed
+  # `note:` and `no note` paths never touch the arming on the way in — they
+  # need no suspended guard — but reaching a closure act by either route
+  # still answers the question, and leaving the arming open would have the
+  # bot asking for a cause after the note was already in the log.
   defp maybe_ack_lifecycle(%{"event" => "closure_note"}, _body, ctx, thread_id) do
+    close_question(ctx, thread_id)
     post_in_thread(ctx, thread_id, "Closure note logged.")
   end
 
@@ -542,6 +582,7 @@ defmodule Slackex.Andon do
   # nothing that reads as disappointment (ENG-49: the tool must not become
   # the burden it exists to surface).
   defp maybe_ack_lifecycle(%{"event" => "closure_note_declined"}, _body, ctx, thread_id) do
+    close_question(ctx, thread_id)
     post_in_thread(ctx, thread_id, "Logged as no note — that's an answer. Thanks.")
   end
 
@@ -550,6 +591,11 @@ defmodule Slackex.Andon do
   end
 
   defp maybe_ack_lifecycle(_event, _body, _ctx, _thread_id), do: :ok
+
+  defp close_question(ctx, thread_id) when is_integer(thread_id),
+    do: NotePrompt.close(ctx.channel_id, thread_id)
+
+  defp close_question(_ctx, _thread_id), do: :ok
 
   # Arms the thread for a plain-words reply and returns the question, or nil
   # where the service asked for none (a replayed release carries no command:
