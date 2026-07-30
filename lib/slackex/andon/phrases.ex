@@ -79,6 +79,10 @@ defmodule Slackex.Andon.Phrases do
   @cause_line ~r/^[ \t]*cause:/im
   @cause_inline ~r/cause:/i
 
+  # Separators someone might leave between the two halves, stripped off the
+  # end of the note (see trim_note/1). The taught one is `/`.
+  @note_tail ~r"[\s/·-]+$"u
+
   @typedoc "The intent parsed from an in-thread message."
   @type intent ::
           :ack
@@ -126,12 +130,24 @@ defmodule Slackex.Andon.Phrases do
   def answer(text) when is_binary(text) do
     {note, cause} = split_cause(text)
 
-    case {String.trim(note), cause} do
+    case {trim_note(note), cause} do
       {"", _} -> :none
       {note, nil} -> {:closure_note_needs_cause, note}
       {note, cause} -> {:closure_note, note, cause}
     end
   end
+
+  # The bot teaches `note: <what it was> / cause: <why>`, and the cut keeps
+  # everything before the marker verbatim — so the separator the prompt just
+  # told someone to type lands inside their note. Not an edge case: it is the
+  # taught shape, and the first note this system ever recorded read
+  # "dogfooding test /" (ENG-75). The cause half has always been trimmed; this
+  # holds the note half to the same standard, because the note is the prose a
+  # person reads in a retro.
+  #
+  # Only separators go, never words: "fixed the root cause: db not reset"
+  # still keeps "root".
+  defp trim_note(note), do: note |> String.trim() |> String.replace(@note_tail, "")
 
   # Strip the (case-insensitive) 5-byte "note:" prefix, keeping the note text
   # verbatim — only called when the trimmed message starts with the prefix.

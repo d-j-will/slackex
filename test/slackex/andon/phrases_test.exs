@@ -96,6 +96,23 @@ defmodule Slackex.Andon.PhrasesTest do
       assert Phrases.parse("note:") == :none
       assert Phrases.parse("note:   ") == :none
     end
+
+    test "the separator the bot teaches does not end up inside the note (ENG-75)" do
+      # This is the shape the prompt dictates, so it is the shape most notes
+      # will arrive in — a slash left on the end is not an edge case.
+      assert Phrases.parse("note: dogfooding test / cause: dogfooding") ==
+               {:closure_note, "dogfooding test", "dogfooding"}
+    end
+
+    test "the one-liner the moduledoc documents keeps its last word" do
+      # Over-eager trimming would cost "root" here; only separators go.
+      assert Phrases.parse("note: fixed the root cause: db not reset") ==
+               {:closure_note, "fixed the root", "db not reset"}
+    end
+
+    test "a note that is nothing but a separator is no note at all" do
+      assert Phrases.parse("note: / cause: dogfooding") == :none
+    end
   end
 
   describe "case-insensitive bare words + note: prefix (2026-07-24 field finding)" do
@@ -174,6 +191,15 @@ defmodule Slackex.Andon.PhrasesTest do
       asked = Phrases.answer("flaky fixture / cause: shared DB")
 
       assert typed == asked
+      assert {:closure_note, "flaky fixture", "shared DB"} = asked
+    end
+
+    test "prose written the way the bot teaches carries no trailing separator (ENG-75)" do
+      assert Phrases.answer("the migration had not run · cause: seed skips it") ==
+               {:closure_note, "the migration had not run", "seed skips it"}
+
+      assert Phrases.answer("the migration had not run -\ncause: seed skips it") ==
+               {:closure_note, "the migration had not run", "seed skips it"}
     end
   end
 end
