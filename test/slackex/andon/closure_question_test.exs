@@ -214,9 +214,46 @@ defmodule Slackex.Andon.ClosureQuestionTest do
         replies = Chat.list_thread(pull.id)
 
         assert Enum.any?(replies, fn m ->
-                 m.sender_id == bot_id and m.id > reply.id and m.content =~ "what do you think"
+                 m.sender_id == bot_id and m.id > reply.id and m.content =~ "I need the cause"
                end)
       end)
+    end
+
+    test "the cause prompt tells the truth: answering it lands a note", %{
+      channel: channel,
+      puller: puller,
+      holder: holder
+    } do
+      pull = released_pull(channel, puller, holder)
+
+      # The expected first reply to the question: prose, no cause marker.
+      post_reply(channel, holder, pull.id, "it was the migration again")
+      refute_receive {:andon_event_posted, %{"event" => "closure_note"}}, 300
+
+      # Whatever the bot asks for next must be something that actually lands.
+      # The arming is already spent, so a bare `cause:` line would vanish —
+      # the copy must not promise otherwise.
+      eventually(fn ->
+        bot_id = Andon.bot_user().id
+
+        assert prompt =
+                 Chat.list_thread(pull.id)
+                 |> Enum.find(
+                   &(&1.sender_id == bot_id and &1.content =~ "cause:" and
+                       not (&1.content =~ "Released"))
+                 )
+                 |> then(& &1.content)
+
+        # It must teach a shape that actually lands. A bare `cause:` line
+        # parses as ordinary chatter against a spent arming and vanishes.
+        assert prompt =~ "note:"
+      end)
+
+      post_reply(channel, holder, pull.id, "note: the migration again / cause: seed skips it")
+
+      assert_receive {:andon_event_posted, %{"event" => "closure_note"} = event}, 1_000
+      assert event["cause_guess"] == "seed skips it"
+      assert event["pull_id"] == @pull_id
     end
 
     test "a reply from someone who was not asked stays ordinary chatter", %{

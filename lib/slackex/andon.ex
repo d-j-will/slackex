@@ -821,10 +821,21 @@ defmodule Slackex.Andon do
     end
   end
 
+  # Asked when a note arrived without its cause, by either route: a typed
+  # `note:` missing one, or the prompted answer to the question at release.
+  #
+  # It teaches the full `note:` shape rather than a bare `cause:` line, and
+  # that is not a style choice — the relay holds no note text between
+  # messages, so a lone `cause:` reply parses as ordinary chatter and lands
+  # nowhere. The earlier copy ("add a line starting with `cause:` and I'll
+  # log both") promised something the relay cannot do. Saying so plainly is
+  # the same standard ADR-0017 held the log to: do not assert what you do not
+  # know, and do not promise what you will not keep.
   defp cause_prompt_text do
-    "Got the note — what do you think caused it? Add a line starting with " <>
-      "`cause:` and I'll log both. It's what lets the retro spot the same " <>
-      "cause turning up twice."
+    "Got it — I need the cause alongside it, or the retro cannot tell one " <>
+      "cause from another. Send the pair together: " <>
+      "`note: <what it was> / cause: <your best guess why>`. " <>
+      "Or `no note` — still a fine answer."
   end
 
   # Reached only when there was no sentence to take (ENG-45 narrowed the

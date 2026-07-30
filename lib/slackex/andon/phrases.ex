@@ -18,7 +18,7 @@ defmodule Slackex.Andon.Phrases do
     * `resolved`  → `:witness_close`     (the witness's message is the release)
     * `withdraw`  → `:withdraw`          (the puller drops an unbound pull)
     * `note: <t>` + `cause: <c>` → `{:closure_note, t, c}` (after release)
-    * `no note` | `nothing to note` | `skip` → `:closure_note_declined`
+    * `no note` | `nothing to note` → `:closure_note_declined`
       (the holder answers the question at release with "no" — ENG-60)
     * `<KEY>`     → `{:subject, KEY}`    (the puller answers the subject ask)
     * `defect` | `delay` | `burden` | `confusion` → `{:class, word}`
@@ -68,9 +68,12 @@ defmodule Slackex.Andon.Phrases do
   @class_words ["defect", "delay", "burden", "confusion"]
 
   # "No note" is an answer, not a silence (ENG-60). Taught in the question
-  # itself, like the class words, and kept few — the whole-message rule is
-  # the only guard, and "skip" is common enough in prose to want no help.
-  @decline_phrases ["no note", "nothing to note", "skip"]
+  # itself, like the class words, and kept to phrases that read as an ANSWER
+  # to a question rather than as ordinary chat. `skip` was dropped for that
+  # reason: parsing is context-free, so a bare "skip" in a bound pull's
+  # thread would become a decline, and the service would refuse it (409) in
+  # the person's face. "no note" is nobody's idle remark.
+  @decline_phrases ["no note", "nothing to note"]
 
   # The cause-guess marker, preferred on its own line (see split_cause/1).
   @cause_line ~r/^[ \t]*cause:/im

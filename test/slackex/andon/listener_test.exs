@@ -433,7 +433,8 @@ defmodule Slackex.Andon.ListenerTest do
 
       eventually(fn ->
         assert Enum.any?(Chat.list_thread(pull.id), fn r ->
-                 r.sender_id == Andon.bot_user().id and r.content =~ "what do you think caused it"
+                 r.sender_id == Andon.bot_user().id and
+                   r.content =~ "I need the cause alongside it"
                end)
       end)
     end

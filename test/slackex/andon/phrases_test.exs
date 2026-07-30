@@ -138,17 +138,19 @@ defmodule Slackex.Andon.PhrasesTest do
     test "the taught words are an answer, not a silence" do
       assert Phrases.parse("no note") == :closure_note_declined
       assert Phrases.parse("nothing to note") == :closure_note_declined
-      assert Phrases.parse("skip") == :closure_note_declined
     end
 
     test "case and trailing punctuation do not change the answer" do
       assert Phrases.parse("No Note.") == :closure_note_declined
-      assert Phrases.parse("SKIP!") == :closure_note_declined
+      assert Phrases.parse("NOTHING TO NOTE!") == :closure_note_declined
     end
 
     test "the whole-message rule still guards it — these are common words" do
       assert Phrases.parse("no note needed, it was obvious") == :none
-      assert Phrases.parse("I'll skip the standup") == :none
+
+      # Dropped deliberately: parsing is context-free, so a bare "skip" in a
+      # bound pull's thread would become a decline and earn a 409.
+      assert Phrases.parse("skip") == :none
     end
   end
 
