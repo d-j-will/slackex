@@ -120,12 +120,13 @@ defmodule Slackex.Andon.NotePrompt do
   """
   @spec close(integer(), integer()) :: :ok
   def close(channel_id, thread_id) do
-    case latest(channel_id, thread_id) do
-      %__MODULE__{spent_at: nil} = prompt -> spend(prompt)
-      _nothing_open -> :none
+    with %__MODULE__{spent_at: nil} = prompt <- latest(channel_id, thread_id),
+         {:ok, _spent} <- spend(prompt) do
+      :ok
+    else
+      # No question here, or it was already answered — either way, closed.
+      _nothing_to_close -> :ok
     end
-
-    :ok
   end
 
   @doc """
