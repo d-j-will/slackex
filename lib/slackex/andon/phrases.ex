@@ -117,6 +117,42 @@ defmodule Slackex.Andon.Phrases do
   end
 
   @doc """
+  Whether a message reads as an attempt at the class question that the
+  whole-message rule then refused (ENG-72).
+
+  The rule itself is not the bug. Nothing arms the class question — anyone may
+  answer it at any time (ADR-0016) — so widening the match to "opens with a
+  class word" would class a pull from *"defect rates are up this week"*. What
+  was missing is the other half of ADR-0014's decision 3: an attempt that
+  cannot be parsed earns a correction, never silence. That rule was written
+  for `pull:` and never carried to the questions the bot asks afterwards.
+
+  So this is deliberately a predicate and not a new `parse/1` outcome: the
+  message produces no intent and no event. It says only "this looks like
+  someone answering", and the caller decides whether a question was actually
+  outstanding — a judgement that needs channel state this module does not have
+  and should not grow.
+
+  Message-start only, the same anchor the keyword keeps (ADR-0014 decision 2),
+  so *"this looks like a defect to me"* is thread talk.
+  """
+  @spec class_attempt?(String.t()) :: boolean()
+  def class_attempt?(text) when is_binary(text) do
+    parse(text) == :none and first_word(text) in @class_words
+  end
+
+  defp first_word(text) do
+    text
+    |> String.trim()
+    |> String.split(~r/\s+/u, parts: 2)
+    |> List.first()
+    |> to_string()
+    |> String.downcase()
+    |> String.trim_trailing(".")
+    |> String.trim_trailing("!")
+  end
+
+  @doc """
   Splits a plain-prose answer to the question asked at release (ENG-60) the
   same way a `note:` message is split.
 

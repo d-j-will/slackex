@@ -274,11 +274,8 @@ defmodule Slackex.Andon do
 
       :not_a_pull when reply? ->
         case Phrases.parse(content) do
-          # Ordinary thread traffic — unless the bot asked this person a
-          # question and is still waiting (ENG-60). The guard that keeps
-          # chatter out of the log is suspended for exactly one message.
           :none ->
-            maybe_capture_answer(content, message_id, sender_id, origin, ctx, thread_id)
+            unparsed_reply(content, message_id, sender_id, origin, ctx, thread_id)
 
           intent ->
             dispatch_intent(intent, message_id, sender_id, origin, ctx, thread_id)
@@ -286,6 +283,22 @@ defmodule Slackex.Andon do
 
       :not_a_pull ->
         :ok
+    end
+  end
+
+  # A reply that carries no phrase. Ordinary thread traffic, unless one of the
+  # bot's own questions is outstanding — the guard that keeps chatter out of
+  # the log is suspended for exactly one message (ENG-60).
+  #
+  # Two questions can be outstanding in one thread (ENG-54), and the addressed,
+  # armed one wins: the closure prompt is owed to one person and has a single
+  # chance to be spent (ENG-74), while the class question is owed to nobody in
+  # particular and never expires. Answering the wrong one would burn the chance
+  # that cannot be got back.
+  defp unparsed_reply(content, message_id, sender_id, origin, ctx, thread_id) do
+    case maybe_capture_answer(content, message_id, sender_id, origin, ctx, thread_id) do
+      :not_asked -> maybe_correct_class_attempt(content, ctx, thread_id)
+      :ok -> :ok
     end
   end
 
@@ -315,8 +328,56 @@ defmodule Slackex.Andon do
           maybe_prompt_for_cause(prompt, ctx, thread_id)
       end
     else
-      _not_being_asked -> :ok
+      _not_being_asked -> :not_asked
     end
+  end
+
+  # An attempt at the class question is never ignored (ENG-72, andon ADR-0014
+  # decision 3 reaching the bot's own questions). The whole-message rule stays
+  # — it is the only thing keeping "defect rates are up this week" out of the
+  # log, since nothing arms this question (ADR-0016) — so the message records
+  # nothing. It just stops being silent.
+  #
+  # The mirror is the guard, and it is what makes the correction safe: a
+  # correction is owed only where a pull in *this* thread is still waiting for
+  # its class. A stale or missing mirror therefore fails silent, which is
+  # today's behaviour (ADR-0006 — the mirror is an unreconciled projection,
+  # never an authority). The cheap check runs first so ordinary thread traffic
+  # never reaches the read.
+  #
+  # Stateless, so a second malformed attempt earns a second correction. That is
+  # not the class question repeating itself — nothing reminds anyone unprompted
+  # (ADR-0016's friction budget) — it is each attempt getting an answer.
+  defp maybe_correct_class_attempt(content, ctx, thread_id) do
+    if Phrases.class_attempt?(content) and awaiting_class?(ctx.channel_id, thread_id) do
+      post_in_thread(ctx, thread_id, class_correction_text())
+    else
+      :ok
+    end
+  end
+
+  # An open pull in this thread that no fact has named a class for yet. Both
+  # lists carry `class` and `thread`: the field case was answered 46 seconds
+  # after a bare pull, which may still be unbound.
+  defp awaiting_class?(channel_id, thread_id) do
+    thread = to_string(thread_id)
+
+    channel_id
+    |> mirror_for_channel()
+    |> Map.values()
+    |> Enum.flat_map(&(List.wrap(&1["active_holds"]) ++ List.wrap(&1["unbound_pulls"])))
+    |> Enum.any?(&(&1["thread"] == thread and is_nil(&1["class"])))
+  end
+
+  # Repeats the answer key rather than pointing back at the question: someone
+  # who has just been told their answer did not land should not have to scroll
+  # for the words. "Or leave it" is load-bearing — the class is detail, never a
+  # gate, and a correction that reads as a demand is the register ENG-45 was
+  # filed to keep out of the thread.
+  defp class_correction_text do
+    "Almost — a class answer has to be the message on its own, so that one " <>
+      "went by as ordinary thread talk. Reply with just #{class_words_with_glosses()}. " <>
+      "Or leave it: the pull is logged either way."
   end
 
   # Spent before the post, not after: it is the conditional SQL spend that

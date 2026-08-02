@@ -11,8 +11,14 @@ defmodule Slackex.Andon.ListenerTest do
 
   alias Slackex.Andon
   alias Slackex.Andon.Grammar
+  alias Slackex.Andon.NotePrompt
   alias Slackex.Chat
   alias Slackex.Messaging
+
+  # Unique to the class correction (ENG-72). The class *question* also says
+  # "reply with one word", so asserting on that would match the question and
+  # make every negative case pass for the wrong reason.
+  @correction_marker ~r/on its own/i
 
   setup do
     user = insert(:user, username: "puller-anna")
@@ -21,6 +27,21 @@ defmodule Slackex.Andon.ListenerTest do
 
     {:ok, _} = Chat.Channels.join_channel(user.id, channel.id)
     {:ok, _} = Chat.Channels.join_channel(bot.id, channel.id)
+
+    # A real relay channel has its `andon_channels` row — it is what the mirror
+    # lands on, and without it `apply_command/1` drops the update silently.
+    #
+    # Written with `enable_channel/1`'s own changeset rather than through
+    # `enable_channel/1` itself, and the difference is one line: the announce
+    # on the control topic. `Slackex.Andon.Listener` sits in the application
+    # supervision tree and subscribes to that topic whatever its boot options
+    # say, so announcing here makes the *global* listener subscribe to this
+    # test's channel alongside the one the test supervises — and every message
+    # is then processed twice. The row is the fixture; the broadcast is not.
+    {:ok, _} =
+      %Andon.Channel{}
+      |> Andon.Channel.enable_changeset(%{channel_id: channel.id})
+      |> Slackex.Repo.insert()
 
     # Sandbox rollback clears the flag row; no DB work in on_exit (house rule).
     FunWithFlags.enable(:andon_relay)
@@ -240,6 +261,221 @@ defmodule Slackex.Andon.ListenerTest do
 
       refute_receive {:andon_event_posted, _}, 300
     end
+  end
+
+  describe "a class answer with one extra word (ENG-72)" do
+    # ADR-0014 decision 3 — "an attempt is never ignored" — was written for
+    # `pull:` and never extended to the questions the bot asks afterwards. The
+    # whole-message rule stays (ADR-0016 puts no arming on the class question,
+    # so anyone may answer at any time and "starts with a class word" would
+    # class an ordinary sentence). What changes is that a near-miss earns a
+    # sentence instead of silence.
+    #
+    # The guard is the channel mirror: a correction is only owed where a pull
+    # in this thread is actually still waiting for its class.
+
+    test "the field case: `defect dogfooding` earns a correction and logs nothing", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, unbound_pull(message.id, nil))
+
+      post_reply(channel, user, message.id, "defect dogfooding")
+
+      # Records nothing: the class is not taken from a message that was not
+      # bare, so no event crosses the seam.
+      refute_receive {:andon_event_posted, _}, 300
+
+      eventually(fn ->
+        correction = bot_reply_matching(message.id, @correction_marker)
+
+        assert correction,
+               "expected an in-thread correction, got: #{inspect(bot_replies(message.id))}"
+
+        # The answer key is repeated, so the correction is usable on its own.
+        for class <- Grammar.classes(), do: assert(correction.content =~ class)
+      end)
+    end
+
+    test "a bound pull still waiting for its class earns it too (active_holds)", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: ENG-9 I'm a bit stuck here")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, active_hold(message.id, nil))
+
+      post_reply(channel, user, message.id, "burden all this ceremony")
+
+      refute_receive {:andon_event_posted, _}, 300
+      eventually(fn -> assert bot_reply_matching(message.id, @correction_marker) end)
+    end
+
+    # The discriminating case: same thread, same shape of message, but the
+    # pull already knows its class — so there is no question outstanding and
+    # "defect rates are up this week" is ordinary thread talk.
+    test "a pull that already has its class gets no correction", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: defect the build is red on main")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, unbound_pull(message.id, "defect"))
+
+      post_reply(channel, user, message.id, "defect rates are up this week")
+
+      refute_receive {:andon_event_posted, _}, 300
+      refute_bot_reply(message.id, @correction_marker)
+    end
+
+    test "a classless pull in a different thread earns no correction here", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      # Classless, but it is some other thread's pull.
+      mirror(channel, unbound_pull(message.id + 9_999, nil))
+
+      post_reply(channel, user, message.id, "defect rates are up this week")
+
+      refute_receive {:andon_event_posted, _}, 300
+      refute_bot_reply(message.id, @correction_marker)
+    end
+
+    test "a message that merely mentions a class earns no correction", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, unbound_pull(message.id, nil))
+
+      # Only a message that OPENS with a class word is a plausible answer —
+      # the same message-start rule the keyword itself keeps (ADR-0014 §2).
+      post_reply(channel, user, message.id, "this looks like a defect to me")
+
+      refute_receive {:andon_event_posted, _}, 300
+      refute_bot_reply(message.id, @correction_marker)
+    end
+
+    # A thread can hold a released pull awaiting its closure note AND an open
+    # classless pull (ENG-54). The prompt is addressed to one person and is
+    # armed; the class question is neither. The addressed question wins, or
+    # ENG-74's one chance gets spent by a correction nobody asked for.
+    test "a pending closure-note prompt wins over the class correction", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here, someone help")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, unbound_pull(message.id, nil))
+
+      :ok =
+        NotePrompt.arm(
+          channel.id,
+          message.id,
+          "6a0c6d1e-0000-4000-8000-00000000beef",
+          to_string(user.id)
+        )
+
+      post_reply(channel, user, message.id, "defect dogfooding")
+
+      refute_receive {:andon_event_posted, _}, 300
+
+      eventually(fn ->
+        assert bot_reply_matching(message.id, ~r/cause:/i),
+               "expected the cause prompt, got: #{inspect(bot_replies(message.id))}"
+      end)
+
+      refute_bot_reply(message.id, @correction_marker)
+    end
+  end
+
+  # The mirror is how the relay knows a pull is still waiting for its class:
+  # the service pushes it, and `apply_command/1` is the production path that
+  # lands it on the channel row.
+  defp mirror(channel, %{active_holds: holds, unbound_pulls: unbound}) do
+    :ok =
+      Andon.apply_command(%{
+        "command" => "update_mirror",
+        "channel" => to_string(channel.id),
+        "watermark" => System.unique_integer([:positive, :monotonic]),
+        "mirror" => %{
+          "active_holds" => holds,
+          "unbound_pulls" => unbound,
+          "oldest_open" => nil
+        }
+      })
+
+    # `apply_command/1` answers `:ok` when it drops a command it cannot place,
+    # so the return value proves nothing. Read the mirror back, or a test that
+    # never set one up passes for the wrong reason.
+    assert Andon.mirror_for_channel(channel.id) != %{},
+           "the mirror did not land — the channel has no andon_channels row"
+  end
+
+  defp unbound_pull(thread_id, class) do
+    %{
+      active_holds: [],
+      unbound_pulls: [
+        %{
+          "pull_id" => "p-#{thread_id}",
+          "class" => class,
+          "thread" => to_string(thread_id),
+          "since" => DateTime.utc_now() |> DateTime.to_iso8601()
+        }
+      ]
+    }
+  end
+
+  defp active_hold(thread_id, class) do
+    %{
+      unbound_pulls: [],
+      active_holds: [
+        %{
+          "pull_id" => "p-#{thread_id}",
+          "class" => class,
+          "thread" => to_string(thread_id),
+          "subject" => %{"adapter" => "linear", "external_id" => "ENG-9"},
+          "held_since" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "escalated" => false,
+          "holder" => %{"relay" => "slackex", "token" => "1"},
+          "holder_source" => "dri",
+          "acked_at" => nil,
+          "ack_due_at" => nil,
+          "epoch" => 0,
+          "actions" => []
+        }
+      ]
+    }
+  end
+
+  defp bot_replies(thread_id) do
+    thread_id
+    |> Chat.list_thread()
+    |> Enum.filter(&(&1.sender_id == Andon.bot_user().id))
+  end
+
+  defp bot_reply_matching(thread_id, regex) do
+    thread_id |> bot_replies() |> Enum.find(&Regex.match?(regex, &1.content))
+  end
+
+  # Negative assertions need a settling window — the bot's replies are enqueued
+  # jobs, so "not there yet" and "never coming" look identical for a moment.
+  defp refute_bot_reply(thread_id, regex) do
+    Process.sleep(300)
+
+    refute bot_reply_matching(thread_id, regex),
+           "expected no correction, got: #{inspect(bot_replies(thread_id))}"
   end
 
   describe "a pull typed on a phone" do
