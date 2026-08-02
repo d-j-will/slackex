@@ -329,8 +329,7 @@ defmodule Slackex.Andon.ListenerTest do
 
       post_reply(channel, user, message.id, "defect rates are up this week")
 
-      refute_receive {:andon_event_posted, _}, 300
-      refute_bot_reply(message.id, @correction_marker)
+      refute_correction_after(channel, user, message.id, @correction_marker)
     end
 
     test "a classless pull in a different thread earns no correction here", %{
@@ -345,8 +344,7 @@ defmodule Slackex.Andon.ListenerTest do
 
       post_reply(channel, user, message.id, "defect rates are up this week")
 
-      refute_receive {:andon_event_posted, _}, 300
-      refute_bot_reply(message.id, @correction_marker)
+      refute_correction_after(channel, user, message.id, @correction_marker)
     end
 
     test "a message that merely mentions a class earns no correction", %{
@@ -362,8 +360,7 @@ defmodule Slackex.Andon.ListenerTest do
       # the same message-start rule the keyword itself keeps (ADR-0014 §2).
       post_reply(channel, user, message.id, "this looks like a defect to me")
 
-      refute_receive {:andon_event_posted, _}, 300
-      refute_bot_reply(message.id, @correction_marker)
+      refute_correction_after(channel, user, message.id, @correction_marker)
     end
 
     # A thread can hold a released pull awaiting its closure note AND an open
@@ -396,7 +393,10 @@ defmodule Slackex.Andon.ListenerTest do
                "expected the cause prompt, got: #{inspect(bot_replies(message.id))}"
       end)
 
-      refute_bot_reply(message.id, @correction_marker)
+      # No barrier needed here: the cause prompt above IS the proof this
+      # message was handled to completion, and the correction would have been
+      # written in the same pass.
+      refute bot_reply_matching(message.id, @correction_marker)
     end
   end
 
@@ -469,10 +469,24 @@ defmodule Slackex.Andon.ListenerTest do
     thread_id |> bot_replies() |> Enum.find(&Regex.match?(regex, &1.content))
   end
 
-  # Negative assertions need a settling window — the bot's replies are enqueued
-  # jobs, so "not there yet" and "never coming" look identical for a moment.
-  defp refute_bot_reply(thread_id, regex) do
-    Process.sleep(300)
+  # A negative assertion needs to know the message was FINISHED with, not just
+  # that nothing has shown up yet — and a fixed sleep only ever proves the
+  # latter. It would pass on a slow runner while the correction was in flight.
+  #
+  # The barrier: the listener is one GenServer taking a channel's messages in
+  # order, and Oban runs inline in test (`testing: :inline`), so a message is
+  # completely handled — bot reply written — before the next is picked up.
+  # Observing a LATER message's event is therefore proof the earlier one is
+  # done. A bare `defect` is the cheapest such message: it always produces
+  # `class_provided`, and the mirror is a fixture so answering does not disturb
+  # it.
+  defp refute_correction_after(channel, user, thread_id, regex) do
+    post_reply(channel, user, thread_id, "defect")
+    assert_receive {:andon_event_posted, %{"event" => "class_provided"}}, 1_000
+
+    # The sentinel's own event has been consumed; anything still queued was
+    # produced by the message under test, which was supposed to record nothing.
+    refute_received {:andon_event_posted, _}
 
     refute bot_reply_matching(thread_id, regex),
            "expected no correction, got: #{inspect(bot_replies(thread_id))}"
