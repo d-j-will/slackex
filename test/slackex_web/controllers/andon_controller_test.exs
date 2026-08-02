@@ -217,7 +217,7 @@ defmodule SlackexWeb.AndonControllerTest do
 
       assert [reply] = Chat.list_thread(root.id)
       assert reply.content =~ "@backup-clocked"
-      assert reply.content =~ "Acknowledge by 15:52 BST"
+      assert reply.content =~ "Acknowledge by Thu 15:52 BST"
     end
 
     test "uses the command's explicit channel and lands the reply there", %{
@@ -341,7 +341,7 @@ defmodule SlackexWeb.AndonControllerTest do
                json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
 
       assert [reply] = Chat.list_thread(root.id)
-      assert reply.content =~ "Acknowledge by 15:32 BST"
+      assert reply.content =~ "Acknowledge by Thu 15:32 BST"
       refute reply.content =~ "14:32"
       refute reply.content =~ "UTC"
     end
@@ -366,7 +366,45 @@ defmodule SlackexWeb.AndonControllerTest do
                json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
 
       assert [reply] = Chat.list_thread(root.id)
-      assert reply.content =~ "Acknowledge by 14:32 UTC"
+      assert reply.content =~ "Acknowledge by Thu 14:32 UTC"
+    end
+
+    # The field case, ENG-73. ADR-0012 *guarantees* this shape rather than
+    # making it rare: a pull that arrives outside declared hours has its
+    # deadline on a later day by construction, and ENG-63 gave every class a
+    # clock, so every out-of-hours pull now states one. Read at 20:18 on the
+    # Thursday, a bare "09:20 BST" names a time that has already passed.
+    test "an out-of-hours deadline names its day, so it cannot read as a time already past",
+         %{conn: conn, channel: channel, user: puller} do
+      dri_user = insert(:user, username: "stage-dri-tomorrow")
+      root = insert(:message, channel: channel, sender: puller)
+
+      command = %{
+        "command" => "notify_dri",
+        "dri" => %{"relay" => "slackex", "token" => to_string(dri_user.id)},
+        "channel" => to_string(channel.id),
+        "thread" => to_string(root.id),
+        "subject" => %{"adapter" => "linear", "external_id" => "ENG-56"},
+        "class" => "defect",
+        "stage" => "build",
+        # Bound 20:17 Thu; the roster's window reopens 09:00 Fri, so the
+        # twenty minutes are owed from then (the real 2026-07-30 receipt).
+        "ack_due_at" => "2026-07-31T08:20:00Z",
+        "ack_due_local" => "2026-07-31T09:20:00+01:00",
+        "ack_due_zone" => "BST"
+      }
+
+      assert %{"ok" => true} =
+               json_response(post(authed(conn), ~p"/api/andon/commands", command), 200)
+
+      assert [reply] = Chat.list_thread(root.id)
+      assert reply.content =~ "Acknowledge by Fri 09:20 BST"
+
+      # The day comes from the LOCAL form, not the instant: 08:20Z and
+      # 09:20+01:00 are the same moment, and only one of them is the day the
+      # holder would write down. They agree here, but a deadline just after
+      # midnight local would not.
+      refute reply.content =~ "08:20"
     end
 
     test "a class with no clock says so rather than implying a timer", %{

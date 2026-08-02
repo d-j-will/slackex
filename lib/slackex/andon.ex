@@ -916,7 +916,7 @@ defmodule Slackex.Andon do
       # so the wall clock the holder would read is the instant plus its offset.
       {:ok, dt, offset} ->
         wall = DateTime.add(dt, offset, :second)
-        "Acknowledge by #{Calendar.strftime(wall, "%H:%M")} #{zone}."
+        "Acknowledge by #{deadline_wall_clock(wall)} #{zone}."
 
       _ ->
         nil
@@ -928,12 +928,31 @@ defmodule Slackex.Andon do
   # so the relay keeps working against a service that has not caught up yet.
   defp receipt_due(%{"ack_due_at" => due}) when is_binary(due) do
     case DateTime.from_iso8601(due) do
-      {:ok, dt, _} -> "Acknowledge by #{Calendar.strftime(dt, "%H:%M")} UTC."
+      {:ok, dt, _} -> "Acknowledge by #{deadline_wall_clock(dt)} UTC."
       _ -> nil
     end
   end
 
   defp receipt_due(_), do: "No clock on this one."
+
+  # The day is named every time, not only when the deadline is not today
+  # (ENG-73). ADR-0012 *guarantees* the out-of-hours case rather than making it
+  # rare — a pull arriving outside declared hours has its deadline on a later
+  # day by construction — and since ENG-63 gave every class a clock, every such
+  # pull now states one. Read at 20:18 on the Thursday, a bare "09:20 BST"
+  # names a time that has already passed.
+  #
+  # "Only when it is not today" was the alternative and was rejected twice
+  # over: "today" has to be reckoned in some zone, and ADR-0018 call 4 leaves
+  # both local fields nil where nobody declared hours — so that branch has no
+  # zone to reckon in. And "tomorrow" silently becomes wrong when someone
+  # reads the thread the next day, which a weekday never does.
+  #
+  # Weekday rather than a date: the acknowledge window is minutes, pushed at
+  # most to the next working day, so the reader never has to disambiguate two
+  # Fridays. If a window ever spans more than a week, this becomes ambiguous
+  # and should say so.
+  defp deadline_wall_clock(dt), do: Calendar.strftime(dt, "%a %H:%M")
 
   defp dri_phrases do
     "Reply `heard` (or `ack`) to acknowledge · `note: <what> / cause: <why>` once it's addressed."
