@@ -320,12 +320,21 @@ defmodule Slackex.Andon do
   defp maybe_capture_answer(content, message_id, sender_id, origin, ctx, thread_id) do
     with true <- is_integer(thread_id),
          {:ok, prompt} <- NotePrompt.pending(ctx.channel_id, thread_id, to_string(sender_id)) do
-      case Phrases.answer(content) do
-        {:closure_note, note, cause} ->
+      # Merged with anything an earlier attempt left behind. A half-answer used
+      # to be parsed and then thrown away, so someone who typed
+      # `cause: dogfooding` was asked for BOTH halves and retyped the cause
+      # they had just given — ADR-0019's "the prose is not carried between
+      # messages" felt three times in one afternoon.
+      {note, cause} = Phrases.halves(content)
+      note = note || prompt.partial_note
+      cause = cause || prompt.partial_cause
+
+      case {note, cause} do
+        {note, cause} when is_binary(note) and is_binary(cause) ->
           capture_note(prompt, note, cause, message_id, sender_id, origin, ctx, thread_id)
 
-        _no_cause_or_empty ->
-          maybe_prompt_for_cause(prompt, ctx, thread_id)
+        {note, cause} ->
+          keep_and_ask(prompt, note, cause, ctx, thread_id)
       end
     else
       _not_being_asked -> :not_asked
@@ -437,12 +446,37 @@ defmodule Slackex.Andon do
   # friction budget bought one question, and the reply to a failed attempt is
   # the last thing it pays for. Silence here is not a refusal: the arming is
   # still live, and a well-formed answer any time later still lands.
-  defp maybe_prompt_for_cause(prompt, ctx, thread_id) do
+  # Keeps whichever half arrived and asks for the other one BY NAME. The
+  # correction is still bounded to one per arming (`mark_prompted`) — the
+  # friction budget is one question and one correction, not a running
+  # negotiation — but the half already given is not thrown back at the person
+  # who gave it.
+  defp keep_and_ask(prompt, note, cause, ctx, thread_id) do
+    {:ok, prompt} = NotePrompt.keep(prompt, note, cause)
+
     case NotePrompt.mark_prompted(prompt) do
-      {:ok, _prompt} -> post_in_thread(ctx, thread_id, cause_prompt_text())
+      {:ok, _prompt} -> post_in_thread(ctx, thread_id, missing_half_text(note, cause))
       :none -> :ok
     end
   end
+
+  # Three shapes, because asking for what you already have is the friction
+  # this exists to remove.
+  defp missing_half_text(note, cause)
+
+  defp missing_half_text(nil, cause) when is_binary(cause) do
+    "Got the cause — `#{cause}`. What was it, in a line? " <>
+      "I keep the two apart so the retro can spot the same cause turning up twice. " <>
+      "`no note` is still a fine answer."
+  end
+
+  defp missing_half_text(note, nil) when is_binary(note) do
+    "Got it. Add the cause and I'll log the pair: `cause: <your best guess why>`. " <>
+      "That is the half nobody can reconstruct later. " <>
+      "`no note` is still a fine answer."
+  end
+
+  defp missing_half_text(_none, _neither), do: cause_prompt_text()
 
   # A note with no cause-guess is not logged as half a note. The cause is the
   # part that cannot be reconstructed weeks later, so the bot asks for it in

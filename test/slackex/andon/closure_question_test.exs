@@ -113,10 +113,24 @@ defmodule Slackex.Andon.ClosureQuestionTest do
 
     pull.id
     |> Chat.list_thread()
-    |> Enum.count(&(&1.sender_id == bot_id and &1.content =~ "I need the cause"))
+    # Counted by concept, not by one wording: a correction is any bot reply
+    # that asks for a half, which is everything mentioning `cause` except the
+    # release line that asked the question in the first place. Keying on an
+    # exact sentence meant three tests broke when the copy improved and none
+    # of them was about the copy.
+    |> Enum.count(
+      &(&1.sender_id == bot_id and &1.content =~ "cause" and not (&1.content =~ "Released"))
+    )
   end
 
   # A pull, released by its puller, with the question asked.
+  defp bot_reply_matching(thread_id, regex) do
+    bot_id = Andon.bot_user().id
+
+    Chat.list_thread(thread_id)
+    |> Enum.find(&(&1.sender_id == bot_id and Regex.match?(regex, &1.content)))
+  end
+
   defp released_pull(channel, puller, holder) do
     stub_asking_at_release(holder)
     pull = post_message(channel, puller, "pull: defect ENG-123 is red on main")
@@ -222,7 +236,7 @@ defmodule Slackex.Andon.ClosureQuestionTest do
         replies = Chat.list_thread(pull.id)
 
         assert Enum.any?(replies, fn m ->
-                 m.sender_id == bot_id and m.id > reply.id and m.content =~ "I need the cause"
+                 m.sender_id == bot_id and m.id > reply.id and m.content =~ "Add the cause"
                end)
       end)
     end
@@ -345,16 +359,74 @@ defmodule Slackex.Andon.ClosureQuestionTest do
                  )
                  |> then(& &1.content)
 
-        # It must teach a shape that actually lands. A bare `cause:` line
-        # parses as ordinary chatter against a spent arming and vanishes.
-        assert prompt =~ "note:"
+        # It must teach a shape that actually lands. It no longer asks for the
+        # note back, because the note is the half it already has — the whole
+        # point of carrying a partial answer. What it asks for is the cause.
+        assert prompt =~ "cause:"
+        refute prompt =~ "note: <"
       end)
 
-      post_reply(channel, holder, pull.id, "note: the migration again / cause: seed skips it")
+      # The cause alone completes it now; the prose from the first message is
+      # still held.
+      post_reply(channel, holder, pull.id, "cause: seed skips it")
 
       assert_receive {:andon_event_posted, %{"event" => "closure_note"} = event}, 1_000
       assert event["cause_guess"] == "seed skips it"
       assert event["pull_id"] == @pull_id
+    end
+
+    # David, 2026-08-03, after the third time in one afternoon: "I have to
+    # enter the cause: again after the one-liner, rather than just the note:".
+    #
+    # He was right, and it was worse than repetition — the cause was PARSED
+    # OUT of his message and then discarded, because the note half was empty.
+    # ADR-0019 recorded that cost ("the prose is still not carried between
+    # messages, which is why the prompt asks for both halves rather than the
+    # missing one"); this is its revisit condition firing.
+    test "a cause given alone is kept, and only the missing half is asked for", %{
+      channel: channel,
+      puller: puller,
+      holder: holder
+    } do
+      pull = released_pull(channel, puller, holder)
+
+      post_reply(channel, holder, pull.id, "cause: dogfooding")
+      refute_receive {:andon_event_posted, %{"event" => "closure_note"}}, 300
+
+      eventually(fn ->
+        assert prompt = bot_reply_matching(pull.id, ~r/Got the cause/)
+
+        # It has to show what it kept, or "got the cause" is a claim the
+        # person cannot check.
+        assert prompt.content =~ "dogfooding"
+
+        # And it must not ask for the half it already has.
+        refute prompt.content =~ "cause: <"
+      end)
+
+      # The note alone now completes it — no cause retyped.
+      post_reply(channel, holder, pull.id, "fixed")
+
+      assert_receive {:andon_event_posted, %{"event" => "closure_note"} = event}, 1_000
+      assert event["note"] == "fixed"
+      assert event["cause_guess"] == "dogfooding"
+    end
+
+    test "the halves may arrive in either order", %{
+      channel: channel,
+      puller: puller,
+      holder: holder
+    } do
+      pull = released_pull(channel, puller, holder)
+
+      post_reply(channel, holder, pull.id, "the migration again")
+      eventually(fn -> assert bot_reply_matching(pull.id, ~r/Add the cause/) end)
+
+      post_reply(channel, holder, pull.id, "cause: seed skips it")
+
+      assert_receive {:andon_event_posted, %{"event" => "closure_note"} = event}, 1_000
+      assert event["note"] == "the migration again"
+      assert event["cause_guess"] == "seed skips it"
     end
 
     test "a reply from someone who was not asked stays ordinary chatter", %{

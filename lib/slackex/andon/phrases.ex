@@ -184,6 +184,24 @@ defmodule Slackex.Andon.Phrases do
   end
 
   @doc """
+  The two halves of an answer, either of which may be missing.
+
+  `answer/1` collapses anything without both halves to a single intent, and a
+  message carrying ONLY a cause collapses all the way to `:none` — the cause
+  is parsed and then discarded. That is what made someone who typed
+  `cause: dogfooding` retype it a moment later as part of a pair.
+
+  This returns what was actually found, so the caller can keep the half it
+  has and ask only for the one it does not.
+  """
+  @spec halves(String.t()) :: {String.t() | nil, String.t() | nil}
+  def halves(text) when is_binary(text) do
+    {note, cause} = split_cause(text)
+
+    {blank_to_nil(trim_note(note)), blank_to_nil(cause)}
+  end
+
+  @doc """
   Splits a plain-prose answer to the question asked at release (ENG-60) the
   same way a `note:` message is split.
 
@@ -215,6 +233,17 @@ defmodule Slackex.Andon.Phrases do
   # Only separators go, never words: "fixed the root cause: db not reset"
   # still keeps "root".
   defp trim_note(note), do: note |> String.trim() |> String.replace(@note_tail, "")
+
+  # `halves/1` reports a missing half as nil rather than "", so the caller can
+  # tell "they did not say" from "they said nothing".
+  defp blank_to_nil(nil), do: nil
+
+  defp blank_to_nil(text) do
+    case String.trim(text) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
 
   # Strip the (case-insensitive) 5-byte "note:" prefix, keeping the note text
   # verbatim — only called when the trimmed message starts with the prefix.

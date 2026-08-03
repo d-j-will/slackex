@@ -44,6 +44,8 @@ defmodule Slackex.Andon.NotePrompt do
     field :holder_token, :string
     field :spent_at, :utc_datetime_usec
     field :prompted_at, :utc_datetime_usec
+    field :partial_note, :string
+    field :partial_cause, :string
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -68,6 +70,27 @@ defmodule Slackex.Andon.NotePrompt do
     |> Repo.insert(on_conflict: :nothing, conflict_target: :pull_id)
 
     :ok
+  end
+
+  @doc """
+  Keeps the half of an answer that did arrive, so the next message only has
+  to carry the other one.
+
+  Merges rather than overwrites: someone who gives the cause, is asked what
+  it was, and then answers with prose has supplied both halves across two
+  messages, and neither should be lost because they arrived separately.
+  """
+  @spec keep(t(), String.t() | nil, String.t() | nil) :: {:ok, t()}
+  def keep(%__MODULE__{} = prompt, note, cause) do
+    prompt
+    |> cast(
+      %{
+        partial_note: note || prompt.partial_note,
+        partial_cause: cause || prompt.partial_cause
+      },
+      [:partial_note, :partial_cause]
+    )
+    |> Repo.update()
   end
 
   @doc """
