@@ -1,0 +1,54 @@
+# ENG-76: the dependency audit reads a MOVING upstream feed, so master can go
+# red with nobody having committed anything. On 2026-08-02 four Guardian
+# advisories were published between one CI run and the next, and the next
+# person to push inherited a red build that looked like theirs.
+#
+# Running it on a schedule separates "your change is broken" from "the world
+# changed" — which is the actual confusion. The audit stays in the Quality job
+# too: this does not replace that gate, it just means the finding usually
+# arrives here first, addressed to nobody in particular.
+#
+# Deliberately NOT added to scripts/pre-commit (option 1 on the card): that
+# would put a network call on every commit and break committing offline, for a
+# feed that changes on upstream's clock rather than yours.
+name: Dependency audit
+
+on:
+  schedule:
+    # 07:00 UTC daily — before the working day, so a new advisory is waiting
+    # rather than interrupting.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: Hex audit
+    runs-on: ubuntu-latest
+
+    env:
+      MIX_ENV: dev
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Elixir
+        id: setup
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.20.1"
+          otp-version: "28.5"
+
+      - name: Cache deps
+        uses: actions/cache@v5
+        with:
+          path: deps
+          key: deps-${{ runner.os }}-${{ hashFiles('mix.lock') }}
+          restore-keys: deps-${{ runner.os }}-
+
+      - name: Fetch deps
+        run: mix deps.get
+
+      # The same gate the Quality job runs, against the same allowlist — one
+      # definition, so a finding here is a finding there.
+      - name: Hex audit
+        run: mix slackex.hex_audit_gate
