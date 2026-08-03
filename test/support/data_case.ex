@@ -107,8 +107,8 @@ defmodule Slackex.DataCase do
       # To fix this without polluting production code, we provide a temporary dummy
       # Sandbox connection for the teardown flush. Because the test transaction has
       # rolled back, the flush will safely fail with :target_deleted and cleanly exit.
-      dummy_repo = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.Repo, shared: false)
-      dummy_read = Ecto.Adapters.SQL.Sandbox.start_owner!(Slackex.ReadRepo, shared: false)
+      dummy_repo = start_dummy_owner(Slackex.Repo)
+      dummy_read = start_dummy_owner(Slackex.ReadRepo)
 
       for pid <- pids, Process.alive?(pid) do
         ref = Process.monitor(pid)
@@ -117,8 +117,8 @@ defmodule Slackex.DataCase do
           try do
             # allow/3 returns :ok | {:already, :owner | :allowed}; we don't care
             # which — bind to _ so :unmatched_returns (a dialyzer flag) stays quiet.
-            _ = Ecto.Adapters.SQL.Sandbox.allow(Slackex.Repo, dummy_repo, pid)
-            _ = Ecto.Adapters.SQL.Sandbox.allow(Slackex.ReadRepo, dummy_read, pid)
+            _ = allow_sweep(Slackex.Repo, dummy_repo, pid)
+            _ = allow_sweep(Slackex.ReadRepo, dummy_read, pid)
             Horde.DynamicSupervisor.terminate_child(Slackex.Messaging.ChannelSupervisor, pid)
           catch
             :exit, _ -> :ok
@@ -131,14 +131,59 @@ defmodule Slackex.DataCase do
         end
       end
 
-      Ecto.Adapters.SQL.Sandbox.stop_owner(dummy_repo)
-      Ecto.Adapters.SQL.Sandbox.stop_owner(dummy_read)
+      stop_dummy_owner(dummy_repo)
+      stop_dummy_owner(dummy_read)
 
       if sweeps_left > 1, do: shutdown_channel_servers(sweeps_left - 1)
     end
 
     :ok
   end
+
+  @doc false
+  # `start_owner!/2` raises when the calling process can ALREADY reach the
+  # database: `{:already, :owner}` if it checked out itself, `{:already,
+  # :allowed}` if something allowed it. Probed rather than assumed —
+  # `Sandbox.allow(Repo, owner, self())` then `start_owner!` reproduces the
+  # exact `{:badmatch, {:already, :allowed}}` this teardown used to die on.
+  #
+  # THIS IS WHAT MADE THE TEARDOWN FLAKY. The call was unconditional, so any
+  # run where the on_exit runner already had access blew up the whole
+  # teardown — and because it sits behind the `pids != []` guard it only
+  # fired when a ChannelServer survived long enough to be swept. That is
+  # roughly once per few full-suite runs, landing on whichever test happened
+  # to be finishing, which is why it read as unrelated flakiness. With
+  # `--max-failures 1` in scripts/pre-commit it refuses the commit.
+  #
+  # What is NOT established: exactly which caller leaves the runner allowed.
+  # ExUnit reuses on_exit runner processes, so an allowance can outlive the
+  # test that granted it, but I did not pin the chain down and am not going
+  # to claim I did. The fix does not depend on knowing: every `{:already, _}`
+  # means "you already have the thing you were asking for", and the sweep
+  # only ever needed *a* live connection to flush through.
+  def start_dummy_owner(repo) do
+    {:ok, Ecto.Adapters.SQL.Sandbox.start_owner!(repo, shared: false)}
+  rescue
+    e in MatchError ->
+      case e.term do
+        {:error, {{:badmatch, {:already, _how}}, _stack}} -> :already_connected
+        _other -> reraise(e, __STACKTRACE__)
+      end
+  end
+
+  # With a dummy owner, allow from it. Without one, we are already connected,
+  # so offer the sweep our own access instead — worst case it declines and the
+  # flush takes the benign :target_deleted path described above.
+  defp allow_sweep(repo, {:ok, owner}, pid),
+    do: Ecto.Adapters.SQL.Sandbox.allow(repo, owner, pid)
+
+  defp allow_sweep(repo, :already_connected, pid),
+    do: Ecto.Adapters.SQL.Sandbox.allow(repo, self(), pid)
+
+  # Only stop what we actually started; the connection we merely borrowed
+  # belongs to the test owner and is stopped at the end of on_exit.
+  defp stop_dummy_owner({:ok, owner}), do: Ecto.Adapters.SQL.Sandbox.stop_owner(owner)
+  defp stop_dummy_owner(:already_connected), do: :ok
 
   defp active_channel_servers do
     registered =
