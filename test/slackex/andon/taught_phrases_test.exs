@@ -134,7 +134,17 @@ defmodule Slackex.Andon.TaughtPhrasesTest do
 
   describe "the ratchet" do
     test "every phrase-shaped token in the bot's copy is classified here" do
-      source = File.read!(Path.join(File.cwd!(), "lib/slackex/andon.ex"))
+      # Comments are stripped first. A comment ABOUT a phrase — quoting a field
+      # report, naming a sibling command — is not copy anyone reads in Slack,
+      # and tripping on one teaches people to widen the allowlist to shut the
+      # ratchet up, which is how a ratchet stops ratcheting. Copy lives in
+      # string literals; discussion lives in comments.
+      source =
+        Path.join(File.cwd!(), "lib/slackex/andon.ex")
+        |> File.read!()
+        |> String.split("\n")
+        |> Enum.reject(&Regex.match?(~r/^\s*#/, &1))
+        |> Enum.join("\n")
 
       unclassified =
         ~r/`([^`]+)`/

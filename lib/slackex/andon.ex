@@ -1030,9 +1030,25 @@ defmodule Slackex.Andon do
   # corrections; an unknown first word is now a valid bare pull). The register
   # matters: this answers someone reaching for help, so it asks for the one
   # missing thing and demands nothing else — the class can wait.
+  # ENG-78. This used to name the four class words — "a class word first
+  # (defect, delay, burden, confusion) helps, but it can wait" — and in the
+  # field someone read that, replied `defect dogfooding`, and got silence. The
+  # reply was a fair reading of the instruction: the correction listed the
+  # words and then had no way to accept one, because no pull exists yet for a
+  # class to attach to.
+  #
+  # So the classes are gone from here. They are not lost — the class question
+  # (ADR-0016) asks for exactly this the moment a pull lands, which is the
+  # first point at which an answer can be taken, and `andon help` still
+  # teaches the full vocabulary. A correction whose only job is to get a pull
+  # created should teach that one thing and prime nothing else.
+  #
+  # Shows rather than describes: the example is a complete message someone can
+  # copy, which is the shortest path from "that did not work" to a pull.
   defp correction_text do
-    "Nearly — tell me what's in your way in one sentence: `pull: <one sentence>`. " <>
-      "A class word first (#{Enum.join(Grammar.classes(), ", ")}) helps, but it can wait."
+    "Nearly — a pull is the keyword and a sentence in one message. " <>
+      "Put `pull:` at the front and say what's in your way — " <>
+      "`pull: I'm a bit stuck here` is plenty."
   end
 
   defp help_text do

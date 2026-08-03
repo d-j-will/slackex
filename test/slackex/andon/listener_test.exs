@@ -158,6 +158,37 @@ defmodule Slackex.Andon.ListenerTest do
         assert reply.sender_id == Andon.bot_user().id
       end)
     end
+
+    # ENG-78. Production, 2026-08-03 00:22: a bare `pull:` earned this
+    # correction, the reply was `defect dogfooding`, and nothing happened —
+    # no event, no reply, no correction. That reply was a fair reading of the
+    # instruction, because the correction NAMED the four class words and so
+    # primed exactly the message it then dropped.
+    #
+    # The class question (ADR-0016) exists to collect the class after a pull
+    # lands, and says outright that it can wait. Listing the classes in a
+    # correction whose only job is to get a pull created is therefore both
+    # redundant and the cause of the silence.
+    test "the correction does not name the class words it cannot yet accept", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull:")
+
+      refute_receive {:andon_event_posted, _}, 300
+
+      eventually(fn ->
+        assert [reply] = Chat.list_thread(message.id)
+
+        for class <- Grammar.classes() do
+          refute reply.content =~ class,
+                 "the correction names `#{class}`, which primes a reply it will drop (ENG-78)"
+        end
+
+        # It still has to teach the thing that IS needed.
+        assert reply.content =~ "pull:"
+      end)
+    end
   end
 
   describe "the bare cord (ENG-45)" do
