@@ -297,7 +297,7 @@ defmodule Slackex.Andon do
   # that cannot be got back.
   defp unparsed_reply(content, message_id, sender_id, origin, ctx, thread_id) do
     case maybe_capture_answer(content, message_id, sender_id, origin, ctx, thread_id) do
-      :not_asked -> maybe_correct_class_attempt(content, ctx, thread_id)
+      :not_asked -> maybe_correct_attempt(content, ctx, thread_id)
       :ok -> :ok
     end
   end
@@ -348,12 +348,42 @@ defmodule Slackex.Andon do
   # Stateless, so a second malformed attempt earns a second correction. That is
   # not the class question repeating itself — nothing reminds anyone unprompted
   # (ADR-0016's friction budget) — it is each attempt getting an answer.
-  defp maybe_correct_class_attempt(content, ctx, thread_id) do
-    if Phrases.class_attempt?(content) and awaiting_class?(ctx.channel_id, thread_id) do
-      post_in_thread(ctx, thread_id, class_correction_text())
-    else
-      :ok
+  defp maybe_correct_attempt(content, ctx, thread_id) do
+    cond do
+      Phrases.class_attempt?(content) and awaiting_class?(ctx.channel_id, thread_id) ->
+        post_in_thread(ctx, thread_id, class_correction_text())
+
+      Phrases.release_attempt?(content) and awaiting_release?(ctx.channel_id, thread_id) ->
+        post_in_thread(ctx, thread_id, release_correction_text())
+
+      true ->
+        :ok
     end
+  end
+
+  # A hold this thread could actually clear (ENG-81). Only `active_holds` —
+  # deliberately narrower than the class guard, which also scans
+  # `unbound_pulls`: an unbound pull has nothing to release, so a correction
+  # there would teach a word that would not have worked either.
+  defp awaiting_release?(channel_id, thread_id) do
+    thread = to_string(thread_id)
+
+    channel_id
+    |> mirror_for_channel()
+    |> Map.values()
+    |> Enum.flat_map(&List.wrap(&1["active_holds"]))
+    |> Enum.any?(&(&1["thread"] == thread))
+  end
+
+  # Says what is still true, not only what went wrong. The failure this
+  # answers is invisible from the inside — someone typed a release and walked
+  # away — so naming the open hold is the whole job of the sentence. No
+  # pressure to release: `restart-criteria` exists to make that structurally
+  # impossible, and the line states a fact rather than asking for anything.
+  defp release_correction_text do
+    "Almost — `resolved` has to be the message on its own, so that one went by as " <>
+      "ordinary thread talk. The hold is still open. Reply with just `resolved` when " <>
+      "what you flagged is contained."
   end
 
   # An open pull in this thread that no fact has named a class for yet. Both

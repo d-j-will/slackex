@@ -20,6 +20,11 @@ defmodule Slackex.Andon.ListenerTest do
   # make every negative case pass for the wrong reason.
   @correction_marker ~r/on its own/i
 
+  # ENG-81's correction names the consequence, which is the point of it: the
+  # failure it answers is invisible, so the sentence has to say what is still
+  # true rather than only what went wrong.
+  @release_marker ~r/hold is still open/i
+
   setup do
     user = insert(:user, username: "puller-anna")
     channel = insert(:channel, creator: user, is_private: false)
@@ -397,6 +402,101 @@ defmodule Slackex.Andon.ListenerTest do
       # message was handled to completion, and the correction would have been
       # written in the same pass.
       refute bot_reply_matching(message.id, @correction_marker)
+    end
+  end
+
+  describe "a release with one extra word (ENG-81)" do
+    # ENG-72 fixed exactly one phrase family of four. `resolved` is the one
+    # where the cost of the silence is not a missing record but an OPEN HOLD:
+    # it is taught on every bound pull, and someone typing it with one natural
+    # extra word walks away believing they released something they did not.
+    #
+    # The guard is narrower than the class question's on purpose — only
+    # `active_holds`, never `unbound_pulls`, because an unbound pull cannot be
+    # released at all (`witness_close` wants a bound pull).
+
+    test "the sharp case: `resolved now` earns a correction and releases nothing", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: ENG-9 the build is red")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, active_hold(message.id, "defect"))
+
+      post_reply(channel, user, message.id, "resolved now")
+
+      refute_receive {:andon_event_posted, _}, 300
+
+      eventually(fn ->
+        correction = bot_reply_matching(message.id, @release_marker)
+
+        assert correction,
+               "expected a correction, got: #{inspect(bot_replies(message.id))}"
+
+        # It has to teach the exact word, not just report the failure.
+        assert correction.content =~ "resolved"
+      end)
+    end
+
+    test "a thread with no open hold earns no correction", %{channel: channel, user: user} do
+      message = post_message(channel, user, "pull: ENG-9 the build is red")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      # A hold, but somebody else's thread.
+      mirror(channel, active_hold(message.id + 9_999, "defect"))
+
+      post_reply(channel, user, message.id, "resolved now")
+
+      refute_correction_after(channel, user, message.id, @release_marker)
+    end
+
+    # The discriminating case against reusing the class guard wholesale: an
+    # unbound pull is open and classless, so `awaiting_class?` would say yes —
+    # but there is nothing to release, so no release correction is owed.
+    test "an unbound pull is not releasable, so no release correction is owed", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: I'm a bit stuck here")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, unbound_pull(message.id, nil))
+
+      post_reply(channel, user, message.id, "resolved now")
+
+      refute_correction_after(channel, user, message.id, @release_marker)
+    end
+
+    test "a message that merely mentions resolving earns no correction", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: ENG-9 the build is red")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, active_hold(message.id, "defect"))
+
+      post_reply(channel, user, message.id, "we resolved that one yesterday")
+
+      refute_correction_after(channel, user, message.id, @release_marker)
+    end
+
+    test "a bare `resolved` still releases — the whole-message rule is untouched", %{
+      channel: channel,
+      user: user
+    } do
+      message = post_message(channel, user, "pull: ENG-9 the build is red")
+      assert_receive {:andon_event_posted, %{"event" => "pull_created"}}, 1_000
+
+      mirror(channel, active_hold(message.id, "defect"))
+
+      post_reply(channel, user, message.id, "resolved")
+
+      assert_receive {:andon_event_posted, event}, 1_000
+      assert event["event"] == "witness_close"
+
+      refute bot_reply_matching(message.id, @release_marker)
     end
   end
 

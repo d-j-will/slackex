@@ -171,18 +171,26 @@ defmodule Slackex.Andon.TaughtPhrasesTest do
 
   # ## Coverage, stated rather than implied
   #
-  # | Typed as…                    | Covered here | Behaviour today            |
-  # |------------------------------|--------------|----------------------------|
-  # | the taught phrase exactly    | yes          | parses                     |
-  # | phone-capitalised            | yes          | parses (ADR-0014)          |
-  # | the taught `note:` composite | yes          | both halves clean (ENG-75) |
-  # | keyword alone / no space     | yes          | correction, not silence    |
-  # | a class word + a stray word  | **no**       | correction (ENG-72)        |
-  # | any OTHER taught phrase      | **no**       | **silence** — see ENG-81   |
-  #   + a stray word
+  # | Typed as…                     | Covered here | Behaviour today            |
+  # |-------------------------------|--------------|----------------------------|
+  # | the taught phrase exactly     | yes          | parses                     |
+  # | phone-capitalised             | yes          | parses (ADR-0014)          |
+  # | the taught `note:` composite  | yes          | both halves clean (ENG-75) |
+  # | keyword alone / no space      | yes          | correction, not silence    |
+  # | class word + a stray word     | **no**       | correction (ENG-72)        |
+  # | `resolved` + a stray word     | **no**       | correction (ENG-81)        |
+  # | ack family + a stray word     | **no**       | **silence**                |
+  # | `no note` / `withdraw` + one  | **no**       | **silence**                |
   #
-  # The last row is why this file exists and is the reason not to read a green
-  # run as "the class is closed". `resolved now`, `ack will do`, `heard you`
-  # and `no note thanks` all parse to `:none` today. ENG-72 fixed exactly one
-  # of the four phrase families; the other three were never looked at.
+  # The bottom two rows are why this file exists and are the reason not to read
+  # a green run as "the class is closed". `ack will do`, `heard you`,
+  # `no note thanks` and `withdraw this` all parse to `:none` today.
+  #
+  # Two of four families now earn a correction. The remaining two were left
+  # deliberately rather than missed: `ack` and `heard` are ordinary English, so
+  # a correction on every near-miss carries a false-positive rate the class and
+  # release words do not — and the stakes are asymmetric. A missed release
+  # leaves a hold open and invisible; a missed ack lets a clock run to a signal
+  # designed to fire. Worth measuring the release correction in the field
+  # before deciding whether to build two more guards.
 end

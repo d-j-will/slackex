@@ -62,6 +62,11 @@ defmodule Slackex.Andon.Phrases do
   # there are five of them and why the list is slackex's to choose.
   @ack_phrases ["ack", "heard", "seen", "on it", "engage"]
 
+  # The witness's release. One word, kept as a list so `release_attempt?/1`
+  # reads the same as its class sibling and a second spelling would not need
+  # new machinery.
+  @release_phrases ["resolved"]
+
   # The class question's answer key (ENG-45). These are the taxonomy's own
   # words rather than slackex-chosen synonyms because the bot's question
   # teaches them in the same message — nobody is expected to know them cold.
@@ -138,7 +143,33 @@ defmodule Slackex.Andon.Phrases do
   """
   @spec class_attempt?(String.t()) :: boolean()
   def class_attempt?(text) when is_binary(text) do
-    parse(text) == :none and first_word(text) in @class_words
+    attempt?(text, @class_words)
+  end
+
+  @doc """
+  Whether a message reads as an attempt at releasing that the whole-message
+  rule then refused (ENG-81).
+
+  The same predicate as `class_attempt?/1`, on the phrase family where the
+  cost of silence is different in kind. A dropped class answer loses a label;
+  a dropped `resolved` leaves a **hold open** while the person who typed it
+  believes it is cleared — and `resolved` is taught on every bound pull, so
+  this is the most-typed phrase in the vocabulary.
+
+  ENG-72 fixed the class family and nothing else, because it was filed from
+  one field observation and scoped to it. Measuring the other three while
+  building the taught-phrase ratchet is what turned this up: `resolved now`,
+  `ack will do`, `heard you` and `no note thanks` all parsed to `:none`.
+  """
+  @spec release_attempt?(String.t()) :: boolean()
+  def release_attempt?(text) when is_binary(text) do
+    attempt?(text, @release_phrases)
+  end
+
+  # Message-start only, and only where the phrase did not already parse — a
+  # bare `resolved` is an act, not an attempt at one.
+  defp attempt?(text, words) do
+    parse(text) == :none and first_word(text) in words
   end
 
   defp first_word(text) do
