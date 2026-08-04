@@ -120,6 +120,28 @@ defmodule Slackex.Docs.ArchitectureDocsContractTest do
       assert resize =~ ~r/ef_construction\s*=\s*64/, "doc claims ef_construction=64"
       assert resize =~ "vector_cosine_ops", "doc claims cosine ops"
     end
+
+    # The opclass and the operator are one contract with two ends, and until
+    # now every test asserted only the index end. `vector_cosine_ops` is usable
+    # by `<=>` and by nothing else: change the query to `<->` or `<#>` and the
+    # index is silently skipped -- answers stay correct, the scan goes linear,
+    # and no test anywhere notices. Joining the two ends is the only cheap
+    # guard, and it belongs here rather than in a new test because pinning
+    # source text is already this file's declared trade-off.
+    test "the semantic query's distance operator matches the index opclass" do
+      resize = source("priv/repo/migrations/20260304000000_resize_embeddings_to_384.exs")
+      search = source("lib/slackex/search/message_search.ex")
+
+      assert resize =~ "vector_cosine_ops",
+             "index opclass changed; the operator assertion below no longer describes the pair"
+
+      assert search =~ "<=>",
+             "message_search.ex must use <=>, the only operator vector_cosine_ops can serve"
+
+      refute search =~ ~r/<->|<#>/,
+             "message_search.ex uses an L2 or inner-product operator that idx_embeddings_hnsw " <>
+               "(vector_cosine_ops) cannot serve — the index will be silently skipped"
+    end
   end
 
   # --- Write-path: epoch fencing (system-landscape.md §4, message-pipeline-and-persistence.md) ---

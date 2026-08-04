@@ -94,10 +94,10 @@ defmodule Slackex.Embeddings.ConfigurationWiringTest do
   # ---------------------------------------------------------------------------
 
   describe "embedding_client configuration" do
-    test "in test environment, :embedding_client resolves to StubClient" do
-      client = Application.get_env(:slackex, :embedding_client)
-      assert client == StubClient
-    end
+    # A test asserting that :embedding_client resolves to StubClient in the test
+    # environment lived here. config/test.exs:77 sets exactly that, so it read
+    # a value back from the file that had just set it. The behaviour-conformance
+    # tests below are the ones with something to say.
 
     test "StubClient implements the EmbeddingClient behaviour" do
       behaviours =

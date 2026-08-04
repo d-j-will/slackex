@@ -108,44 +108,20 @@ defmodule Slackex.Search.MessageSearchTest do
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # Acceptance: headline with <mark> tags around matching terms
-  # ---------------------------------------------------------------------------
-
-  describe "text_search/3 - headline snippets" do
-    test "returns headline with <mark> tags around matching terms" do
-      user = insert(:user)
-      channel = create_public_channel(user)
-
-      _msg = send_channel_message(channel, user, "elixir is a functional programming language")
-
-      assert {:ok, [result]} = MessageSearch.text_search(user.id, "functional programming")
-
-      assert result.headline != nil
-      assert result.headline =~ "<mark>"
-      assert result.headline =~ "</mark>"
-      assert result.headline =~ "functional"
-      assert result.headline =~ "programming"
-    end
-
-    test "ts_headline produces a non-nil headline via coalesce when search_content is populated" do
-      user = insert(:user)
-      channel = create_public_channel(user)
-
-      # Insert via factory (bypasses the messaging pipeline that populates
-      # search_content), then manually set search_content so FTS matches.
-      msg = insert(:message, channel: channel, sender: user, content: "findable keyword match")
-
-      import Ecto.Query
-
-      {1, _} =
-        from(m in Slackex.Chat.Message, where: m.id == ^msg.id)
-        |> Slackex.Repo.update_all(set: [search_content: "findable keyword match"])
-
-      assert {:ok, [result]} = MessageSearch.text_search(user.id, "findable keyword")
-      assert result.headline != nil
-    end
-  end
+  # Two headline tests lived here, and both are covered at the boundary by
+  # SlackexWeb.ChatLive.SearchComponentTest, which searches as a person does
+  # and reads the rendered markup.
+  #
+  # The first asserted that Postgres's ts_headline emits <mark> -- the text
+  # twin of the semantic one removed further down, and the same non-fact: no
+  # Elixir change alters it.
+  #
+  # The second asserted only that a headline was non-nil, and did it by
+  # inserting through the factory and then hand-writing `search_content` with
+  # `update_all` -- a field the messaging pipeline populates in production. Its
+  # own comment admitted the bypass. A fixture that writes a field no
+  # application path writes is how a broken feature hides behind a green test,
+  # so the honesty problem alone condemned it.
 
   # ---------------------------------------------------------------------------
   # Acceptance: empty results
@@ -165,28 +141,18 @@ defmodule Slackex.Search.MessageSearchTest do
   # Acceptance: GIN index usage
   # ---------------------------------------------------------------------------
 
-  describe "text_search/3 - GIN index usage" do
-    test "EXPLAIN ANALYZE shows Bitmap Index Scan on GIN index, no Seq Scan on messages" do
-      user = insert(:user)
-      channel = create_public_channel(user)
-
-      # Seed 100+ messages so the planner prefers the index
-      for i <- 1..110 do
-        send_channel_message(channel, user, "searchable content number #{i} with keywords")
-      end
-
-      assert {:ok, explain_output} =
-               MessageSearch.explain_text_search(user.id, "searchable keywords")
-
-      explain_text = Enum.join(explain_output, "\n")
-
-      assert explain_text =~ "Bitmap Index Scan" or explain_text =~ "Index Scan",
-             "Expected index scan in EXPLAIN output but got:\n#{explain_text}"
-
-      refute explain_text =~ ~r/Seq Scan on messages/,
-             "Expected no Seq Scan on messages but got:\n#{explain_text}"
-    end
-  end
+  # A GIN index-usage test lived here, the twin of the HNSW one removed below.
+  # It seeded 110 messages "so the planner prefers the index", but
+  # `explain_text_search/3` sets `enable_seqscan = off` first -- and that
+  # module's own comment at the call site says "only called from tests;
+  # production queries let the planner decide". So it forced a plan, asserted
+  # the plan it had forced, and its `refute Seq Scan` was satisfied by the
+  # setting rather than by the index.
+  #
+  # Both `explain_text_search/3` and `explain_semantic_search/3` are now
+  # without callers. They are left in lib/ as iex diagnostics; note that their
+  # `SET LOCAL` is a no-op outside a transaction, so they report a forced plan
+  # rather than the one production takes.
 
   # ===========================================================================
   # SEMANTIC SEARCH

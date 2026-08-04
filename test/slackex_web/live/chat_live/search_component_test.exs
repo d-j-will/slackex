@@ -354,29 +354,18 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   # Acceptance: scroll_to_message JS hook and CSS highlight-flash
   # ---------------------------------------------------------------------------
 
-  describe "scroll_to_message JS hook and CSS" do
-    @js_hook_path Path.expand("../../../../assets/js/hooks/message_list.js", __DIR__)
-    @css_path Path.expand("../../../../assets/css/app.css", __DIR__)
-
-    test "MessageList hook registers handleEvent for scroll_to_message" do
-      js_content = File.read!(@js_hook_path)
-
-      assert js_content =~ "handleEvent"
-      assert js_content =~ "scroll_to_message"
-      assert js_content =~ "scrollIntoView"
-      assert js_content =~ "requestAnimationFrame"
-      assert js_content =~ "highlight-flash"
-    end
-
-    test "CSS defines highlight-flash keyframes and class" do
-      css_content = File.read!(@css_path)
-
-      assert css_content =~ "@keyframes highlight-flash"
-      assert css_content =~ ".highlight-flash"
-      assert css_content =~ "animation:"
-      assert css_content =~ "--color-warning"
-    end
-  end
+  # Two tests here read assets/js/hooks/message_list.js and assets/css/app.css
+  # and grepped them for "scrollIntoView", "requestAnimationFrame",
+  # "@keyframes highlight-flash", "--color-warning". Renaming a CSS custom
+  # property broke them; deleting the hook's body did not. They asserted
+  # spelling.
+  #
+  # Our half of that contract -- that the server pushes "scroll_to_message"
+  # with the right DOM id -- is already tested properly, three times over, in
+  # index_test.exs (:493, :507, :530) via assert_push_event. The browser half
+  # cannot be exercised from ExUnit at all, so the choice was never between a
+  # weak test and a strong one; it was between a weak test and honesty about
+  # where the boundary of this suite lies.
 
   # ---------------------------------------------------------------------------
   # D5: Integration test -- parent-component search contract
