@@ -2,6 +2,7 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
   use SlackexWeb.ConnCase, async: false
 
   alias Slackex.Chat
+  alias Slackex.Embeddings.EmbeddingWorker
   alias SlackexWeb.ChatLive.SearchComponent
 
   setup %{conn: conn} do
@@ -289,6 +290,63 @@ defmodule SlackexWeb.ChatLive.SearchComponentTest do
       # <script> tags must be escaped, not rendered as HTML
       refute html =~ "<script>"
       assert html =~ "&lt;script&gt;"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Acceptance: highlighted snippets survive on the "Meaning" (semantic) path
+  # ---------------------------------------------------------------------------
+
+  describe "semantic mode results" do
+    setup %{user: user, channel: channel} do
+      FunWithFlags.enable(:message_search)
+
+      {:ok, msg} =
+        Chat.send_message(channel.id, user.id, "elixir is a functional programming language")
+
+      Process.sleep(50)
+
+      # Embed through the production path -- the same worker PersistenceListener
+      # enqueues when messages persist. Oban is :inline in test, so it runs here.
+      {:ok, _jobs} = EmbeddingWorker.enqueue([msg.id])
+
+      %{msg: msg}
+    end
+
+    # Replaces a MessageSearch unit test that asserted ts_headline emits <mark>
+    # (ENG-85). The database's highlighting is Postgres's business; what is ours
+    # is that the semantic query asks for a headline at all, and that a searcher
+    # switching to "Meaning" still sees their terms picked out. This asserts the
+    # second, which is the only one a person can observe.
+    #
+    # Note on what is deliberately NOT asserted: that the *right* message came
+    # back. StubClient seeds from phash2, so every text scores ~0.74 against
+    # every other -- above the 0.3 threshold. Relevance cannot be tested through
+    # the stub, and a test implying otherwise would be theatre.
+    test "switching to Meaning keeps the matching terms highlighted",
+         %{conn: conn, channel: channel} do
+      {:ok, view, _html} = live(conn, ~p"/chat/#{channel.slug}")
+
+      render_click(view, "toggle_search")
+
+      view
+      |> element("#search-component form")
+      |> render_change(%{"query" => "functional programming"})
+
+      Process.sleep(100)
+
+      view
+      |> element(~s(#search-component button[phx-value-mode="semantic"]))
+      |> render_click()
+
+      Process.sleep(100)
+      html = render(view)
+
+      # "elixir" is in the message but NOT in the query, so it can only come
+      # from a rendered result -- the search box echoes the query back, which
+      # would otherwise make an assertion on the query's own words vacuous.
+      assert html =~ "elixir"
+      assert html =~ "<mark>"
     end
   end
 
