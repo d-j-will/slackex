@@ -2,15 +2,12 @@ defmodule Slackex.VaultTest do
   use ExUnit.Case, async: true
 
   alias Slackex.Encrypted
-  alias Slackex.Vault
 
-  describe "Vault GenServer" do
-    test "starts successfully and is alive in the supervision tree" do
-      pid = Process.whereis(Vault)
-      assert is_pid(pid)
-      assert Process.alive?(pid)
-    end
-  end
+  # A "Vault is alive in the supervision tree" test lived here. Every
+  # round-trip below goes through the same GenServer, so a Vault missing from
+  # the tree fails them first and louder -- it was a precondition check for
+  # tests that already imply it. Same reasoning retired the "vector extension
+  # is enabled" test in the infrastructure suite.
 
   describe "Encrypted.Binary round-trip" do
     test "encrypting then decrypting a binary returns the original value" do

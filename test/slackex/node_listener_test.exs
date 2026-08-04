@@ -5,16 +5,13 @@ defmodule Slackex.NodeListenerTest do
 
   alias Slackex.NodeListener
 
-  describe "start_link/1" do
-    test "starts and registers under its module name" do
-      # NodeListener is already started in the app supervision tree if the app is running.
-      # Start a fresh instance under a different name for isolated testing.
-      {:ok, pid} = GenServer.start_link(NodeListener, [])
-      assert is_pid(pid)
-      assert Process.alive?(pid)
-      GenServer.stop(pid)
-    end
-  end
+  # A "starts and registers under its module name" test lived here. It called
+  # GenServer.start_link/2 and asserted the returned pid was alive -- which is
+  # what start_link/2 returning {:ok, pid} already means, so it asserted OTP.
+  # The name was also a promise the body never kept: it started the process
+  # unnamed and never checked any registration. The handle_info tests below do
+  # exercise our clauses, and a missing one would crash the process, so the
+  # liveness assertions there are load-bearing in a way this one was not.
 
   describe "handle_info/2" do
     setup do

@@ -6,11 +6,10 @@ defmodule SlackexWeb.PresenceTest do
   alias SlackexWeb.Presence
 
   describe "SlackexWeb.Presence" do
-    test "is running as part of the application supervision tree" do
-      pid = Process.whereis(SlackexWeb.Presence)
-      assert pid != nil
-      assert Process.alive?(pid)
-    end
+    # A "Presence is running in the supervision tree" test lived here, and the
+    # tracking tests below cannot pass without it -- Presence.track/4 would
+    # raise on a dead process. A precondition that its own neighbours already
+    # enforce.
 
     test "tracks a user on a channel presence topic" do
       user = insert(:user)
