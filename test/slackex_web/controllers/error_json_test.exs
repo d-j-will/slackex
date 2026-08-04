@@ -20,7 +20,11 @@ defmodule SlackexWeb.ErrorJSONTest do
     for template <- ["404.json", "500.json", "422.json"] do
       assert %{errors: %{detail: detail}} = SlackexWeb.ErrorJSON.render(template, %{})
 
-      assert is_binary(detail) and detail != "",
+      # No is_binary/1 here: the compiler already infers detail as a binary from
+      # ErrorJSON.render/2, so the guard is statically always-true and warns --
+      # which fails CI under --warnings-as-errors. Emptiness is the part the
+      # type system cannot decide, so it is the only part worth asserting.
+      assert detail != "",
              "#{template} produced an empty detail; clients render this string"
     end
   end

@@ -66,11 +66,17 @@ if [ -n "$STAGED_EX" ]; then
     exit 1
   fi
 
-  echo "Pre-commit: running tests (--max-failures 1)..."
-  mix test --max-failures 1
+  # --warnings-as-errors matches CI's test step exactly. `mix lint` above compiles
+  # only lib/ with that flag; test/ is compiled here, so without it a warning in a
+  # test file passes this gate and fails CI. That is not hypothetical — it turned
+  # master red on 2026-08-04, from a test the sweep had added hours earlier.
+  echo "Pre-commit: running tests (--warnings-as-errors --max-failures 1)..."
+  mix test --warnings-as-errors --max-failures 1
   if [ $? -ne 0 ]; then
     echo ""
     echo "Tests failed. Fix failures before committing."
+    echo "If the run ended in 'aborted ... due to warnings', it is a warning in a"
+    echo "test file, not a failing assertion — CI fails on those too."
     exit 1
   fi
 
