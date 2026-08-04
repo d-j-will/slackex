@@ -63,14 +63,6 @@ defmodule Slackex.EmbeddingHelpers do
     insert_embedding(message, vector, content)
   end
 
-  @doc """
-  Creates a MessageEmbedding with a specific vector (for threshold testing).
-  """
-  def embed_message_with_vector(message, vector) do
-    content = message_content(message)
-    insert_embedding(message, vector, content)
-  end
-
   defp message_content(message) do
     message.content || message.search_content || ""
   end
@@ -138,16 +130,6 @@ defmodule Slackex.EmbeddingHelpers do
     %Slackex.Chat.DMConversation{}
     |> Ecto.Changeset.change(%{user_a_id: a.id, user_b_id: b.id})
     |> Repo.insert!()
-  end
-
-  @doc """
-  Builds a unit vector with value 1.0 at the given index, 0.0 elsewhere.
-  Useful for creating orthogonal vectors with known cosine similarity.
-  """
-  def basis_vector(index, dimensions \\ EmbeddingClient.dimensions()) do
-    Enum.map(0..(dimensions - 1), fn i ->
-      if i == index, do: 1.0, else: 0.0
-    end)
   end
 
   @doc """
