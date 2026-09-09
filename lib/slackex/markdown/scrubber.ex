@@ -48,5 +48,18 @@ defmodule Slackex.Markdown.Scrubber do
   Meta.allow_tag_with_uri_attributes("a", ["href"], ["https", "http", "mailto"])
   Meta.allow_tag_with_these_attributes("a", ["rel", "target"])
 
-  Meta.strip_everything_not_covered()
+  # Default-deny: anything not allowed above is stripped.
+  #
+  # This was `Meta.strip_everything_not_covered()`, which html_sanitize_ex 1.5
+  # deprecated with the message "You can just remove it." Removing it here would
+  # be a security regression. That macro's entire body is registering
+  # `@before_compile HtmlSanitizeEx.ScrubberCompiler`, and the compiler is what
+  # generates the allowed-tag scrubs, `scrub_attributes/2`, and the catch-all
+  # that drops every other tag. The deprecation assumes the modern
+  # `use HtmlSanitizeEx` idiom, which registers the compiler itself; this module
+  # calls `Meta` macros directly (the "legacy support" path the macro's own
+  # private helper is named for), so dropping the line would leave the scrubber
+  # with no default-deny. Registering the attribute is exactly what the macro
+  # expanded to, minus the deprecation warning.
+  @before_compile HtmlSanitizeEx.ScrubberCompiler
 end
